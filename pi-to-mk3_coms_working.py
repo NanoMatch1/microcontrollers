@@ -104,7 +104,7 @@ def send_gcode(ser, com, report=True):
     # print(' : ' + str(grbl_out.strip()))
 
 if __name__ == '__main__':
-    main(COM='COM10')
+    main(COM='COM8')
 
 #M106  - Fan on
 #M107  - Fan off

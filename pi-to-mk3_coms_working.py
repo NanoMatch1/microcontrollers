@@ -67,7 +67,12 @@ def main(COM=None, baudrate=115200, gcode=True):
         com_split = com.split(' ')
         # if com_split[0] in command_list:
         if com_split[0] == 'light':
-            new_command = ' '
+            try:
+                light_level = int(com_split[1])
+            except ValueError:
+                print('Please enter an integer between 0 and 255')
+                continue
+            new_command = '*light {}'.format(light_level)
             send_command(s, new_command)
             
 
@@ -125,7 +130,7 @@ def send_gcode(ser, com, report=True):
     # print(' : ' + str(grbl_out.strip()))
 
 if __name__ == '__main__':
-    main(COM='COM4')
+    main(COM='COM11')
 
 #M106  - Fan on
 #M107  - Fan off

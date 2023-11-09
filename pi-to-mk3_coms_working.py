@@ -36,8 +36,22 @@ def search_and_connect():
         print("Couldn't connect to any COM port.")
     else:
         return ser
+    
+# def light(light_level):
+#     try:
+#         int(light_level)
+#     except TypeError:
+#         print('{} not recognised. please enter int from 0-255'.format(light_level))
+#         return
+#     send_command()
+
+    
+# def interpret_move()
 
 def main(COM=None, baudrate=115200, gcode=True):
+    # command_list = [x for x in __dict__ functions]
+    command_list = ['light']
+    # command_dict = {'light': light}
     if COM is None:
         s = search_and_connect()
     else:
@@ -50,6 +64,13 @@ def main(COM=None, baudrate=115200, gcode=True):
     # print(mes.decode())
     while True:
         com = get_input()
+        com_split = com.split(' ')
+        # if com_split[0] in command_list:
+        if com_split[0] == 'light':
+            new_command = ' '
+            send_command(s, new_command)
+            
+
         if gcode:
             send_gcode(s, com)
         else:
@@ -104,7 +125,7 @@ def send_gcode(ser, com, report=True):
     # print(' : ' + str(grbl_out.strip()))
 
 if __name__ == '__main__':
-    main(COM='COM8')
+    main(COM='COM4')
 
 #M106  - Fan on
 #M107  - Fan off

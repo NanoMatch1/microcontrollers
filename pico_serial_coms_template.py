@@ -9,14 +9,16 @@ read_delay = 0.1  # This is important! Some Picos need a delay before sending da
 try:
     # Establish a serial connection
     ser = serial.Serial(serial_port, baud_rate, timeout=1) 
-    ser.flushInput()
-    ser.flushOutput()
+    # ser.flushInput()
+    # ser.flushOutput()
     while True:
         # Send a command
         inp = input('Enter command: ')
-        ser.write(f'{inp}\n\r'.encode())
+        ser.write(f'{inp}\r'.encode())
+        ser.flush()
 
         # Read the response
+        time.sleep(read_delay)
         response = ser.read(ser.inWaiting())  # Read available bytes
         if response:
             print("Response from Pico:")
@@ -30,3 +32,32 @@ except serial.SerialException as e:
 finally:
     if 'ser' in locals() and ser.is_open:
         ser.close()
+
+# import serial
+# import time
+
+# serial_port = 'COM13'
+# baud_rate = 115200
+
+# try:
+#     with serial.Serial(serial_port, baud_rate, timeout=1) as ser:
+#         print("Connected to Raspberry Pi Pico. Type your commands below.")
+
+#         while True:
+#             inp = input("Enter command: ")
+#             ser.write((inp + '\n').encode())
+
+#             time.sleep(0.1)  # Delay to allow Pico to process and respond
+
+#             response = ""
+#             while ser.inWaiting() > 0:
+#                 response += ser.read(1).decode()
+
+#             if response:
+#                 print("Response from Pico:")
+#                 print(response.strip())
+#             else:
+#                 print("No response received. Check the connection and settings.")
+
+# except serial.SerialException as e:
+#     print(f"Error: {e}")

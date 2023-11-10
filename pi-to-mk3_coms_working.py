@@ -130,7 +130,9 @@ def send_gcode(ser, com, report=True):
     # print(' : ' + str(grbl_out.strip()))
 
 if __name__ == '__main__':
-    main(COM='COM11')
+    main(COM='COM13')
+    # main(COM='COM5')
+    # main(COM='COM6')
 
 #M106  - Fan on
 #M107  - Fan off

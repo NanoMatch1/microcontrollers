@@ -2,7 +2,7 @@ import serial
 import time
 
 # Replace with your serial port and baud rate
-serial_port = 'COM13'  # or 'COM3' for Windows
+serial_port = 'COM5'  # or 'COM3' for Windows
 baud_rate = 115200  # Adjust as per your Pico's settings
 read_delay = 0.1  # This is important! Some Picos need a delay before sending data
 
@@ -33,6 +33,8 @@ finally:
     if 'ser' in locals() and ser.is_open:
         ser.close()
 
+
+# This is the working version?;'
 # import serial
 # import time
 

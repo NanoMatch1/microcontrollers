@@ -38,7 +38,7 @@ def receive(ser) -> str:
 
 if __name__ == "__main__":
     # Replace 'COMx' with the actual port your Pico is connected to
-    ser = connect_to_pico("COM9")
+    ser = connect_to_pico("COM5")
     print(ser)
     # ser.flushInput()
     # ser.flushOutput()

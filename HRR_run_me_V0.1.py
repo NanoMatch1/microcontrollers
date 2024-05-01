@@ -1,7 +1,7 @@
 import gpib_ctypes
 import pyvisa
 import time
-# import serial
+import serial
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 Initial grating is Blaze 500, 1200 g/mm
@@ -41,11 +41,99 @@ class Microscope:
         self.pico_dict = {
             'X': 'X',
             'Y': 'Y',
-            'Z': 'Z'
+            'Z': 'Z',
+            'imagemode': 'G0 E-500',
+            'ramanmode': 'G0 E500'
         }
 
-        self.spectrometer, self.state = self.connect_to_spectrometer()
+        # self.spectrometer, self.state = self.connect_to_spectrometer()
+        self.pico_marlin = self.connect_to_marlin()
         
+    def connect_to_marlin(self):
+        ''' Current working pico-MARLIN-coms 19/01/24'''
+        # Replace with your serial port and baud rate
+        serial_port = 'COM4'  # or 'COM3' for Windows
+        baud_rate = 115200  # Adjust as per your Pico's settings
+        self.pico_read_delay = 0.1  # This is important! Some Picos need a delay before sending data
+
+        comList = {
+
+        }
+        def get_mode():
+
+            while True:
+                currentMode = input('Enter the current mode: ramanmode or imagemode')
+                if currentMode == 'ramanmode' or currentMode == 'imagemode':
+                    return currentMode
+
+        self.currentMode = get_mode()
+
+
+        try:
+            # Establish a serial connection
+            ser = serial.Serial(serial_port, baud_rate, timeout=1) 
+            # print(ser)
+            ser.write('Test\r'.encode())
+            time.sleep(self.pico_read_delay)
+            response = ser.read(ser.inWaiting())
+            print(response)
+            return ser
+
+        except serial.SerialException as e:
+            print(f"Error: {e}")
+
+        finally:
+            if 'ser' in locals() and ser.is_open:
+                ser.close()
+
+    def send_command_to_pico(self, command):
+
+        if command[0] == 'flush':
+            self.pico_marlin.flush()
+            return
+        if command[0] == self.currentMode:
+            print('Error: alread in {} mode'.format(self.currentMode))
+            return
+        # command = command
+        if command[0] in self.pico_dict.keys():
+            if len(command) > 1:
+                command = '{}{}'.format(self.pico_dict[command[0]], command[1]) # concatenate command if parameters are provided
+            # command = self.pico_dict[command]
+            else:
+                command = self.pico_dict[command[0]]
+        self.pico_marlin.write(f'{command}\r'.encode())
+        self.pico_marlin.flush()
+
+        # Read the response
+        time.sleep(self.pico_read_delay)
+        response = self.pico_marlin.read(self.pico_marlin.inWaiting())  # Read available bytes
+        if response:
+            print("Response from Pico:")
+            print(response.decode().strip())
+        else:
+            print("No response received. Check the connection and settings.")
+
+
+
+    def send_command_to_spectrometer(self, command):
+                    # self.instrument.write(com)
+                    # time.sleep(0.0001)
+        if len(command) > 1:
+            command = '{}{}'.format(self.spectrometer_dict[command[0]], command[1]) # concatenate command if parameters are provided
+        else:
+            command = self.spectrometer_dict[command[0]]
+
+        self.spectrometer.write(command)
+            # self.spectrometer.write(com)
+        if command == 'A':
+            count = 100
+            while count > 0:
+                print('Initialising: Sleeping for {} seconds'.format(count))
+                time.sleep(1)
+                count -= 1
+        
+        response = self.spectrometer.read()
+        print('RES:', response)
 
     def connect_to_spectrometer(self):
         # Open a connection to the instrument
@@ -74,28 +162,13 @@ class Microscope:
                 # else:
                 command = com.split(' ')
                 if command[0] in self.spectrometer_dict.keys():
-                    # self.instrument.write(com)
-                    # time.sleep(0.0001)
-                    if len(command) > 1:
-                        command = '{}{}'.format(self.spectrometer_dict[command[0]], command[1]) # concatenate command if parameters are provided
-                    else:
-                        command = self.spectrometer_dict[command[0]]
-                    self.spectrometer.write(command)
-                    # self.spectrometer.write(com)
-                if com == 'init':
-                    count = 100
-                    while count > 0:
-                        print('Initialising: Sleeping for {} seconds'.format(count))
-                        time.sleep(1)
-                        count -= 1
-                response = self.spectrometer.read()
-                print('RES:', response)
+                    self.send_command_to_spectrometer(command)
+                else:
+                    self.send_command_to_pico(command)
             except Exception as e:
                 print(e) 
 
                     
-            except Exception as e:
-                print(e)
 
 if __name__ == '__main__':
     microscope = Microscope()
@@ -202,3 +275,7 @@ if __name__ == '__main__':
         #k0,0,100 = move slit 100 steps relative
         #j0,0<CR> = read slit pos
         #i0,0,0<CR> = set slit position (0)
+
+
+# Note: pico-mk3-coms_V1.0.py is the working version. This wrapper is having issues with the com port.
+# notes re: this version: marlin controller will only work if movement commands are sent. Anything else will break the read/write loop. need to move away from this marlin controller ASAP, or write a more robust coms wrapper.

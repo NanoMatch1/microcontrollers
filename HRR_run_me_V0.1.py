@@ -6,6 +6,7 @@ import serial
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 Initial grating is Blaze 500, 1200 g/mm
 centre for 532 nm is roughly 241543
+centre for sulfur at ~800 nm is 376886
 List of useful commands = {
 "Initiate command mode": "02000",
 # "Initialise Spectrometer: "A",
@@ -24,6 +25,7 @@ List of useful commands = {
 class Microscope:
 
     def __init__(self):
+        
         self.spectrometer_dict = {
             'init': 'A',
             'comsmode': '02000',
@@ -46,8 +48,42 @@ class Microscope:
             'ramanmode': 'G0 E500'
         }
 
+        self.apd_dict = {
+            'run': 'run',
+            'acquire': 'acquire'
+        }
+
         # self.spectrometer, self.state = self.connect_to_spectrometer()
-        self.pico_marlin = self.connect_to_marlin()
+        # self.pico_marlin = self.connect_to_marlin()
+        self.apd_serial = self.connect_to_APD()
+
+    def connect_to_APD(self):
+        APD_serial = serial.Serial('COM5', 115200, timeout=1)
+        return APD_serial
+    
+    def send_command_to_apd(self, command):
+        self.apd_serial.write('{}\r'.format(command).encode())
+        time.sleep(2)
+        response = self.apd_serial.read(self.apd_serial.inWaiting())
+        print(response)
+
+    def serial_connect(self, serial_port, baud_rate=115200):
+        try:
+            # Establish a serial connection
+            ser = serial.Serial(serial_port, baud_rate, timeout=1) 
+            # print(ser)
+            ser.write('Test\r'.encode())
+            time.sleep(self.pico_read_delay)
+            response = ser.read(ser.inWaiting())
+            print(response)
+            return ser
+
+        except serial.SerialException as e:
+            print(f"Error: {e}")
+
+        finally:
+            if 'ser' in locals() and ser.is_open:
+                ser.close()
         
     def connect_to_marlin(self):
         ''' Current working pico-MARLIN-coms 19/01/24'''
@@ -161,8 +197,18 @@ class Microscope:
                 #         # time.sleep(0.0001)
                 # else:
                 command = com.split(' ')
+
+                if command[0] == 'read':
+                    response = self.apd_serial.read(self.apd_serial.inWaiting())
+                    print('APD:', response)
+                    response = self.apd_serial.read(self.pico_marlin.inWaiting())
+                    print('pico_marlin:', response)
+
+
                 if command[0] in self.spectrometer_dict.keys():
                     self.send_command_to_spectrometer(command)
+                elif command[0] in self.apd_dict.keys():
+                    self.send_command_to_apd(command)
                 else:
                     self.send_command_to_pico(command)
             except Exception as e:

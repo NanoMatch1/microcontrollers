@@ -2,6 +2,8 @@ import gpib_ctypes
 import pyvisa
 import time
 import serial
+import struct
+
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 Initial grating is Blaze 500, 1200 g/mm
@@ -49,30 +51,51 @@ class Microscope:
         }
 
         self.apd_dict = {
-            'run': 'run',
-            'acquire': 'acquire'
+            'r': 00,
+            'a': 1,
+            'hand': 'hand',
+            'r': '\r',
+            'floats': b','.join(struct.pack('<f', f) for f in [0.2, 13.0, 3])
         }
 
         # self.spectrometer, self.state = self.connect_to_spectrometer()
         # self.pico_marlin = self.connect_to_marlin()
         self.apd_serial = self.connect_to_APD()
 
+    # def pack_floats(self, floats):
+    #     return b','.join(struct.pack('<f', f) for f in floats)
+
     def connect_to_APD(self):
-        APD_serial = serial.Serial('COM5', 115200, timeout=1)
+        APD_serial = serial.Serial('COM7', 9600, timeout=1)
         return APD_serial
     
     def send_command_to_apd(self, command):
         self.apd_serial.write('{}\r'.format(command).encode())
-        time.sleep(2)
+        time.sleep(0.001)
+        # response = self.apd_serial.read(self.apd_serial.inWaiting())
+        # print(response)
+        # breakpoint()
+
+    def set_acquisition_time(self, acq_time):
+        self.send_command_to_apd('a{}\r'.format(acq_time))
+        time.sleep(0.1)
         response = self.apd_serial.read(self.apd_serial.inWaiting())
         print(response)
+        code = response.decode().strip('\r\n')
+        if code.startswith('aa'):
+            acq_time = float(code[2:])
+            print('Acquisition time set to: {}'.format(acq_time))
+        # breakpoint()
+        time.sleep(1)
+        print(self.apd_serial.read(self.apd_serial.inWaiting()))
+
 
     def serial_connect(self, serial_port, baud_rate=115200):
         try:
             # Establish a serial connection
             ser = serial.Serial(serial_port, baud_rate, timeout=1) 
             # print(ser)
-            ser.write('Test\r'.encode())
+            # ser.write('Test\r'.encode())
             time.sleep(self.pico_read_delay)
             response = ser.read(ser.inWaiting())
             print(response)
@@ -189,6 +212,8 @@ class Microscope:
         while True:
             try:
                 # loop continuously here for com input
+                response = self.apd_serial.read(self.apd_serial.inWaiting())
+                print(response)
                 com = input('Enter command:\n')
                 # if com == 'COM':
                 #     while True:
@@ -204,13 +229,25 @@ class Microscope:
                     response = self.apd_serial.read(self.pico_marlin.inWaiting())
                     print('pico_marlin:', response)
 
+                if command[0] == 't':
+                    self.set_acquisition_time(command[1])
+
+                    # self.send_command_to_apd(struct.pack('<f', 0.12))
+                    # self.send_command_to_apd(struct.pack('<f', 12))
+                    # self.send_command_to_apd(struct.pack( .'<f', 45.6))
+
+                    # self.send_command_to_apd(2.5)
+                    # # time.sleep(0.001)
+                    # self.send_command_to_apd('run')
+                    # time.sleep(0.001)
+
 
                 if command[0] in self.spectrometer_dict.keys():
                     self.send_command_to_spectrometer(command)
                 elif command[0] in self.apd_dict.keys():
-                    self.send_command_to_apd(command)
+                    self.send_command_to_apd(self.apd_dict[command[0]])
                 else:
-                    self.send_command_to_pico(command)
+                    self.send_command_to_pico(self.pico_dict[command[0]])
             except Exception as e:
                 print(e) 
 
@@ -325,3 +362,5 @@ if __name__ == '__main__':
 
 # Note: pico-mk3-coms_V1.0.py is the working version. This wrapper is having issues with the com port.
 # notes re: this version: marlin controller will only work if movement commands are sent. Anything else will break the read/write loop. need to move away from this marlin controller ASAP, or write a more robust coms wrapper.
+
+

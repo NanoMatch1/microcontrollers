@@ -84,7 +84,7 @@ class Microscope:
         code = response.decode().strip('\r\n')
         if code.startswith('aa'):
             acq_time = float(code[2:])
-            print('Acquisition time set to: {}'.format(acq_time))
+            print('Master Receive - Acquisition time set to: {}'.format(acq_time))
         # breakpoint()
         time.sleep(1)
         print(self.apd_serial.read(self.apd_serial.inWaiting()))

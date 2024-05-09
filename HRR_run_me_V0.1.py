@@ -4,7 +4,6 @@ import time
 import serial
 import struct
 
-
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 Initial grating is Blaze 500, 1200 g/mm
 centre for 532 nm is roughly 241543
@@ -26,24 +25,108 @@ List of useful commands = {
 
 import tkinter as tk
 from tkinter import scrolledtext
+from tkinter import ttk
 import serial
 import threading
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+
+
+class DynamicPlotApp:
+    def __init__(self, master):
+        self.master = master
+        master.title("Dynamic Plotting with Tkinter")
+
+        # Create a matplotlib figure
+        self.fig, self.ax = plt.subplots()
+        self.lines, = self.ax.plot([], [], 'r-')  # Lines to plot
+        self.ax.set_xlim(0, 100)  # Set x-axis limit
+        self.ax.set_ylim(0, 10)  # Set y-axis limit
+
+        # Embed the plot in the Tkinter window
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.master)
+        self.canvas_widget = self.canvas.get_tk_widget()
+        self.canvas_widget.pack(fill=tk.BOTH, expand=True)
+
+        # Initialize plot data
+        self.x_data = []
+        self.y_data = []
+
+        # Add a button to update the plot
+        # self.update_button = ttk.Button(master, text="Update Plot", command=self.update_plot)
+        # self.update_button.pack()
+
+    def update_plot(self, data):
+        # Simulate new data coming in
+        # new_x = len(self.x_data) + 1
+        # new_y = np.random.rand()
+
+        # Update the data
+        self.x_data.append(data[0])
+        self.y_data.append(data[1])
+
+        # Update the plot
+        self.lines.set_data(self.x_data, self.y_data)
+        # self.ax.set_xlim(min(self.x_data), max(self.x_data))  # Optionally adjust limits dynamically
+        self.canvas.draw()
+
+
+    
 
 class ArduinoInterface:
     def __init__(self, master):
+
+        self.plot = DynamicPlotApp(master)
+
+        self.microscope = Microscope()
+        
         self.master = master
         master.title("Arduino Command Interface")
+
 
         # Setup the serial connection
         self.uno_serial = serial.Serial('COM8', 9600)  # Replace 'COM_PORT' with your actual COM port
 
         # Text box for command input
         self.command_entry = tk.Entry(master, width=50)
-        self.command_entry.bind("<Return>", self.send_command_to_UNO)
+        self.command_entry.bind("<Return>", self.process_input)
         self.command_entry.pack()
+
+        # box for scan min
+        self.scan_min_entry = tk.Entry(master, width=10)
+        self.scan_min_entry.insert(0, '-1000')
+        self.scan_min_entry.bind("<Return>", self.update_scan_params)
+        self.scan_min_entry.place(x=5, y=20)    
+        # label for scan min
+        self.scan_min_label = tk.Label(master, text="Scan Min")
+        self.scan_min_label.place(x=70, y=20)    
+        
+        # box for scan max
+        self.scan_max_entry = tk.Entry(master, width=10)
+        self.scan_max_entry.insert(0, '1000')
+        self.scan_max_entry.bind("<Return>", self.update_scan_params)
+        self.scan_max_entry.place(x=5, y=40)
+        # label for scan max
+        self.scan_max_label = tk.Label(master, text="Scan Max")
+        self.scan_max_label.place(x=70, y=40)
+
+
+        # box for scan resolution
+        self.scan_resolution_entry = tk.Entry(master, width=10)
+        self.scan_resolution_entry.insert(0, '100')
+        self.scan_resolution_entry.bind("<Return>", self.update_scan_params)
+        self.scan_resolution_entry.place(x=5, y=60)
+        # label for scan resolution
+        self.scan_resolution_label = tk.Label(master, text="Scan Resolution")
+        self.scan_resolution_label.place(x=70, y=60)
 
         # Button for sending commands
         self.send_button = tk.Button(master, text="Send Command", command=self.send_command)
+        self.send_button.pack()
+
+        # button for running the scan
+        self.send_button = tk.Button(master, text="Run Scan", command=self.run_scan)
         self.send_button.pack()
 
         # Scrolled Text Area for displaying outputs
@@ -55,8 +138,42 @@ class ArduinoInterface:
         self.read_thread.daemon = True
         self.read_thread.start()
 
-    def send_command_to_UNO(self, event=None):  # Event is passed by bind
+        self.get_grating_position()
+
+    def update_labels(self):
+        self.scan_resolution_label = tk.Label(self.master, text="Scan Resolution {}".format(self.scan_resolution))
+
+    def update_scan_params(self, event=None):
+        try:
+            self.microscope.scan_min = float(self.scan_min_entry.get())
+        except:
+            pass
+        try:
+            self.microscope.scan_max = float(self.scan_max_entry.get())
+        except:
+            pass
+        try:
+            self.microscope.scan_resolution = float(self.scan_resolution_entry.get())
+        except:
+            pass
+        # self.update_labels()
+
+    def process_input(self, event=None):  # Event is passed by bind
         command = self.command_entry.get()
+        split_command = command.split(' ')
+        self.command_entry.delete(0, tk.END)  # Clear entry after sending
+        if split_command[0] in self.microscope.spectrometer_dict.keys():
+            response = self.microscope.send_command_to_spectrometer(split_command)
+            self.update_text_area(response)
+        else:
+            self.send_command_to_UNO(command=command)
+        
+        # self.read_from_uno()
+
+
+    def send_command_to_UNO(self, command=None, event=None):  # Event is passed by bind
+        if not command:
+            command = self.command_entry.get()
         self.uno_serial.write('{}\n'.format(command).encode())
         self.command_entry.delete(0, tk.END)  # Clear entry after sending
 
@@ -75,12 +192,44 @@ class ArduinoInterface:
     def send_command(self):
         self.send_command_to_UNO()
 
+    def get_grating_position(self):
+        response = self.microscope.send_command_to_spectrometer(['read_grating'])
+        response = response.strip()
+
+        grating_pos = int(response[1:])
+        self.microscope.grating_pos = grating_pos
+        self.update_text_area(response)
 
 
+
+    def run_scan(self):
+        pass
+        self.acq_time = 1
+        scan_results = np.empty((0, 2)).astype(float)
+        self.get_grating_position()
+        self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_min])
+        for idx in np.arange(self.microscope.scan_min, self.microscope.scan_max, self.microscope.scan_resolution):
+            self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_resolution])
+            time.sleep(0.5)
+            self.send_command_to_UNO('acq')
+            time.sleep(self.acq_time)
+            response = self.read_from_uno()
+            intensity = float(response[response.index('#')+1:])
+            # scan_results.append([step, response])
+            scan_results = np.vstack((scan_results, [self.microscope.grating_pos, intensity]))
+            self.plot.update_plot([self.microscope.grating_pos, intensity])
+            self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
+        self.results = np.array(scan_results).astype(float)
+        print(self.results)
+        pass
 
 class Microscope:
 
     def __init__(self):
+
+        self.scan_min = -1000
+        self.scan_max = 1000
+        self.scan_resolution = 100
         
         self.spectrometer_dict = {
             'init': 'A',
@@ -88,6 +237,7 @@ class Microscope:
             'read_grating': 'H0',
             'grating': 'F0,',
             'read_enter': 'j0,0',
+            'read_exit': 'j0,3',
             'move_enter': 'k0,0,',
             'move_exit': 'k0,3,',
             'poll motors after move command sent': 'E',
@@ -114,10 +264,10 @@ class Microscope:
 
         self.APD_comList = ['r', 'a', 't']
 
-        # self.spectrometer, self.state = self.connect_to_spectrometer()
+        self.spectrometer, self.state = self.connect_to_spectrometer()
         # self.pico_marlin = self.connect_to_marlin()
         # self.apd_serial = self.connect_to_APD()
-        self.uno_serial = self.connect_to_UNO()
+        # self.uno_serial = self.connect_to_UNO()
 
     # def pack_floats(self, floats):
     #     return b','.join(struct.pack('<f', f) for f in floats)
@@ -143,7 +293,7 @@ class Microscope:
             response += self.uno_serial.readline().decode()
         # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
         print(response)
-        breakpoint()
+
     
     def send_command_to_apd(self, command):
         self.apd_serial.write('{}\r'.format(command).encode())
@@ -252,7 +402,7 @@ class Microscope:
 
 
 
-    def send_command_to_spectrometer(self, command):
+    def send_command_to_spectrometer(self, command, report=False):
                     # self.instrument.write(com)
                     # time.sleep(0.0001)
         if len(command) > 1:
@@ -270,7 +420,9 @@ class Microscope:
                 count -= 1
         
         response = self.spectrometer.read()
-        print('RES:', response)
+        if report == True:
+            print('RES:', response)
+        return response
 
     def connect_to_spectrometer(self):
         # Open a connection to the instrument
@@ -351,6 +503,7 @@ class Microscope:
 def continuous():
     root = tk.Tk()
     gui = ArduinoInterface(root)
+
     root.mainloop()
 
 def discon():

@@ -24,6 +24,60 @@ List of useful commands = {
 
 '''
 
+import tkinter as tk
+from tkinter import scrolledtext
+import serial
+import threading
+
+class ArduinoInterface:
+    def __init__(self, master):
+        self.master = master
+        master.title("Arduino Command Interface")
+
+        # Setup the serial connection
+        self.uno_serial = serial.Serial('COM8', 9600)  # Replace 'COM_PORT' with your actual COM port
+
+        # Text box for command input
+        self.command_entry = tk.Entry(master, width=50)
+        self.command_entry.bind("<Return>", self.send_command_to_UNO)
+        self.command_entry.pack()
+
+        # Button for sending commands
+        self.send_button = tk.Button(master, text="Send Command", command=self.send_command)
+        self.send_button.pack()
+
+        # Scrolled Text Area for displaying outputs
+        self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, width=60, height=10)
+        self.text_area.pack(pady=10)
+
+        # Separate thread to continuously read from serial port
+        self.read_thread = threading.Thread(target=self.read_from_uno)
+        self.read_thread.daemon = True
+        self.read_thread.start()
+
+    def send_command_to_UNO(self, event=None):  # Event is passed by bind
+        command = self.command_entry.get()
+        self.uno_serial.write('{}\n'.format(command).encode())
+        self.command_entry.delete(0, tk.END)  # Clear entry after sending
+
+    def read_from_uno(self):
+        while True:
+            if self.uno_serial.in_waiting > 0:
+                response = self.uno_serial.readline().decode().strip()
+                # if response == '':  # Skip empty lines
+                    # continue
+                self.update_text_area(response)
+
+    def update_text_area(self, message):
+        self.text_area.insert(tk.END, message + '\n')
+        self.text_area.see(tk.END)  # Scroll to the bottom
+
+    def send_command(self):
+        self.send_command_to_UNO()
+
+
+
+
 class Microscope:
 
     def __init__(self):
@@ -58,9 +112,12 @@ class Microscope:
             'floats': b','.join(struct.pack('<f', f) for f in [0.2, 13.0, 3])
         }
 
+        self.APD_comList = ['r', 'a', 't']
+
         # self.spectrometer, self.state = self.connect_to_spectrometer()
         # self.pico_marlin = self.connect_to_marlin()
-        self.apd_serial = self.connect_to_APD()
+        # self.apd_serial = self.connect_to_APD()
+        self.uno_serial = self.connect_to_UNO()
 
     # def pack_floats(self, floats):
     #     return b','.join(struct.pack('<f', f) for f in floats)
@@ -69,15 +126,34 @@ class Microscope:
         APD_serial = serial.Serial('COM7', 9600, timeout=1)
         return APD_serial
     
+    def connect_to_UNO(self):
+        UNO_serial = serial.Serial('COM8', 9600, timeout=1)
+        return UNO_serial
+    
+    def send_command_to_UNO(self, command):
+        self.uno_serial.write('{}\n'.format(command).encode())
+        time.sleep(0.1)
+        # response = self.uno_serial.read(self.uno_serial.inWaiting())
+        # print(response)
+        # breakpoint()
+
+    def read_command_from_uno(self):
+        response = ''
+        while self.uno_serial.in_waiting > 0: #FIX: Change the logic to do this in the main loop
+            response += self.uno_serial.readline().decode()
+        # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
+        print(response)
+        breakpoint()
+    
     def send_command_to_apd(self, command):
         self.apd_serial.write('{}\r'.format(command).encode())
-        time.sleep(0.001)
+        time.sleep(0.01)
         # response = self.apd_serial.read(self.apd_serial.inWaiting())
         # print(response)
         # breakpoint()
 
     def set_acquisition_time(self, acq_time):
-        self.send_command_to_apd('a{}\r'.format(acq_time))
+        self.send_command_to_apd('t{}\r'.format(acq_time))
         time.sleep(0.1)
         response = self.apd_serial.read(self.apd_serial.inWaiting())
         print(response)
@@ -88,6 +164,8 @@ class Microscope:
         # breakpoint()
         time.sleep(1)
         print(self.apd_serial.read(self.apd_serial.inWaiting()))
+
+
 
 
     def serial_connect(self, serial_port, baud_rate=115200):
@@ -212,8 +290,9 @@ class Microscope:
         while True:
             try:
                 # loop continuously here for com input
-                response = self.apd_serial.read(self.apd_serial.inWaiting())
-                print(response)
+                # response = self.apd_serial.read(self.apd_serial.inWaiting())
+                # response = self.uno_serial.read(self.uno_serial.inWaiting())
+                # print(response)
                 com = input('Enter command:\n')
                 # if com == 'COM':
                 #     while True:
@@ -221,16 +300,33 @@ class Microscope:
                 #         # self.instrument.write(com)
                 #         # time.sleep(0.0001)
                 # else:
-                command = com.split(' ')
+                # command = com.split(' ')
+                self.send_command_to_UNO(com)
+                self.read_command_from_uno()
 
-                if command[0] == 'read':
+                continue
+
+
+                if com[0] in self.APD_comList:
+                    self.send_command_to_apd(com)
+                    time.sleep(0.1)
+                elif com == 'read':
                     response = self.apd_serial.read(self.apd_serial.inWaiting())
-                    print('APD:', response)
-                    response = self.apd_serial.read(self.pico_marlin.inWaiting())
-                    print('pico_marlin:', response)
+                    print(response)
+                else:
+                    print('Command not recognized: {}'.format(com))
+                
+                continue
 
-                if command[0] == 't':
-                    self.set_acquisition_time(command[1])
+
+                # if command[0] == 'read':
+                #     response = self.apd_serial.read(self.apd_serial.inWaiting())
+                #     print('APD:', response)
+                #     response = self.apd_serial.read(self.pico_marlin.inWaiting())
+                #     print('pico_marlin:', response)
+
+                # if command[0] == 't':
+                #     self.set_acquisition_time(command[1])
 
                     # self.send_command_to_apd(struct.pack('<f', 0.12))
                     # self.send_command_to_apd(struct.pack('<f', 12))
@@ -252,10 +348,19 @@ class Microscope:
                 print(e) 
 
                     
+def continuous():
+    root = tk.Tk()
+    gui = ArduinoInterface(root)
+    root.mainloop()
 
-if __name__ == '__main__':
+def discon():
     microscope = Microscope()
     microscope.main()
+
+if __name__ == '__main__':
+    # discon()
+    continuous()
+
 
 # class Spectrometer:
 

@@ -3,10 +3,6 @@ import time
 import rp2
 from rp2 import PIO, StateMachine
 
-# # Global variable to store counts
-# total_count = 0
-
-# Pin connected to the 10th bit of your external counter
 monitor_pin = Pin(15, Pin.IN, Pin.PULL_UP)  # Adjust pin number as needed
 reset_pin = Pin(22, Pin.OUT)
 reset_pin.value(0)
@@ -39,24 +35,20 @@ def calibration_test(APD, time_list = [0.1, 0.2, 0.4, 0.8, 1.6, 3.2, 6.4, 12.8],
     return data_list
 
 
-        
 def save_2d_list_as_txt(data, filename):
     with open(filename, 'w') as file:
         for row in data:
             file.write(','.join(str(item) for item in row) + '\n')
-            
 
     
 class APD_pico:
     
-    def __init__(self, **kwargs):
+    def __init__(self, monitor_pin = None, reset_pin = None, reader_sm = None, uart = None):
+        self.monitor_pin = monitor_pin
+        self.reset_pin = reset_pin
+        self.reader_sm = reader_sm
+        self.uart = uart
 
-        self.__dict__.update(kwargs)
-
-        for argument in ['monitor_pin', 'reset_pin', 'reader_sm', 'uart']:
-            if argument not in kwargs:
-                raise ValueError('{} is a required argument'.format(argument))
-            
         self.acq_time = 1 # acquistion time in seconds
         self.total_counts = 0
         
@@ -75,24 +67,46 @@ class APD_pico:
             return command
         
     def send_UART(self, message):
-        txData = b'UART_APD|B:{}'.format(message)
+        txData = b'UART-APD|UNO:#{}\n'.format(message)
         self.uart.write(txData)
 
-    def wait_for_command(self):
-        command = self.receive_UART()
-        return command
+    def wait_for_uart(self):
+        rxData = bytes()
+#         print('waiting for uart')
+        while True:
 
+            check_uart = self.uart.any()
+            if check_uart > 0:
+                time.sleep(0.1)
+                while self.uart.any() > 0:
+                    rxData += self.uart.read(1)
+
+                time.sleep(0.01)
+            #     output = 'UART_out'
+                received = rxData.decode('utf-8').strip()
+                
+#                 print(received)
+#                 print('command: "{}"'.format(received))
+                return received
+            else:
+                time.sleep(0.01)
 
     def process_command(self, command):
+        signal_direction = command[:command.index('#')] # gets the signal direction
+        command = command[command.index('#')+1:] # removes the coms directionality from the UART signal
         command = command.split(' ')
-        if command[0] == 'time':
+        if command[0] == '':
+            return None
+        elif command[0] == 'time':
+            print("enerted time")
+            print(command)
             self.acq_time = float(command[1])
             self.send_UART('Acquisition time set to {}'.format(self.acq_time))
 
-        if command[0] == 'acq':
+        elif command[0] == 'acq':
             if len(command) > 1:
                 try:
-                    self.acq_time = float(command[1:])
+                    self.acq_time = float(command[1])
 
                 except ValueError:
                     print('{} not recognized as a number. Please enter a number from 0-100'.format(command[1]))
@@ -101,11 +115,22 @@ class APD_pico:
             total_counts = self.acquire_signal()
             return total_counts
         
-        if command[0].strip() == 'run':
+        elif command[0].strip() == 'run':
+            if len(command) > 1:
+                try:
+                    self.acq_time = float(command[1])
+
+                except ValueError:
+                    print('{} not recognized as a number. Please enter a number from 0-100'.format(command[1]))
+
             self.send_UART('Running for 30 seconds')
             for _ in range(30):
                 total_counts = self.acquire_signal()
                 self.send_UART(total_counts)
+        
+        else:
+            print('received command {}'.format(command))
+            self.send_UART('"{}" not recognised as a command. No action performed'.format(' '.join(command)))
 
     def acquire_signal(self, acq_time = None):
         if acq_time:
@@ -144,24 +169,31 @@ class APD_pico:
             intensity = self.acquire_signal()
             self.send_UART(intensity)
             count += 1
-            
-
 
 def main():
     # Configure interrupt for the pin on both edges (assuming you need both)
     reader_sm = setup_reader()
     reader_sm.active(1)
-    #monitor_pin.irq(trigger=Pin.IRQ_RISING, handler=bit_flip_handler)
     # configure UART
-    uart0 = UART(0, baudrate=9600, tx=Pin(0), rx=Pin(1))
+    uart1 = UART(1, baudrate=9600, tx=Pin(4), rx=Pin(5))
 
-    APD = APD_pico(monitor_pin = monitor_pin, reset_pin = reset_pin, reader_sm = reader_sm, uart = uart0)
+    APD = APD_pico(monitor_pin = monitor_pin, reset_pin = reset_pin, reader_sm = reader_sm, uart = uart1)
 
-    # sm_record_data(reset_pin, reader_sm)
+    APD.sm_record_data() # TOGGLE
     while True:
-        command = APD.wait_for_command()
+        processed = None
         try:
-            result = APD.process_command(command)
+            command = APD.wait_for_uart()
+            processed = APD.process_command(command)
         except Exception as e:
-            print('Command Process Error:\n{}'.format(e))
-        print(result)
+            print(e)
+            pass
+
+        if processed is None:
+            continue
+
+#         uart1.write(b'UART-APD_pico-UNO:#{}\n'.format(processed))
+        command = None
+        processed = None
+
+main()

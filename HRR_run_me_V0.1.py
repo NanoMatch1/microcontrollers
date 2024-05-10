@@ -31,6 +31,7 @@ import threading
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
+import os
 
 class GUI:
 
@@ -87,7 +88,6 @@ class ArduinoInterface:
     def __init__(self, master):
 
         self.plot = DynamicPlotApp(master)
-
         self.microscope = Microscope()
         
         self.master = master
@@ -211,7 +211,7 @@ class ArduinoInterface:
 
 
 
-    def run_scan(self):
+    # def run_scan(self):
         pass
         self.acq_time = 1
         scan_results = np.empty((0, 2)).astype(float)
@@ -236,14 +236,31 @@ class Microscope:
 
     def __init__(self):
 
+        self.scriptDir = os.path.dirname(os.path.realpath(__file__))
+        self.dataDir = os.path.join(self.scriptDir, 'data')
+        if not os.path.exists(self.dataDir):
+            os.makedirs(self.dataDir)
+
         self.scan_min = -1000
         self.scan_max = 1000
         self.scan_resolution = 100
 
         self.acq_time = 1
         self.centre_wavelength = 376886
+
+        self.data = []
+
+
+        self.microscope_functions = {
+            'scan': self.run_scan,
+            'get_grating_position': self.get_grating_position,
+            'scan_min': self.set_scan_min,
+            'scan_max': self.set_scan_max,
+            'scan_res': self.set_scan_resolution
+        }
         
         
+
         # commands for controlling TRIAX spectrometer
         self.spectrometer_dict = {
             'init': 'A',
@@ -280,15 +297,15 @@ class Microscope:
         self.apd_dict = {
             'run': 'run',
             'acq': 'acq',
-            'time': 'time'
+            'time': 'time',
         }
-
-        self.APD_comList = ['r', 'a', 't']
 
         self.spectrometer, self.state = self.connect_to_spectrometer()
         # self.pico_marlin = self.connect_to_marlin()
-        self.apd_serial = self.connect_to_APD()
+        # self.apd_serial = self.connect_to_APD()
         self.uno_serial = self.connect_to_UNO()
+        # time.sleep(1)
+        # self.grating_pos = self.get_grating_position()
 
     # def pack_floats(self, floats):
     #     return b','.join(struct.pack('<f', f) for f in floats)
@@ -296,9 +313,156 @@ class Microscope:
     # def connect_to_APD(self):
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
+
+    def set_scan_min(self, value):
+        self.scan_min = value
+        print('Scan Min: {}'.format(value))
+
+    def set_scan_max(self, value):
+        self.scan_max = value
+        print('Scan Max: {}'.format(value))
+    
+    def set_scan_resolution(self, value):
+        self.scan_resolution = value
+        print('Scan Resolution: {}'.format(value))
+
+
+    def read_from_serial_until(self, end_flag='#CF', report=False):
+        end_responses = []
+        while True:
+            response = self.read_command_from_uno()
+            if response == '':
+                time.sleep(0.01)
+                continue
+            if report:
+                print(response)
+            split_responses = response.split('\r\n')
+            for item in split_responses:
+                if item == end_flag:
+                    return end_responses
+                end_responses.append(item)
+                print(item)
+            time.sleep(0.01)
+            # else:
+
+    def extract_data(self, response):
+        new_data = []
+        for item in response:
+            if item.startswith("#DAT"):
+                try:
+                    new_data.append(float(item[4:]))
+                except Exception as e:
+                    print('Error processing data')
+                    print(e)
+        return new_data
+
+    def get_grating_position(self):
+        response = self.send_command_to_spectrometer('H0')
+        response = response.strip()
+        grating_pos = int(response[1:])
+        self.grating_pos = grating_pos
+        print('Grating Pos: {}'.format(response))
+        return grating_pos
+
+    def run_scan(self, plot=True):
+        scan_results = np.empty((0, 2)).astype(float)
+        self.grating_pos = self.get_grating_position()
+        initial_pos = self.grating_pos
+        current_pos = initial_pos
+        self.send_command_to_spectrometer('F0, {}'.format(self.scan_min))
+        for idx, val in enumerate(np.arange(self.scan_min, self.scan_max, self.scan_resolution)):
+            if idx != 0:
+                self.send_command_to_spectrometer('F0, {}'.format(self.scan_resolution))
+                current_pos += self.scan_resolution
+            time.sleep(0.5)
+            self.send_command_to_UNO('acq')
+            # time.sleep(self.acq_time)
+            # response = self.read_from_uno()
+            response = self.read_from_serial_until()
+            data = self.extract_data(response)
+            if len(data) > 1:
+                print("data is bigger than expected - change code to accommodate array of data")
+            intensity = float(data[0])
+            # scan_results.append([step, response])
+            # scan_pos = self.grating_pos+(idx*self.scan_resolution)
+            print('{} : {}'.format(current_pos, intensity))
+            scan_results = np.vstack((scan_results, [current_pos, intensity]))
+            # self.plot.update_plot([self.microscope.grating_pos, intensity])
+            # self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
+        self.results = np.array(scan_results).astype(float)
+        print(self.results)
+        # return to start pos
+        self.send_command_to_spectrometer('F0, {}'.format(initial_pos-current_pos))
+        filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
+        np.savetxt(filename, self.results)
+        if plot:
+            # self.plot_scan_results(self.results)
+            plt.plot(self.results[:, 0], self.results[:, 1])
+            plt.show()
+
+
+
+    def process_coms(self, com):
+        response = None
+
+        if com[0] in self.microscope_functions.keys():
+            if len(com) > 1:
+                response = self.microscope_functions[com[0]](com[1])
+            else:
+                response = self.microscope_functions[com[0]]()
+
+        elif com[0] in self.apd_dict.keys():
+            if len(com) > 1:
+                command = '{} {}'.format(self.apd_dict[com[0]], com[1])
+            else:
+                command = self.apd_dict[com[0]]
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # response = self.read_command_from_uno()
+            response = self.read_from_serial_until()
+
+        elif com[0] in self.spectrometer_dict.keys():
+            if len(com) > 1:
+                command = '{} {}'.format(self.spectrometer_dict[com[0]], com[1])
+            else:
+                command = self.spectrometer_dict[com[0]]
+
+            response = self.send_command_to_spectrometer(command)
+        
+        elif com[0] in self.stage_dict.keys():
+            pass # palceholder for stage control
+        elif com[0] in self.laser_dict.keys():
+            pass # placeholder for laser control
+
+        else:
+            print('Command not recognized: {}'.format(com))
+
+        return response
+
+
+
+    def cli_commands(self):
+        while True:
+            coms = input('Enter command:\n')
+            if coms == '':
+                continue
+            com = coms.split(' ')
+            response = self.process_coms(com)
+            if response is None:
+                continue
+            data = self.extract_data(response)
+            if len(data) > 0:
+                self.data.append(data)
+
+
     
     def connect_to_UNO(self):
         UNO_serial = serial.Serial('COM8', 9600, timeout=1)
+        while UNO_serial.in_waiting == 0:
+            time.sleep(0.1)
+        while UNO_serial.in_waiting > 0:
+            response = UNO_serial.readline().decode().strip()
+            print(response)
         return UNO_serial
     
     def send_command_to_UNO(self, command):
@@ -306,14 +470,13 @@ class Microscope:
         time.sleep(0.1)
         # response = self.uno_serial.read(self.uno_serial.inWaiting())
         # print(response)
-        # breakpoint()
 
     def read_command_from_uno(self):
         response = ''
         while self.uno_serial.in_waiting > 0: #FIX: Change the logic to do this in the main loop
             response += self.uno_serial.readline().decode()
         # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
-        print(response)
+        return response
 
     
     # def send_command_to_apd(self, command):
@@ -423,15 +586,16 @@ class Microscope:
 
 
 
-    def send_command_to_spectrometer(self, command, report=False):
+    def send_command_to_spectrometer(self, command, report=True):
                     # self.instrument.write(com)
                     # time.sleep(0.0001)
-        if len(command) > 1:
-            command = '{}{}'.format(self.spectrometer_dict[command[0]], command[1]) # concatenate command if parameters are provided
-        else:
-            command = self.spectrometer_dict[command[0]]
-
+        # if len(command) > 1:
+        #     command = '{}{}'.format(self.spectrometer_dict[command[0]], command[1]) # concatenate command if parameters are provided
+        # else:
+        #     command = self.spectrometer_dict[command[0]]
+        # print(command)
         self.spectrometer.write(command)
+        time.sleep(0.0001)
             # self.spectrometer.write(com)
         if command == 'A':
             count = 100
@@ -531,9 +695,14 @@ def discon():
     microscope = Microscope()
     microscope.main()
 
+def cli():
+    microscope = Microscope()
+    microscope.cli_commands()
+
 if __name__ == '__main__':
     # discon()
-    continuous()
+    # continuous()
+    cli()
 
 
 # class Spectrometer:

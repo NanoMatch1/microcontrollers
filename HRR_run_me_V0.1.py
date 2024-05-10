@@ -32,6 +32,15 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 
+class GUI:
+
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("Arduino Command Interface")
+
+        # Setup the serial connection
+        self.microscope = Microscope()
+
 
 class DynamicPlotApp:
     def __init__(self, master):
@@ -230,7 +239,12 @@ class Microscope:
         self.scan_min = -1000
         self.scan_max = 1000
         self.scan_resolution = 100
+
+        self.acq_time = 1
+        self.centre_wavelength = 376886
         
+        
+        # commands for controlling TRIAX spectrometer
         self.spectrometer_dict = {
             'init': 'A',
             'comsmode': '02000',
@@ -246,7 +260,9 @@ class Microscope:
             #'entrance mirror to front enterance': 'c0',
             #'entrance mirror to side enterance': 'd0'
         }
-        self.pico_dict = {
+
+        # commands for sample/stage motion and imaging beamsplitter
+        self.stage_dict = {
             'X': 'X',
             'Y': 'Y',
             'Z': 'Z',
@@ -254,27 +270,32 @@ class Microscope:
             'ramanmode': 'G0 E500'
         }
 
+        # commands for controlling laser properties
+        self.laser_dict = {
+            'lambda': 'lambda',
+        }
+
+
+        # commands for controlling APD
         self.apd_dict = {
-            'r': 00,
-            'a': 1,
-            'hand': 'hand',
-            'r': '\r',
-            'floats': b','.join(struct.pack('<f', f) for f in [0.2, 13.0, 3])
+            'run': 'run',
+            'acq': 'acq',
+            'time': 'time'
         }
 
         self.APD_comList = ['r', 'a', 't']
 
         self.spectrometer, self.state = self.connect_to_spectrometer()
         # self.pico_marlin = self.connect_to_marlin()
-        # self.apd_serial = self.connect_to_APD()
-        # self.uno_serial = self.connect_to_UNO()
+        self.apd_serial = self.connect_to_APD()
+        self.uno_serial = self.connect_to_UNO()
 
     # def pack_floats(self, floats):
     #     return b','.join(struct.pack('<f', f) for f in floats)
 
-    def connect_to_APD(self):
-        APD_serial = serial.Serial('COM7', 9600, timeout=1)
-        return APD_serial
+    # def connect_to_APD(self):
+    #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
+    #     return APD_serial
     
     def connect_to_UNO(self):
         UNO_serial = serial.Serial('COM8', 9600, timeout=1)
@@ -295,110 +316,110 @@ class Microscope:
         print(response)
 
     
-    def send_command_to_apd(self, command):
-        self.apd_serial.write('{}\r'.format(command).encode())
-        time.sleep(0.01)
-        # response = self.apd_serial.read(self.apd_serial.inWaiting())
-        # print(response)
-        # breakpoint()
+    # def send_command_to_apd(self, command):
+    #     self.apd_serial.write('{}\r'.format(command).encode())
+    #     time.sleep(0.01)
+    #     # response = self.apd_serial.read(self.apd_serial.inWaiting())
+    #     # print(response)
+    #     # breakpoint()
 
-    def set_acquisition_time(self, acq_time):
-        self.send_command_to_apd('t{}\r'.format(acq_time))
-        time.sleep(0.1)
-        response = self.apd_serial.read(self.apd_serial.inWaiting())
-        print(response)
-        code = response.decode().strip('\r\n')
-        if code.startswith('aa'):
-            acq_time = float(code[2:])
-            print('Master Receive - Acquisition time set to: {}'.format(acq_time))
-        # breakpoint()
-        time.sleep(1)
-        print(self.apd_serial.read(self.apd_serial.inWaiting()))
-
-
+    # def set_acquisition_time(self, acq_time):
+    #     self.send_command_to_apd('t{}\r'.format(acq_time))
+    #     time.sleep(0.1)
+    #     response = self.apd_serial.read(self.apd_serial.inWaiting())
+    #     print(response)
+    #     code = response.decode().strip('\r\n')
+    #     if code.startswith('aa'):
+    #         acq_time = float(code[2:])
+    #         print('Master Receive - Acquisition time set to: {}'.format(acq_time))
+    #     # breakpoint()
+    #     time.sleep(1)
+    #     print(self.apd_serial.read(self.apd_serial.inWaiting()))
 
 
-    def serial_connect(self, serial_port, baud_rate=115200):
-        try:
-            # Establish a serial connection
-            ser = serial.Serial(serial_port, baud_rate, timeout=1) 
-            # print(ser)
-            # ser.write('Test\r'.encode())
-            time.sleep(self.pico_read_delay)
-            response = ser.read(ser.inWaiting())
-            print(response)
-            return ser
 
-        except serial.SerialException as e:
-            print(f"Error: {e}")
 
-        finally:
-            if 'ser' in locals() and ser.is_open:
-                ser.close()
+    # def serial_connect(self, serial_port, baud_rate=115200):
+    #     try:
+    #         # Establish a serial connection
+    #         ser = serial.Serial(serial_port, baud_rate, timeout=1) 
+    #         # print(ser)
+    #         # ser.write('Test\r'.encode())
+    #         time.sleep(self.pico_read_delay)
+    #         response = ser.read(ser.inWaiting())
+    #         print(response)
+    #         return ser
+
+        # except serial.SerialException as e:
+        #     print(f"Error: {e}")
+
+        # finally:
+        #     if 'ser' in locals() and ser.is_open:
+        #         ser.close()
         
-    def connect_to_marlin(self):
-        ''' Current working pico-MARLIN-coms 19/01/24'''
-        # Replace with your serial port and baud rate
-        serial_port = 'COM4'  # or 'COM3' for Windows
-        baud_rate = 115200  # Adjust as per your Pico's settings
-        self.pico_read_delay = 0.1  # This is important! Some Picos need a delay before sending data
+    # def connect_to_marlin(self):
+    #     ''' Current working pico-MARLIN-coms 19/01/24'''
+    #     # Replace with your serial port and baud rate
+    #     serial_port = 'COM4'  # or 'COM3' for Windows
+    #     baud_rate = 115200  # Adjust as per your Pico's settings
+    #     self.pico_read_delay = 0.1  # This is important! Some Picos need a delay before sending data
 
-        comList = {
+    #     comList = {
 
-        }
-        def get_mode():
+    #     }
+    #     def get_mode():
 
-            while True:
-                currentMode = input('Enter the current mode: ramanmode or imagemode')
-                if currentMode == 'ramanmode' or currentMode == 'imagemode':
-                    return currentMode
+    #         while True:
+    #             currentMode = input('Enter the current mode: ramanmode or imagemode')
+    #             if currentMode == 'ramanmode' or currentMode == 'imagemode':
+    #                 return currentMode
 
-        self.currentMode = get_mode()
+    #     self.currentMode = get_mode()
 
 
-        try:
-            # Establish a serial connection
-            ser = serial.Serial(serial_port, baud_rate, timeout=1) 
-            # print(ser)
-            ser.write('Test\r'.encode())
-            time.sleep(self.pico_read_delay)
-            response = ser.read(ser.inWaiting())
-            print(response)
-            return ser
+    #     try:
+    #         # Establish a serial connection
+    #         ser = serial.Serial(serial_port, baud_rate, timeout=1) 
+    #         # print(ser)
+    #         ser.write('Test\r'.encode())
+    #         time.sleep(self.pico_read_delay)
+    #         response = ser.read(ser.inWaiting())
+    #         print(response)
+    #         return ser
 
-        except serial.SerialException as e:
-            print(f"Error: {e}")
+    #     except serial.SerialException as e:
+    #         print(f"Error: {e}")
 
-        finally:
-            if 'ser' in locals() and ser.is_open:
-                ser.close()
+    #     finally:
+    #         if 'ser' in locals() and ser.is_open:
+    #             ser.close()
 
-    def send_command_to_pico(self, command):
+    # def send_command_to_pico(self, command):
 
-        if command[0] == 'flush':
-            self.pico_marlin.flush()
-            return
-        if command[0] == self.currentMode:
-            print('Error: alread in {} mode'.format(self.currentMode))
-            return
-        # command = command
-        if command[0] in self.pico_dict.keys():
-            if len(command) > 1:
-                command = '{}{}'.format(self.pico_dict[command[0]], command[1]) # concatenate command if parameters are provided
-            # command = self.pico_dict[command]
-            else:
-                command = self.pico_dict[command[0]]
-        self.pico_marlin.write(f'{command}\r'.encode())
-        self.pico_marlin.flush()
+    #     if command[0] == 'flush':
+    #         self.pico_marlin.flush()
+    #         return
+    #     if command[0] == self.currentMode:
+    #         print('Error: alread in {} mode'.format(self.currentMode))
+    #         return
+    #     # command = command
+    #     if command[0] in self.pico_dict.keys():
+    #         if len(command) > 1:
+    #             command = '{}{}'.format(self.pico_dict[command[0]], command[1]) # concatenate command if parameters are provided
+    #         # command = self.pico_dict[command]
+    #         else:
+    #             command = self.pico_dict[command[0]]
+    #     self.pico_marlin.write(f'{command}\r'.encode())
+    #     self.pico_marlin.flush()
 
-        # Read the response
-        time.sleep(self.pico_read_delay)
-        response = self.pico_marlin.read(self.pico_marlin.inWaiting())  # Read available bytes
-        if response:
-            print("Response from Pico:")
-            print(response.decode().strip())
-        else:
-            print("No response received. Check the connection and settings.")
+    #     # Read the response
+    #     time.sleep(self.pico_read_delay)
+    #     response = self.pico_marlin.read(self.pico_marlin.inWaiting())  # Read available bytes
+    #     if response:
+    #         print("Response from Pico:")
+    #         print(response.decode().strip())
+    #     else:
+    #         print("No response received. Check the connection and settings.")
 
 
 
@@ -438,66 +459,66 @@ class Microscope:
         return spectrometer, state
 
 
-    def main(self):
-        while True:
-            try:
-                # loop continuously here for com input
-                # response = self.apd_serial.read(self.apd_serial.inWaiting())
-                # response = self.uno_serial.read(self.uno_serial.inWaiting())
-                # print(response)
-                com = input('Enter command:\n')
-                # if com == 'COM':
-                #     while True:
-                #         com = 'Enter string command:\n'
-                #         # self.instrument.write(com)
-                #         # time.sleep(0.0001)
-                # else:
-                # command = com.split(' ')
-                self.send_command_to_UNO(com)
-                self.read_command_from_uno()
+    # def main(self):
+    #     while True:
+    #         try:
+    #             # loop continuously here for com input
+    #             # response = self.apd_serial.read(self.apd_serial.inWaiting())
+    #             # response = self.uno_serial.read(self.uno_serial.inWaiting())
+    #             # print(response)
+    #             com = input('Enter command:\n')
+    #             # if com == 'COM':
+    #             #     while True:
+    #             #         com = 'Enter string command:\n'
+    #             #         # self.instrument.write(com)
+    #             #         # time.sleep(0.0001)
+    #             # else:
+    #             # command = com.split(' ')
+    #             self.send_command_to_UNO(com)
+    #             self.read_command_from_uno()
 
-                continue
+    #             continue
 
 
-                if com[0] in self.APD_comList:
-                    self.send_command_to_apd(com)
-                    time.sleep(0.1)
-                elif com == 'read':
-                    response = self.apd_serial.read(self.apd_serial.inWaiting())
-                    print(response)
-                else:
-                    print('Command not recognized: {}'.format(com))
+    #             if com[0] in self.APD_comList:
+    #                 self.send_command_to_apd(com)
+    #                 time.sleep(0.1)
+    #             elif com == 'read':
+    #                 response = self.apd_serial.read(self.apd_serial.inWaiting())
+    #                 print(response)
+    #             else:
+    #                 print('Command not recognized: {}'.format(com))
                 
-                continue
+    #             continue
 
 
-                # if command[0] == 'read':
-                #     response = self.apd_serial.read(self.apd_serial.inWaiting())
-                #     print('APD:', response)
-                #     response = self.apd_serial.read(self.pico_marlin.inWaiting())
-                #     print('pico_marlin:', response)
+    #             # if command[0] == 'read':
+    #             #     response = self.apd_serial.read(self.apd_serial.inWaiting())
+    #             #     print('APD:', response)
+    #             #     response = self.apd_serial.read(self.pico_marlin.inWaiting())
+    #             #     print('pico_marlin:', response)
 
-                # if command[0] == 't':
-                #     self.set_acquisition_time(command[1])
+    #             # if command[0] == 't':
+    #             #     self.set_acquisition_time(command[1])
 
-                    # self.send_command_to_apd(struct.pack('<f', 0.12))
-                    # self.send_command_to_apd(struct.pack('<f', 12))
-                    # self.send_command_to_apd(struct.pack( .'<f', 45.6))
+    #                 # self.send_command_to_apd(struct.pack('<f', 0.12))
+    #                 # self.send_command_to_apd(struct.pack('<f', 12))
+    #                 # self.send_command_to_apd(struct.pack( .'<f', 45.6))
 
-                    # self.send_command_to_apd(2.5)
-                    # # time.sleep(0.001)
-                    # self.send_command_to_apd('run')
-                    # time.sleep(0.001)
+    #                 # self.send_command_to_apd(2.5)
+    #                 # # time.sleep(0.001)
+    #                 # self.send_command_to_apd('run')
+    #                 # time.sleep(0.001)
 
 
-                if command[0] in self.spectrometer_dict.keys():
-                    self.send_command_to_spectrometer(command)
-                elif command[0] in self.apd_dict.keys():
-                    self.send_command_to_apd(self.apd_dict[command[0]])
-                else:
-                    self.send_command_to_pico(self.pico_dict[command[0]])
-            except Exception as e:
-                print(e) 
+    #             if command[0] in self.spectrometer_dict.keys():
+    #                 self.send_command_to_spectrometer(command)
+    #             elif command[0] in self.apd_dict.keys():
+    #                 self.send_command_to_apd(self.apd_dict[command[0]])
+    #             else:
+    #                 self.send_command_to_pico(self.pico_dict[command[0]])
+    #         except Exception as e:
+    #             print(e) 
 
                     
 def continuous():

@@ -7,7 +7,7 @@ import struct
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 Initial grating is Blaze 500, 1200 g/mm
 centre for 532 nm is roughly 241543
-centre for sulfur at ~800 nm is 376886
+centre for sulfur at ~800 nm is 376886 (apd laser at "370686"/371736) (NEW 23/05 375131) (ccd+= 6000) 374414
 List of useful commands = {
 "Initiate command mode": "02000",
 # "Initialise Spectrometer: "A",
@@ -234,7 +234,7 @@ class ArduinoInterface:
 
 class Microscope:
 
-    def __init__(self):
+    def __init__(self, debug_skip=[]):
 
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
@@ -243,7 +243,7 @@ class Microscope:
 
         self.scan_min = -1000
         self.scan_max = 1000
-        self.scan_resolution = 100
+        self.scan_resolution = 50
 
         self.acq_time = 1
         self.centre_wavelength = 376886
@@ -266,14 +266,22 @@ class Microscope:
             'init': 'A',
             'comsmode': '02000',
             'read_grating': 'H0',
+            'rg': 'H0',
             'grating': 'F0,',
+            'g': 'F0,',
             'read_enter': 'j0,0',
+            'rex': 'j0,0',
             'read_exit': 'j0,3',
+            'ren': 'j0,3',
             'move_enter': 'k0,0,',
+            'men': 'k0,0,',
             'move_exit': 'k0,3,',
+            'mex': 'k0,3,',
             'poll motors after move command sent': 'E',
             'ccd_mode': 'f0',
-            'apd_mode': 'e0'
+            'ccd': 'f0',
+            'apd_mode': 'e0',
+            'apd': 'e0'
             #'entrance mirror to front enterance': 'c0',
             #'entrance mirror to side enterance': 'd0'
         }
@@ -290,6 +298,7 @@ class Microscope:
         # commands for controlling laser properties
         self.laser_dict = {
             'lambda': 'lambda',
+            'test': 'Atest'
         }
 
 
@@ -300,10 +309,12 @@ class Microscope:
             'time': 'time',
         }
 
-        self.spectrometer, self.state = self.connect_to_spectrometer()
+        if 'TRIAX' not in debug_skip:
+            self.spectrometer, self.state = self.connect_to_spectrometer()
         # self.pico_marlin = self.connect_to_marlin()
         # self.apd_serial = self.connect_to_APD()
-        self.uno_serial = self.connect_to_UNO()
+        if 'UNO' not in debug_skip:
+            self.uno_serial = self.connect_to_UNO()
         # time.sleep(1)
         # self.grating_pos = self.get_grating_position()
 
@@ -315,16 +326,25 @@ class Microscope:
     #     return APD_serial
 
     def set_scan_min(self, value):
-        self.scan_min = value
-        print('Scan Min: {}'.format(value))
+        try:
+            self.scan_min = int(value)
+        except ValueError:
+            print('Invalid value for scan min')
+        print('Scan Min: {}'.format(self.scan_min))
 
     def set_scan_max(self, value):
-        self.scan_max = value
-        print('Scan Max: {}'.format(value))
+        try:
+            self.scan_max = int(value)
+        except ValueError:
+            print('Invalid value for scan max')
+        print('Scan Max: {}'.format(self.scan_max))
     
     def set_scan_resolution(self, value):
-        self.scan_resolution = value
-        print('Scan Resolution: {}'.format(value))
+        try:
+            self.scan_resolution = int(value)
+        except ValueError:
+            print('Invalid value for scan resolution')
+        print('Scan Resolution: {}'.format(self.scan_resolution))
 
 
     def read_from_serial_until(self, end_flag='#CF', report=False):
@@ -369,8 +389,14 @@ class Microscope:
         self.grating_pos = self.get_grating_position()
         initial_pos = self.grating_pos
         current_pos = initial_pos
+        scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_resolution)
+        print(scan_dims)
+        input('\nScan to commence:')
         self.send_command_to_spectrometer('F0, {}'.format(self.scan_min))
-        for idx, val in enumerate(np.arange(self.scan_min, self.scan_max, self.scan_resolution)):
+        current_pos += self.scan_min
+        print("Beginning scan...")
+        time.sleep(0.5)
+        for idx, val in enumerate(scan_dims):
             if idx != 0:
                 self.send_command_to_spectrometer('F0, {}'.format(self.scan_resolution))
                 current_pos += self.scan_resolution
@@ -393,6 +419,10 @@ class Microscope:
         print(self.results)
         # return to start pos
         self.send_command_to_spectrometer('F0, {}'.format(initial_pos-current_pos))
+        print('Initial pos: {}'.format(initial_pos))
+        print('Current pos: {}'.format(current_pos))
+        print('Difference: {}'.format(current_pos-initial_pos))
+        # breakpoint()
         filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
         np.savetxt(filename, self.results)
         if plot:
@@ -404,6 +434,17 @@ class Microscope:
 
     def process_coms(self, com):
         response = None
+
+        if com[0] in self.laser_dict.keys():
+            if len(com) > 1:
+                command = '<{}{}>'.format(self.laser_dict[com[0]], com[1])
+            else:
+                command = 'o{}o'.format(self.laser_dict[com[0]])
+            print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # breakpoint()
+            response = self.read_from_serial_until()
 
         if com[0] in self.microscope_functions.keys():
             if len(com) > 1:
@@ -467,15 +508,19 @@ class Microscope:
     
     def send_command_to_UNO(self, command):
         self.uno_serial.write('{}\n'.format(command).encode())
+        # print('finisehd sending to uno')
         time.sleep(0.1)
         # response = self.uno_serial.read(self.uno_serial.inWaiting())
         # print(response)
 
     def read_command_from_uno(self):
+        # print('reading command from uno')
         response = ''
         while self.uno_serial.in_waiting > 0: #FIX: Change the logic to do this in the main loop
+            # print(response)
             response += self.uno_serial.readline().decode()
         # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
+        # print('Finihsed reading command from uno: {}'.format(response))
         return response
 
     
@@ -696,8 +741,11 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope()
-    microscope.cli_commands()
+    microscope = Microscope(debug_skip=['TRIAX'])
+    try:
+        microscope.cli_commands()
+    except Exception as e:
+        print(e)
 
 if __name__ == '__main__':
     # discon()

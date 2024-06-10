@@ -339,7 +339,7 @@ class Microscope:
 
         if com[0] in self.tuning_motor_dict.keys():
             if len(com) > 1:
-                command = '<{}{}>'.format(self.tuning_motor_dict[com[0]], com[1])
+                command = 'o{}{}o'.format(self.tuning_motor_dict[com[0]], com[1])
             else:
                 command = 'o{}o'.format(self.tuning_motor_dict[com[0]])
             print('UI>UNO:{}'.format(command))

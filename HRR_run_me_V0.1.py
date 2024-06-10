@@ -303,12 +303,17 @@ class Microscope:
         }
 
         self.laser_dict = {
-            'warmup': '?WARMUP%\r'
+            'warmup': '?WARMUP%',
+            'idn': '?IDN',
+            'diode': '?C1',
+            'shutteron': 'SHUTTER:1',
+            'shutteroff': 'SHUTTER:0'
         }
 #TODO: Add commands for moving steppers for laser gratings. (A)
 # calibrate motors
 # Add commands for moving stage motors (B)
 # Add comms for turning laser on and off
+# Write unit tests
 
 
         # commands for controlling APD
@@ -324,6 +329,8 @@ class Microscope:
         # self.apd_serial = self.connect_to_APD()
         if 'UNO' not in debug_skip:
             self.uno_serial = self.connect_to_UNO(unoCOM)
+        if not 'laser' in debug_skip:
+            self.laser_serial = self.connect_to_laser()
         # time.sleep(1)
         # self.grating_pos = self.get_grating_position()
 
@@ -352,7 +359,7 @@ class Microscope:
 
             command = self.laser_dict[com[0]]
             self.send_command_to_laser(command)
-            time.sleep(0.1)
+            time.sleep(0.01)
             # response = self.laser_serial.read(self.laser_serial.inWaiting())
             response = self.read_from_laser()
             print(response)
@@ -395,17 +402,25 @@ class Microscope:
     
 
     def connect_to_laser(self, laserCom='COM12'):
-        laser_serial = serial.Serial(laserCom, 9600, timeout=1)
+        laser_serial = serial.Serial(laserCom, 9600, timeout=1, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, xonxoff=False, rtscts=False, dsrdtr=False)
         return laser_serial
     
     def send_command_to_laser(self, command):
-        self.laser_serial.write('{}\r'.format(command).encode())
-        time.sleep(0.01)
+        initial_response = self.laser_serial.write('{}\r'.format(command).encode())
+        # time.sleep(0.01)
 
     def read_from_laser(self):
         response = self.laser_serial.read(self.laser_serial.inWaiting())
-        # print(response)
         return response
+        # response = self.laser_serial.readline()
+        response = ''
+        while self.laser_serial.in_waiting > 0: #FIX: Change the logic to do this in the main loop
+            # print(response)
+            response += self.laser_serial.readline().decode()
+        # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
+        # print('Finihsed reading command from uno: {}'.format(response))
+        return response
+        # print(response)
         # breakpoint()
 
     def connect_to_UNO(self, unoCOM='COM8'):
@@ -779,7 +794,7 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope(debug_skip=['TRIAX'], unoCOM='COM10')
+    microscope = Microscope(debug_skip=['TRIAX', 'laser'], unoCOM='COM10')
     try:
         microscope.cli_commands()
     except Exception as e:

@@ -1,8 +1,9 @@
 #include <Wire.h>
 #include <SoftwareSerial.h>
 
-// COM8 = Master
+// COM10 = Master
 // COM9 = Slave A
+// COM11 = Slave B
 
 const int picoRX = 12;  // Connect to TX of Pico
 const int picoTX = 13;  // Connect to RX of Pico
@@ -77,7 +78,7 @@ void processCommand(String command) {
         sendI2C(message, SLAVE1_ADDRESS);
         break;
       case 'B':
-        Serial.print("UNO>A:");
+        Serial.print("UNO>B:");
         Serial.println(message);
         sendI2C(message, SLAVE2_ADDRESS);
         break;
@@ -108,6 +109,11 @@ void sendI2C(String message, int address) {
     }
     response += c;
   }
-  Serial.println("UI<UNO<A:"+response);
+  if (address == 8) {
+    Serial.println("UI<UNO<A:"+response);
+  }
+  else if (address == 9) {
+    Serial.println("UI<UNO<B:"+response);
+  }
   Serial.println("#CF");
 }

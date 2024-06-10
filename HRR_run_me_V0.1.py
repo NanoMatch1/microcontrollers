@@ -234,7 +234,7 @@ class ArduinoInterface:
 
 class Microscope:
 
-    def __init__(self, debug_skip=[]):
+    def __init__(self, debug_skip=[], unoCOM='COM8'):
 
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
@@ -296,10 +296,19 @@ class Microscope:
         }
 
         # commands for controlling laser properties
-        self.laser_dict = {
+        self.tuning_motor_dict = {
             'lambda': 'lambda',
-            'test': 'Atest'
+            'Atest': 'Atest',
+            'Btest': 'Btest'
         }
+
+        self.laser_dict = {
+            'warmup': '?WARMUP%\r'
+        }
+#TODO: Add commands for moving steppers for laser gratings. (A)
+# calibrate motors
+# Add commands for moving stage motors (B)
+# Add comms for turning laser on and off
 
 
         # commands for controlling APD
@@ -314,7 +323,7 @@ class Microscope:
         # self.pico_marlin = self.connect_to_marlin()
         # self.apd_serial = self.connect_to_APD()
         if 'UNO' not in debug_skip:
-            self.uno_serial = self.connect_to_UNO()
+            self.uno_serial = self.connect_to_UNO(unoCOM)
         # time.sleep(1)
         # self.grating_pos = self.get_grating_position()
 
@@ -324,6 +333,75 @@ class Microscope:
     # def connect_to_APD(self):
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
+
+    def process_coms(self, com):
+        response = None
+
+        if com[0] in self.tuning_motor_dict.keys():
+            if len(com) > 1:
+                command = '<{}{}>'.format(self.tuning_motor_dict[com[0]], com[1])
+            else:
+                command = 'o{}o'.format(self.tuning_motor_dict[com[0]])
+            print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # breakpoint()
+            response = self.read_from_serial_until()
+
+        elif com[0] in self.microscope_functions.keys():
+            if len(com) > 1:
+                response = self.microscope_functions[com[0]](com[1])
+            else:
+                response = self.microscope_functions[com[0]]()
+
+        elif com[0] in self.apd_dict.keys():
+            if len(com) > 1:
+                command = '{} {}'.format(self.apd_dict[com[0]], com[1])
+            else:
+                command = self.apd_dict[com[0]]
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # response = self.read_command_from_uno()
+            response = self.read_from_serial_until()
+
+        elif com[0] in self.spectrometer_dict.keys():
+            if len(com) > 1:
+                command = '{} {}'.format(self.spectrometer_dict[com[0]], com[1])
+            else:
+                command = self.spectrometer_dict[com[0]]
+
+            response = self.send_command_to_spectrometer(command)
+        
+        elif com[0] in self.stage_dict.keys():
+            pass # palceholder for stage control
+
+
+        else:
+            print('Command not recognized: {}'.format(com))
+
+        return response
+
+
+    
+
+    def connect_to_laser(self, laserCom='COM12'):
+        laser_serial = serial.Serial(laserCom, 9600, timeout=1)
+        return laser_serial
+    
+    def send_command_to_laser(self, command):
+        self.laser_serial.write('{}\r'.format(command).encode())
+        time.sleep(0.01)
+        response = self.laser_serial.read(self.laser_serial.inWaiting())
+        print(response)
+
+    def connect_to_UNO(self, unoCOM='COM8'):
+        UNO_serial = serial.Serial(unoCOM, 9600, timeout=1)
+        while UNO_serial.in_waiting == 0:
+            time.sleep(0.1)
+        while UNO_serial.in_waiting > 0:
+            response = UNO_serial.readline().decode().strip()
+            print(response)
+        return UNO_serial
 
     def set_scan_min(self, value):
         try:
@@ -432,55 +510,6 @@ class Microscope:
 
 
 
-    def process_coms(self, com):
-        response = None
-
-        if com[0] in self.laser_dict.keys():
-            if len(com) > 1:
-                command = '<{}{}>'.format(self.laser_dict[com[0]], com[1])
-            else:
-                command = 'o{}o'.format(self.laser_dict[com[0]])
-            print('UI>UNO:{}'.format(command))
-            self.send_command_to_UNO(command)
-            time.sleep(0.1)
-            # breakpoint()
-            response = self.read_from_serial_until()
-
-        if com[0] in self.microscope_functions.keys():
-            if len(com) > 1:
-                response = self.microscope_functions[com[0]](com[1])
-            else:
-                response = self.microscope_functions[com[0]]()
-
-        elif com[0] in self.apd_dict.keys():
-            if len(com) > 1:
-                command = '{} {}'.format(self.apd_dict[com[0]], com[1])
-            else:
-                command = self.apd_dict[com[0]]
-            self.send_command_to_UNO(command)
-            time.sleep(0.1)
-            # response = self.read_command_from_uno()
-            response = self.read_from_serial_until()
-
-        elif com[0] in self.spectrometer_dict.keys():
-            if len(com) > 1:
-                command = '{} {}'.format(self.spectrometer_dict[com[0]], com[1])
-            else:
-                command = self.spectrometer_dict[com[0]]
-
-            response = self.send_command_to_spectrometer(command)
-        
-        elif com[0] in self.stage_dict.keys():
-            pass # palceholder for stage control
-        elif com[0] in self.laser_dict.keys():
-            pass # placeholder for laser control
-
-        else:
-            print('Command not recognized: {}'.format(com))
-
-        return response
-
-
 
     def cli_commands(self):
         while True:
@@ -497,14 +526,7 @@ class Microscope:
 
 
     
-    def connect_to_UNO(self):
-        UNO_serial = serial.Serial('COM8', 9600, timeout=1)
-        while UNO_serial.in_waiting == 0:
-            time.sleep(0.1)
-        while UNO_serial.in_waiting > 0:
-            response = UNO_serial.readline().decode().strip()
-            print(response)
-        return UNO_serial
+
     
     def send_command_to_UNO(self, command):
         self.uno_serial.write('{}\n'.format(command).encode())
@@ -741,7 +763,7 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope(debug_skip=['TRIAX'])
+    microscope = Microscope(debug_skip=['TRIAX'], unoCOM='COM10')
     try:
         microscope.cli_commands()
     except Exception as e:

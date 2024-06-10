@@ -347,6 +347,16 @@ class Microscope:
             time.sleep(0.1)
             # breakpoint()
             response = self.read_from_serial_until()
+        
+        elif com[0] in self.laser_dict.keys():
+
+            command = self.laser_dict[com[0]]
+            self.send_command_to_laser(command)
+            time.sleep(0.1)
+            # response = self.laser_serial.read(self.laser_serial.inWaiting())
+            response = self.read_from_laser()
+            print(response)
+            breakpoint()
 
         elif com[0] in self.microscope_functions.keys():
             if len(com) > 1:
@@ -391,8 +401,12 @@ class Microscope:
     def send_command_to_laser(self, command):
         self.laser_serial.write('{}\r'.format(command).encode())
         time.sleep(0.01)
+
+    def read_from_laser(self):
         response = self.laser_serial.read(self.laser_serial.inWaiting())
-        print(response)
+        # print(response)
+        return response
+        # breakpoint()
 
     def connect_to_UNO(self, unoCOM='COM8'):
         UNO_serial = serial.Serial(unoCOM, 9600, timeout=1)
@@ -402,6 +416,23 @@ class Microscope:
             response = UNO_serial.readline().decode().strip()
             print(response)
         return UNO_serial
+    
+    def send_command_to_UNO(self, command):
+        self.uno_serial.write('{}\n'.format(command).encode())
+        # print('finisehd sending to uno')
+        time.sleep(0.1)
+        # response = self.uno_serial.read(self.uno_serial.inWaiting())
+        # print(response)
+
+    def read_command_from_uno(self):
+        # print('reading command from uno')
+        response = ''
+        while self.uno_serial.in_waiting > 0: #FIX: Change the logic to do this in the main loop
+            # print(response)
+            response += self.uno_serial.readline().decode()
+        # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
+        # print('Finihsed reading command from uno: {}'.format(response))
+        return response
 
     def set_scan_min(self, value):
         try:
@@ -528,22 +559,7 @@ class Microscope:
     
 
     
-    def send_command_to_UNO(self, command):
-        self.uno_serial.write('{}\n'.format(command).encode())
-        # print('finisehd sending to uno')
-        time.sleep(0.1)
-        # response = self.uno_serial.read(self.uno_serial.inWaiting())
-        # print(response)
 
-    def read_command_from_uno(self):
-        # print('reading command from uno')
-        response = ''
-        while self.uno_serial.in_waiting > 0: #FIX: Change the logic to do this in the main loop
-            # print(response)
-            response += self.uno_serial.readline().decode()
-        # response = self.uno_serial.read(self.uno_serial.inWaiting()).decode().strip('\r\n')
-        # print('Finihsed reading command from uno: {}'.format(response))
-        return response
 
     
     # def send_command_to_apd(self, command):

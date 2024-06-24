@@ -3,7 +3,7 @@ import time
 
 # Configure the serial connection
 ser = serial.Serial(
-    port='COM15',       # Replace with your actual port
+    port='COM13',       # Replace with your actual port
     baudrate=9600,
     parity=serial.PARITY_NONE,
     stopbits=serial.STOPBITS_ONE,

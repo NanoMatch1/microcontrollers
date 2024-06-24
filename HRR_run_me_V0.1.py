@@ -794,7 +794,7 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope(debug_skip=['TRIAX', 'laser'], unoCOM='COM10')
+    microscope = Microscope(debug_skip=['laser'], unoCOM='COM10')
     try:
         microscope.cli_commands()
     except Exception as e:

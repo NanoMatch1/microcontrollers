@@ -4,8 +4,8 @@ import rp2
 from rp2 import PIO, StateMachine
 
 # Define pins
-reset_pin = Pin(22, Pin.OUT)
-reset_pin.value(0)
+test_rclk = Pin(22, Pin.OUT)
+test_rclk.value(0)
 count_enable_pin = Pin(6, Pin.OUT)
 count_enable_pin.value(1)
 
@@ -40,9 +40,9 @@ def setup_reader():
     return sm
 
 class APD_pico:
-    def __init__(self, pin_read_order, monitor_pin=None, reset_pin=None, count_enable_pin=None, reader_sm=None, uart=None):
+    def __init__(self, pin_read_order, rclk, monitor_pin=None, reset_pin=None, count_enable_pin=None, reader_sm=None, uart=None):
         self.monitor_pin = monitor_pin
-        self.reset_pin = reset_pin
+        self.rclk = rclk
         self.count_enable_pin = count_enable_pin
         self.reader_sm = reader_sm
         self.uart = uart
@@ -69,6 +69,7 @@ class APD_pico:
         """Read data from the state machine's FIFO."""
         while self.reader_sm.rx_fifo():
             result = self.reader_sm.get()  # Only call get if there is data
+            print("claer")
         self.total_counts = result
         print("Data read from PIO:", result)
 #         print("Finished FIFO read")
@@ -136,6 +137,7 @@ class APD_pico:
             return
         
         if command[0] == 'read':
+            self.rclk.value(1)
             self.counts_full_byte = 0
             
             for register in self.pin_read_order:
@@ -143,14 +145,15 @@ class APD_pico:
                 self.total_counts = 0
                 register.value(0)
                 self.trigger_read()
-                register.value(1)
                 self.sm_record_data()
+                register.value(1)
                 
                 print("Read {}".format(self.total_counts))
                 print(bin(self.total_counts))
                 
                 self.counts_full_byte += self.total_counts
             
+        self.rclk.value(0)
         print('Successfully read from registers. {}'.format(self.counts_full_byte))
         self.send_UART("counts_full_byte: {}".format(self.counts_full_byte))
 
@@ -282,7 +285,7 @@ def main():
     uart1 = UART(1, baudrate=9600, tx=Pin(4), rx=Pin(5))
 
     # Instantiate APD_pico class
-    APD = APD_pico([GAL_1, GAU_2, GBL_3, GBU_4], reset_pin=reset_pin, count_enable_pin=count_enable_pin, reader_sm=reader_sm, uart=uart1)
+    APD = APD_pico([GAL_1, GAU_2, GBL_3, GBU_4], test_rclk, count_enable_pin=count_enable_pin, reader_sm=reader_sm, uart=uart1)
 
     # Main loop
     while True:

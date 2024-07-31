@@ -3,7 +3,7 @@
 
 const int countEnable = 13;     // Pin for resetting latch to LOW. Note Active-LOW
 const int counterClear = 12;  // Pin clearing the counter IC
-const int loadRegisterPin = 11; // Pin for loading counter values into the storage register
+const int loadRegisterPin = 9; // Pin for loading counter values into the storage register
 const int lastDigit = 10;    // Pin for reading the last digit of the counters
 
 const int picoRX = 2;  // Connect to TX of Pico
@@ -90,6 +90,7 @@ String acquireData(float acquisitionTime) {
   digitalWrite(countEnable, LOW); // flip flop inactive, Q = LOW // Ends counting signal, holds counts
   unsigned long endTime = micros(); // timestamp end of counting
   digitalWrite(loadRegisterPin, HIGH); // LOAD The values into the register...
+  delay(1);
   digitalWrite(loadRegisterPin, LOW); 
 
   sendToPico("read");

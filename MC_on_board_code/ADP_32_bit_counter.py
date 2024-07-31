@@ -17,8 +17,8 @@ GBU_4 = Pin(21, Pin.OUT)
 
 @rp2.asm_pio()
 def counter_reader():
-    """Read 10 bits from the pins and push to FIFO once, then halt."""
-    in_(pins, 10)  # Read 10 bits of data
+    """Read 8 bits from the pins and push to FIFO once, then halt."""
+    in_(pins, 8)  # Read 10 bits of data
     push(block)    # Push the data to the FIFO
     return
 #     mov(isr, null)  # Clear ISR (optional, for clarity)
@@ -48,10 +48,11 @@ class APD_pico:
         self.uart = uart
         
         self.pin_read_order = pin_read_order
-
-
         self.acq_time = 1  # Acquisition time in seconds
         self.total_counts = 0
+        
+        for register in pin_read_order:
+            register.value(1)
 
     def trigger_read(self):
         """Trigger a read on command, ensuring it reads only once."""
@@ -117,7 +118,7 @@ class APD_pico:
         signal_direction = command[:command.index('#')]  # gets the signal direction
         command = command[command.index('#') + 1:]  # removes the coms directionality from the UART signal
         command = command.split(' ')
-        print(command)
+#         print(command)
         if command[0] == '':
             return None
         if command[0] == 'ce':  # tests the counting enable pin electronics
@@ -134,18 +135,19 @@ class APD_pico:
             self.test_count_enable(value)
             return
         
-        if command[0] == 't':
+        if command[0] == 'read':
             self.counts_full_byte = 0
             
             for register in self.pin_read_order:
                 print('Reading from register 1, {}'.format(register))
                 self.total_counts = 0
-                register.value(1)
-                self.trigger_read()
                 register.value(0)
+                self.trigger_read()
+                register.value(1)
                 self.sm_record_data()
                 
                 print("Read {}".format(self.total_counts))
+                print(bin(self.total_counts))
                 
                 self.counts_full_byte += self.total_counts
             
@@ -295,4 +297,6 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
 

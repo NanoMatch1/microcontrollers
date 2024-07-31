@@ -2,6 +2,7 @@ from machine import UART, Pin
 import time
 import rp2
 from rp2 import PIO, StateMachine
+import struct
 
 # Define pins
 test_rclk = Pin(22, Pin.OUT)
@@ -14,6 +15,9 @@ GAU_2 = Pin(19, Pin.OUT)
 GBL_3 = Pin(20, Pin.OUT)
 GBU_4 = Pin(21, Pin.OUT)
 
+# Function to convert an integer to bytes
+def int_to_bytes(value, length):
+    return value.to_bytes(length, 'big')
 
 @rp2.asm_pio()
 def counter_reader():
@@ -120,6 +124,8 @@ class APD_pico:
         command = command[command.index('#') + 1:]  # removes the coms directionality from the UART signal
         command = command.split(' ')
 #         print(command)
+        if command[0] == 'echo':
+            self.send_UART('polo')
         if command[0] == '':
             return None
         if command[0] == 'ce':  # tests the counting enable pin electronics
@@ -138,24 +144,44 @@ class APD_pico:
         
         if command[0] == 'read':
             self.rclk.value(1)
-            self.counts_full_byte = 0
+            self.count_int_list = []
             
             for register in self.pin_read_order:
                 print('Reading from register 1, {}'.format(register))
                 self.total_counts = 0
                 register.value(0)
                 self.trigger_read()
-                self.sm_record_data()
                 register.value(1)
+                self.sm_record_data()
+#                 register.value(1)
                 
                 print("Read {}".format(self.total_counts))
                 print(bin(self.total_counts))
                 
-                self.counts_full_byte += self.total_counts
+                
+                self.count_int_list.append(self.total_counts)
             
         self.rclk.value(0)
-        print('Successfully read from registers. {}'.format(self.counts_full_byte))
-        self.send_UART("counts_full_byte: {}".format(self.counts_full_byte))
+        print(self.count_int_list)
+        newByteList = b''.join([int_to_bytes(byteval, 1) for byteval in self.count_int_list]) # the order of the byte is little-endian
+        print(newByteList)
+        integer_value = int.from_bytes(newByteList, 'little') # the order is little-endian
+        print(integer_value)
+        # Convert the byte sequence to a 32-bit integer
+#         if len(newByteList) == 4:
+#             integer_value = struct.unpack('>I', newByteList)[0]
+#             print("32-bit Integer Value:", integer_value)
+#             print("Hex Integer Value:", hex(integer_value))
+#         else:
+#             print("Error: Byte list does not contain exactly 4 bytes.")
+
+#         newByte = 0x00
+#         integer_value = struct.unpack('>I', newByteList)[0]
+#         for byte_value self.newByteList:
+#             newByte = (byte_value << 8) | byte_value
+                
+        print('Successfully read from registers. {}'.format(integer_value))
+        self.send_UART("full_integer: {}".format(integer_value))
 
         if command[0] == 'test':
             self.total_counts = 0  # Reset count at the start of acquisition

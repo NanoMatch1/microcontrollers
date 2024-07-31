@@ -14,7 +14,6 @@ SoftwareSerial picoSerial(picoRX, picoTX);
 void setup() {
   Serial.begin(9600);
   picoSerial.begin(9600);
-  // pinMode(ledPin, OUTPUT);
   pinMode(counterClear, OUTPUT);
   pinMode(lastDigit, INPUT);
   pinMode(countEnable, OUTPUT);
@@ -35,29 +34,35 @@ void loop() {
   }
 }
 
+void flushSerialBuffer(SoftwareSerial &serial) {
+  while (serial.available() > 0) {
+    serial.read();
+  }
+}
+
 void sendToPico(String command) {
     picoSerial.print("UART-UNO-APD_pico:#");
     picoSerial.println(command);
+    flushSerialBuffer(picoSerial);
 }
 
 String readFromPico() {
-  String response = ""; // Initialize the response variable
+  String response = ""; // Initialize the response variable outside the if block
 
   if (picoSerial.available() > 0) {
     // Read the response from the Pico until a newline character is encountered
-    // Serial.println("Reading from PICO - BUG");
-    String response = picoSerial.readStringUntil('\n');
+    response = picoSerial.readStringUntil('\n');
     response.trim();  // Removes any leading/trailing whitespace or newline characters
-    // if (response.length() == 0) {  // Check if the string is empty
-    //   // If an empty string is received, skip the rest of the loop
-    //   return response;  // Skip the rest of this iteration of loop()
-    // }
+    if (response.length() == 0) {  // Check if the string is empty
+      // If an empty string is received, return immediately
+      return response;
+    }
 
     // Echo the message from the Pico
-    // Serial.print("Message from Pico: ");
+    Serial.println(response);
   }
   return response;
-  }
+}
 
 void parseInput(String input) {
   int spaceIndex = input.indexOf(' ');
@@ -69,12 +74,11 @@ void parseInput(String input) {
 
   String command = input.substring(0, spaceIndex);
   String valueStr = input.substring(spaceIndex + 1);
-  // float value = valueStr.toFloat();
 
   performCommand(command, valueStr);
 }
 
-String acquireData(float acquisitionTime) {
+void acquireData(float acquisitionTime) {
   digitalWrite(counterClear, LOW); // clear counter, active-low
   digitalWrite(counterClear, HIGH);
 
@@ -98,40 +102,51 @@ String acquireData(float acquisitionTime) {
   Serial.print("finalBit: ");
   Serial.println(finalBit);
 
-  while (picoSerial.available() > 0) {
-    String response = readFromPico();
-    Serial.println(response);
-  }
-  String response = readFromPico();
-  // Serial.print("")
-  // Serial.println(response);
+  // String response = readFromPico();
+  if (picoSerial.available() > 0) {
+    // Read the response from the Pico until a newline character is encountered
+    // Serial.println("Reading from PICO - BUG");
+    String response = picoSerial.readStringUntil('\n');
+    response.trim();  // Removes any leading/trailing whitespace or newline characters
+    if (response.length() == 0) {  // Check if the string is empty
+      // If an empty string is received, skip the rest of the loop
+      return;  // Skip the rest of this iteration of loop()
+    }
 
-  // process the pico response and bits here
+    // Echo the message from the Pico
+    // Serial.print("Message from Pico: ");
+    // Serial.println(response);
+    if (response.length() > 0) {
+      Serial.print("Message from Pico: ");
+      Serial.println(response);
+  }
+  }
+
 
   unsigned long elapsedTime = endTime - startTime;
   Serial.print("Elapsed time: ");
   Serial.print(elapsedTime);
   Serial.println(" us");
-
-  // return a response of counts and time
-
-  return response;
 }
 
 void performCommand(String command, String value) {
   if (command == "t") {
     float floatValue = value.toFloat();
-    String readResponse = acquireData(floatValue);
-    Serial.print("Final data from pico: ");
-    Serial.println(readResponse);
-    // Serial.print("Counts: ");
-    // Serial.println(counts);
+    acquireData(floatValue);
   } 
+  else if (command == "r") {
+    sendToPico("echo");
+    delay(100);
+    String response = readFromPico();
+    if (response.length() > 0) {
+      Serial.print("Message from Pico: ");
+      Serial.println(response);
+    }
+  }
   else if (command == "e") {
     if (value == "1") {
       digitalWrite(countEnable, HIGH);
       Serial.println("Enable set to HIGH");
-      // Serial.println(SD);
     }
     else if (value == "0") {
       digitalWrite(countEnable, LOW);

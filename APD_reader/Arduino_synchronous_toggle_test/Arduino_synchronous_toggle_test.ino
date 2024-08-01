@@ -43,11 +43,13 @@ void flushSerialBuffer(SoftwareSerial &serial) {
 void sendToPico(String command) {
     picoSerial.print("UART-UNO-APD_pico:#");
     picoSerial.println(command);
-    flushSerialBuffer(picoSerial);
+    // flushSerialBuffer(picoSerial);
 }
 
 String readFromPico() {
   String response = ""; // Initialize the response variable outside the if block
+  unsigned long time_start = millis();
+
 
   if (picoSerial.available() > 0) {
     // Read the response from the Pico until a newline character is encountered
@@ -60,8 +62,9 @@ String readFromPico() {
 
     // Echo the message from the Pico
     Serial.println(response);
+    return response;
   }
-  return response;
+
 }
 
 void parseInput(String input) {
@@ -102,31 +105,23 @@ void acquireData(float acquisitionTime) {
   Serial.print("finalBit: ");
   Serial.println(finalBit);
 
-  // String response = readFromPico();
-  if (picoSerial.available() > 0) {
-    // Read the response from the Pico until a newline character is encountered
-    // Serial.println("Reading from PICO - BUG");
-    String response = picoSerial.readStringUntil('\n');
-    response.trim();  // Removes any leading/trailing whitespace or newline characters
-    if (response.length() == 0) {  // Check if the string is empty
-      // If an empty string is received, skip the rest of the loop
-      return;  // Skip the rest of this iteration of loop()
+  // delay(1000);
+  unsigned long wait_time = millis();
+  
+  while (millis() < (wait_time + 5*1000)) {
+    while (picoSerial.available() == 0) {
+      delay(1);
+      // do nothing and wait
     }
-
-    // Echo the message from the Pico
-    // Serial.print("Message from Pico: ");
-    // Serial.println(response);
-    if (response.length() > 0) {
-      Serial.print("Message from Pico: ");
-      Serial.println(response);
+  
+    String response = readFromPico();
+    unsigned long elapsedTime = endTime - startTime;
+    Serial.print("Elapsed time: ");
+    Serial.print(elapsedTime);
+    Serial.println(" us");
+    return;
   }
-  }
-
-
-  unsigned long elapsedTime = endTime - startTime;
-  Serial.print("Elapsed time: ");
-  Serial.print(elapsedTime);
-  Serial.println(" us");
+  Serial.println("TIMEOUT waiting for PICO response.");
 }
 
 void performCommand(String command, String value) {

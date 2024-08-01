@@ -20,7 +20,7 @@ void setup() {
 
   digitalWrite(countEnable, LOW); // disable the toggle flip flop, initial state of output is 0V when countEnable is LOW.
   digitalWrite(counterClear, LOW); // clear the counter initially. Active-LOW
-  digitalWrite(counterClear, HIGH); // HIGH keeps counter from clearing. 
+  // digitalWrite(counterClear, HIGH); // HIGH keeps counter from clearing. 
 
   digitalWrite(loadRegisterPin, LOW);
   Serial.println("Ready to receive commands:");
@@ -82,10 +82,10 @@ void parseInput(String input) {
 }
 
 String acquireData(float acquisitionTime) {
-  digitalWrite(counterClear, LOW); // clear counter, active-low
-  digitalWrite(counterClear, HIGH);
+  // digitalWrite(counterClear, LOW); // clear counter, active-low
+  digitalWrite(counterClear, HIGH); // Also triggers the flip flop to be active. LOW forces flip flop reset
 
-  digitalWrite(countEnable, HIGH); // flip flip is now active, counting can begin at CLKA/B
+  digitalWrite(countEnable, HIGH); // One side of AND gate. Signal passes to flip flop
   
   unsigned long startTime = micros();
   unsigned long waitTime = startTime + (unsigned long)(acquisitionTime * 1000000);
@@ -93,15 +93,19 @@ String acquireData(float acquisitionTime) {
   while (micros() < waitTime) {
     // Busy-waiting for the acquisition time to elapse
   }
-
-  digitalWrite(countEnable, LOW); // flip flop inactive, Q = LOW // Ends counting signal, holds counts
+  
+  digitalWrite(countEnable, LOW); // AND gate LOW // Ends counting signal, holds counts and FLIP FLOP
   unsigned long endTime = micros(); // timestamp end of counting
+  
+  bool finalBit = digitalRead(lastDigit);
+
   digitalWrite(loadRegisterPin, HIGH); // LOAD The values into the register...
   delay(1);
   digitalWrite(loadRegisterPin, LOW); 
 
+  finalBit = digitalRead(lastDigit);
+
   sendToPico("read");
-  int finalBit = digitalRead(lastDigit); // grabs the final bit from the flip flop
   Serial.print("finalBit: ");
   Serial.println(finalBit);
 
@@ -127,6 +131,9 @@ String acquireData(float acquisitionTime) {
     Serial.print("Elapsed time: ");
     Serial.print(elapsedTime);
     Serial.println(" us");
+    delay(500);
+    digitalWrite(counterClear, LOW); // reset counter, active-low
+
     return response;
   }
   Serial.println("TIMEOUT waiting for PICO response.");

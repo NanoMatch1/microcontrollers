@@ -166,7 +166,7 @@ class APD_pico:
             print(integer_value)
                    
             print('Successfully read from registers: {}'.format(integer_value))
-            self.send_UART("full_integer: {}".format(integer_value))
+            self.send_UART("+{}".format(integer_value))
 
 #         if command[0] == 'test':
 #             self.total_counts = 0  # Reset count at the start of acquisition

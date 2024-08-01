@@ -61,7 +61,7 @@ String readFromPico() {
     }
 
     // Echo the message from the Pico
-    Serial.println(response);
+    // Serial.println(response);
     return response;
   }
 
@@ -81,7 +81,7 @@ void parseInput(String input) {
   performCommand(command, valueStr);
 }
 
-void acquireData(float acquisitionTime) {
+String acquireData(float acquisitionTime) {
   digitalWrite(counterClear, LOW); // clear counter, active-low
   digitalWrite(counterClear, HIGH);
 
@@ -115,11 +115,19 @@ void acquireData(float acquisitionTime) {
     }
   
     String response = readFromPico();
+    Serial.println(response);
     unsigned long elapsedTime = endTime - startTime;
+    int data_index = response.indexOf('+');
+    String data = response.substring(data_index+1);
+    // int counts = data.toInt();
+    // float corrected_counts = round(counts*0.999969);
+
+    Serial.print("COUNTS: ");
+    Serial.println(data);
     Serial.print("Elapsed time: ");
     Serial.print(elapsedTime);
     Serial.println(" us");
-    return;
+    return response;
   }
   Serial.println("TIMEOUT waiting for PICO response.");
 }
@@ -127,7 +135,9 @@ void acquireData(float acquisitionTime) {
 void performCommand(String command, String value) {
   if (command == "t") {
     float floatValue = value.toFloat();
-    acquireData(floatValue);
+    String response = acquireData(floatValue);
+    // Serial.print("Final:");
+    // Serial.println(response);
   } 
   else if (command == "r") {
     sendToPico("echo");

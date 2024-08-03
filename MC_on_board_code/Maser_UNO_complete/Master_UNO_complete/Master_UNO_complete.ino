@@ -60,7 +60,7 @@ void loop() {
 
   if (picoSerial.available() > 0) {
     // Read the response from the Pico until a newline character is encountered
-    Serial.println("Reading from PICO - BUG");
+    // Serial.println("Reading from PICO - BUG");
     String response = picoSerial.readStringUntil('\n');
     response.trim();  // Removes any leading/trailing whitespace or newline characters
     if (response.length() == 0) {  // Check if the string is empty
@@ -125,7 +125,17 @@ void APDcoms(String message) {
 void processCommand(String command) {
   // Example command structure: "<A:1234>"
   // Serial.println(command);
-  if (command.startsWith("o") && command.endsWith("o")) {
+  if (command.startsWith("x") && command.endsWith("x")) {
+    String content = command.substring(1, command.length() - 1);  // Remove '<' and '>'
+    String message = content.substring(0);  // The rest is the message
+    Serial.println("Sending to pico");
+
+    picoSerial.print("UART-UNO-APD_pico:#");
+    // Serial.println(message);
+    picoSerial.println(message);
+  }
+
+  else if (command.startsWith("o") && command.endsWith("o")) {
     String content = command.substring(1, command.length() - 1);  // Remove '<' and '>'
     char device = content.charAt(0);  // First character is the device identifier
     String message = content.substring(1);  // The rest is the message
@@ -136,6 +146,7 @@ void processCommand(String command) {
     // Serial.println("Returning for testing");
     // Serial.println("#CF");
     // return;
+
 
     switch (device) {
       case 'A':

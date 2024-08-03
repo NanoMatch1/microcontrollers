@@ -84,153 +84,153 @@ class DynamicPlotApp:
 
     
 
-class ArduinoInterface:
-    def __init__(self, master):
+# class ArduinoInterface:
+#     def __init__(self, master):
 
-        self.plot = DynamicPlotApp(master)
-        self.microscope = Microscope()
+#         self.plot = DynamicPlotApp(master)
+#         self.microscope = Microscope()
         
-        self.master = master
-        master.title("Arduino Command Interface")
+#         self.master = master
+#         master.title("Arduino Command Interface")
 
 
-        # Setup the serial connection
-        self.uno_serial = serial.Serial('COM8', 9600)  # Replace 'COM_PORT' with your actual COM port
+#         # Setup the serial connection
+#         self.uno_serial = serial.Serial('COM8', 9600)  # Replace 'COM_PORT' with your actual COM port
 
-        # Text box for command input
-        self.command_entry = tk.Entry(master, width=50)
-        self.command_entry.bind("<Return>", self.process_input)
-        self.command_entry.pack()
+#         # Text box for command input
+#         self.command_entry = tk.Entry(master, width=50)
+#         self.command_entry.bind("<Return>", self.process_input)
+#         self.command_entry.pack()
 
-        # box for scan min
-        self.scan_min_entry = tk.Entry(master, width=10)
-        self.scan_min_entry.insert(0, '-1000')
-        self.scan_min_entry.bind("<Return>", self.update_scan_params)
-        self.scan_min_entry.place(x=5, y=20)    
-        # label for scan min
-        self.scan_min_label = tk.Label(master, text="Scan Min")
-        self.scan_min_label.place(x=70, y=20)    
+#         # box for scan min
+#         self.scan_min_entry = tk.Entry(master, width=10)
+#         self.scan_min_entry.insert(0, '-1000')
+#         self.scan_min_entry.bind("<Return>", self.update_scan_params)
+#         self.scan_min_entry.place(x=5, y=20)    
+#         # label for scan min
+#         self.scan_min_label = tk.Label(master, text="Scan Min")
+#         self.scan_min_label.place(x=70, y=20)    
         
-        # box for scan max
-        self.scan_max_entry = tk.Entry(master, width=10)
-        self.scan_max_entry.insert(0, '1000')
-        self.scan_max_entry.bind("<Return>", self.update_scan_params)
-        self.scan_max_entry.place(x=5, y=40)
-        # label for scan max
-        self.scan_max_label = tk.Label(master, text="Scan Max")
-        self.scan_max_label.place(x=70, y=40)
+#         # box for scan max
+#         self.scan_max_entry = tk.Entry(master, width=10)
+#         self.scan_max_entry.insert(0, '1000')
+#         self.scan_max_entry.bind("<Return>", self.update_scan_params)
+#         self.scan_max_entry.place(x=5, y=40)
+#         # label for scan max
+#         self.scan_max_label = tk.Label(master, text="Scan Max")
+#         self.scan_max_label.place(x=70, y=40)
 
 
-        # box for scan resolution
-        self.scan_resolution_entry = tk.Entry(master, width=10)
-        self.scan_resolution_entry.insert(0, '100')
-        self.scan_resolution_entry.bind("<Return>", self.update_scan_params)
-        self.scan_resolution_entry.place(x=5, y=60)
-        # label for scan resolution
-        self.scan_resolution_label = tk.Label(master, text="Scan Resolution")
-        self.scan_resolution_label.place(x=70, y=60)
+#         # box for scan resolution
+#         self.scan_resolution_entry = tk.Entry(master, width=10)
+#         self.scan_resolution_entry.insert(0, '100')
+#         self.scan_resolution_entry.bind("<Return>", self.update_scan_params)
+#         self.scan_resolution_entry.place(x=5, y=60)
+#         # label for scan resolution
+#         self.scan_resolution_label = tk.Label(master, text="Scan Resolution")
+#         self.scan_resolution_label.place(x=70, y=60)
 
-        # Button for sending commands
-        self.send_button = tk.Button(master, text="Send Command", command=self.send_command)
-        self.send_button.pack()
+#         # Button for sending commands
+#         self.send_button = tk.Button(master, text="Send Command", command=self.send_command)
+#         self.send_button.pack()
 
-        # button for running the scan
-        self.send_button = tk.Button(master, text="Run Scan", command=self.run_scan)
-        self.send_button.pack()
+#         # button for running the scan
+#         self.send_button = tk.Button(master, text="Run Scan", command=self.run_scan)
+#         self.send_button.pack()
 
-        # Scrolled Text Area for displaying outputs
-        self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, width=60, height=10)
-        self.text_area.pack(pady=10)
+#         # Scrolled Text Area for displaying outputs
+#         self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, width=60, height=10)
+#         self.text_area.pack(pady=10)
 
-        # Separate thread to continuously read from serial port
-        self.read_thread = threading.Thread(target=self.read_from_uno)
-        self.read_thread.daemon = True
-        self.read_thread.start()
+#         # Separate thread to continuously read from serial port
+#         self.read_thread = threading.Thread(target=self.read_from_uno)
+#         self.read_thread.daemon = True
+#         self.read_thread.start()
 
-        self.get_grating_position()
+#         self.get_grating_position()
 
-    def update_labels(self):
-        self.scan_resolution_label = tk.Label(self.master, text="Scan Resolution {}".format(self.scan_resolution))
+#     def update_labels(self):
+#         self.scan_resolution_label = tk.Label(self.master, text="Scan Resolution {}".format(self.scan_resolution))
 
-    def update_scan_params(self, event=None):
-        try:
-            self.microscope.scan_min = float(self.scan_min_entry.get())
-        except:
-            pass
-        try:
-            self.microscope.scan_max = float(self.scan_max_entry.get())
-        except:
-            pass
-        try:
-            self.microscope.scan_resolution = float(self.scan_resolution_entry.get())
-        except:
-            pass
-        # self.update_labels()
+#     def update_scan_params(self, event=None):
+#         try:
+#             self.microscope.scan_min = float(self.scan_min_entry.get())
+#         except:
+#             pass
+#         try:
+#             self.microscope.scan_max = float(self.scan_max_entry.get())
+#         except:
+#             pass
+#         try:
+#             self.microscope.scan_resolution = float(self.scan_resolution_entry.get())
+#         except:
+#             pass
+#         # self.update_labels()
 
-    def process_input(self, event=None):  # Event is passed by bind
-        command = self.command_entry.get()
-        split_command = command.split(' ')
-        self.command_entry.delete(0, tk.END)  # Clear entry after sending
-        if split_command[0] in self.microscope.spectrometer_dict.keys():
-            response = self.microscope.send_command_to_spectrometer(split_command)
-            self.update_text_area(response)
-        else:
-            self.send_command_to_UNO(command=command)
+#     def process_input(self, event=None):  # Event is passed by bind
+#         command = self.command_entry.get()
+#         split_command = command.split(' ')
+#         self.command_entry.delete(0, tk.END)  # Clear entry after sending
+#         if split_command[0] in self.microscope.spectrometer_dict.keys():
+#             response = self.microscope.send_command_to_spectrometer(split_command)
+#             self.update_text_area(response)
+#         else:
+#             self.send_command_to_UNO(command=command)
         
-        # self.read_from_uno()
+#         # self.read_from_uno()
 
 
-    def send_command_to_UNO(self, command=None, event=None):  # Event is passed by bind
-        if not command:
-            command = self.command_entry.get()
-        self.uno_serial.write('{}\n'.format(command).encode())
-        self.command_entry.delete(0, tk.END)  # Clear entry after sending
+#     def send_command_to_UNO(self, command=None, event=None):  # Event is passed by bind
+#         if not command:
+#             command = self.command_entry.get()
+#         self.uno_serial.write('{}\n'.format(command).encode())
+#         self.command_entry.delete(0, tk.END)  # Clear entry after sending
 
-    def read_from_uno(self):
-        while True:
-            if self.uno_serial.in_waiting > 0:
-                response = self.uno_serial.readline().decode().strip()
-                # if response == '':  # Skip empty lines
-                    # continue
-                self.update_text_area(response)
+#     def read_from_uno(self):
+#         while True:
+#             if self.uno_serial.in_waiting > 0:
+#                 response = self.uno_serial.readline().decode().strip()
+#                 # if response == '':  # Skip empty lines
+#                     # continue
+#                 self.update_text_area(response)
 
-    def update_text_area(self, message):
-        self.text_area.insert(tk.END, message + '\n')
-        self.text_area.see(tk.END)  # Scroll to the bottom
+#     def update_text_area(self, message):
+#         self.text_area.insert(tk.END, message + '\n')
+#         self.text_area.see(tk.END)  # Scroll to the bottom
 
-    def send_command(self):
-        self.send_command_to_UNO()
+#     def send_command(self):
+#         self.send_command_to_UNO()
 
-    def get_grating_position(self):
-        response = self.microscope.send_command_to_spectrometer(['read_grating'])
-        response = response.strip()
+#     def get_grating_position(self):
+#         response = self.microscope.send_command_to_spectrometer(['read_grating'])
+#         response = response.strip()
 
-        grating_pos = int(response[1:])
-        self.microscope.grating_pos = grating_pos
-        self.update_text_area(response)
+#         grating_pos = int(response[1:])
+#         self.microscope.grating_pos = grating_pos
+#         self.update_text_area(response)
 
 
 
-    # def run_scan(self):
-        pass
-        self.acq_time = 1
-        scan_results = np.empty((0, 2)).astype(float)
-        self.get_grating_position()
-        self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_min])
-        for idx in np.arange(self.microscope.scan_min, self.microscope.scan_max, self.microscope.scan_resolution):
-            self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_resolution])
-            time.sleep(0.5)
-            self.send_command_to_UNO('acq')
-            time.sleep(self.acq_time)
-            response = self.read_from_uno()
-            intensity = float(response[response.index('#')+1:])
-            # scan_results.append([step, response])
-            scan_results = np.vstack((scan_results, [self.microscope.grating_pos, intensity]))
-            self.plot.update_plot([self.microscope.grating_pos, intensity])
-            self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
-        self.results = np.array(scan_results).astype(float)
-        print(self.results)
-        pass
+#     # def run_scan(self):
+#         pass
+#         self.acq_time = 1
+#         scan_results = np.empty((0, 2)).astype(float)
+#         self.get_grating_position()
+#         self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_min])
+#         for idx in np.arange(self.microscope.scan_min, self.microscope.scan_max, self.microscope.scan_resolution):
+#             self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_resolution])
+#             time.sleep(0.5)
+#             self.send_command_to_UNO('acq')
+#             time.sleep(self.acq_time)
+#             response = self.read_from_uno()
+#             intensity = float(response[response.index('#')+1:])
+#             # scan_results.append([step, response])
+#             scan_results = np.vstack((scan_results, [self.microscope.grating_pos, intensity]))
+#             self.plot.update_plot([self.microscope.grating_pos, intensity])
+#             self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
+#         self.results = np.array(scan_results).astype(float)
+#         print(self.results)
+#         pass
 
 class Microscope:
 
@@ -256,7 +256,8 @@ class Microscope:
             'get_grating_position': self.get_grating_position,
             'scan_min': self.set_scan_min,
             'scan_max': self.set_scan_max,
-            'scan_res': self.set_scan_resolution
+            'scan_res': self.set_scan_resolution,
+            'acq_time': self.set_acquisition_time
         }
         
         
@@ -299,7 +300,11 @@ class Microscope:
         self.tuning_motor_dict = {
             'lambda': 'lambda',
             'Atest': 'Atest',
-            'Btest': 'Btest'
+            'Btest': 'Btest',
+            'Ctest': 'Ctest',
+            'Creport': 'Creport',
+            'acq': 'Dacq', # BUG: FIX: CHORE: Move this to new dict
+            'run': 'Drun'
         }
 
         self.laser_dict = {
@@ -307,7 +312,7 @@ class Microscope:
             'idn': '?IDN',
             'diode': '?C1',
             'shutteron': 'SHUTTER:1',
-            'shutteroff': 'SHUTTER:0'
+            'shutteroff': 'SHUTTER: 0'
         }
 #TODO: Add commands for moving steppers for laser gratings. (A)
 # calibrate motors
@@ -315,12 +320,16 @@ class Microscope:
 # Add comms for turning laser on and off
 # Write unit tests
 
-
+        # Commands for handling the general state of the system
+        self.general_dict = {
+            'triax': self.connect_to_spectrometer,
+            'laser': self.connect_to_laser
+        }
         # commands for controlling APD
         self.apd_dict = {
-            'run': 'run',
-            'acq': 'acq',
-            'time': 'time',
+            # 'run': 'run',
+            # 'acq': 'acq',
+            # 'time': 'time',
         }
 
         if 'TRIAX' not in debug_skip:
@@ -331,6 +340,8 @@ class Microscope:
             self.uno_serial = self.connect_to_UNO(unoCOM)
         if not 'laser' in debug_skip:
             self.laser_serial = self.connect_to_laser()
+        # if not 'APD' in debug_skip:
+        #     self.apd_serial = self.connect_to_APD()
         # time.sleep(1)
         # self.grating_pos = self.get_grating_position()
 
@@ -341,10 +352,22 @@ class Microscope:
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
 
+    def set_acquisition_time(self, acq_time):
+        try:
+            self.acq_time = float(acq_time)
+        except ValueError:
+            print('Invalid value for acquisition time')
+        print('Acquisition Time Set: {}'.format(self.acq_time))
+
     def process_coms(self, com):
         response = None
 
-        if com[0] in self.tuning_motor_dict.keys():
+        if com[0] in self.general_dict.keys():
+            self.general_dict[com[0]]()
+            response = 'Connected to {}'.format(com[0])
+
+
+        elif com[0] in self.tuning_motor_dict.keys():
             if len(com) > 1:
                 command = 'o{}{}o'.format(self.tuning_motor_dict[com[0]], com[1])
             else:
@@ -354,6 +377,7 @@ class Microscope:
             time.sleep(0.1)
             # breakpoint()
             response = self.read_from_serial_until()
+            # breakpoint()
         
         elif com[0] in self.laser_dict.keys():
 
@@ -363,7 +387,7 @@ class Microscope:
             # response = self.laser_serial.read(self.laser_serial.inWaiting())
             response = self.read_from_laser()
             print(response)
-            breakpoint()
+            # breakpoint()
 
         elif com[0] in self.microscope_functions.keys():
             if len(com) > 1:
@@ -402,8 +426,8 @@ class Microscope:
     
 
     def connect_to_laser(self, laserCom='COM12'):
-        laser_serial = serial.Serial(laserCom, 9600, timeout=1, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, xonxoff=False, rtscts=False, dsrdtr=False)
-        return laser_serial
+        self.laser_serial = serial.Serial(laserCom, 9600, timeout=1, parity=serial.PARITY_NONE, stopbits=serial.STOPBITS_ONE, bytesize=serial.EIGHTBITS, xonxoff=False, rtscts=False, dsrdtr=False)
+        return self.laser_serial
     
     def send_command_to_laser(self, command):
         initial_response = self.laser_serial.write('{}\r'.format(command).encode())
@@ -525,7 +549,7 @@ class Microscope:
                 self.send_command_to_spectrometer('F0, {}'.format(self.scan_resolution))
                 current_pos += self.scan_resolution
             time.sleep(0.5)
-            self.send_command_to_UNO('acq')
+            self.send_command_to_UNO('oDacq{}o'.format(self.acq_time))
             # time.sleep(self.acq_time)
             # response = self.read_from_uno()
             response = self.read_from_serial_until()
@@ -711,14 +735,14 @@ class Microscope:
         # Open a connection to the instrument
         rm = pyvisa.ResourceManager()
         rm.list_resources()
-        spectrometer = rm.open_resource('GPIB0::1::INSTR')  # Replace with the actual VISA address of your instrument
+        self.spectrometer = rm.open_resource('GPIB0::1::INSTR')  # Replace with the actual VISA address of your instrument
 
-        spectrometer.write('WHERE AM I')
+        self.spectrometer.write('WHERE AM I')
         time.sleep(0.0001)
-        state = spectrometer.read()
-        print(state)
+        self.state = self.spectrometer.read()
+        print(self.state)
         # breakpoint()
-        return spectrometer, state
+        return self.spectrometer, self.state
 
 
     # def main(self):
@@ -887,7 +911,7 @@ if __name__ == '__main__':
                 print(e) 
                 
 
-        breakpoint()
+        # breakpoint()
         # Read the response from the spectrometer
 
         try:

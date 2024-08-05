@@ -303,8 +303,17 @@ class Microscope:
             'Btest': 'Btest',
             'Ctest': 'Ctest',
             'Creport': 'Creport',
-            'acq': 'Dacq', # BUG: FIX: CHORE: Move this to new dict
-            'run': 'Drun'
+            'Astatus': 'Astatus',
+            'Bstatus': 'Bstatus',
+            'Cstatus': 'Cstatus',
+            'Z': 'BZ',
+            'Y': 'BY',
+            'X': 'BX',
+        }
+
+        self.acquisition_dict = {
+            'acq': 'acq', 
+            'run': 'run'
         }
 
         self.laser_dict = {
@@ -366,6 +375,16 @@ class Microscope:
             self.general_dict[com[0]]()
             response = 'Connected to {}'.format(com[0])
 
+        elif com[0] in self.acquisition_dict.keys():
+            if len(com) > 1:
+                command = 'm{} {}m'.format(self.acquisition_dict[com[0]], com[1])
+            else:
+                command = 'm{}m'.format(self.acquisition_dict[com[0]])
+            print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            response = self.read_from_serial_until()
+
 
         elif com[0] in self.tuning_motor_dict.keys():
             if len(com) > 1:
@@ -377,6 +396,7 @@ class Microscope:
             time.sleep(0.1)
             # breakpoint()
             response = self.read_from_serial_until()
+            print(response)
             # breakpoint()
         
         elif com[0] in self.laser_dict.keys():
@@ -395,15 +415,15 @@ class Microscope:
             else:
                 response = self.microscope_functions[com[0]]()
 
-        elif com[0] in self.apd_dict.keys():
-            if len(com) > 1:
-                command = '{} {}'.format(self.apd_dict[com[0]], com[1])
-            else:
-                command = self.apd_dict[com[0]]
-            self.send_command_to_UNO(command)
-            time.sleep(0.1)
-            # response = self.read_command_from_uno()
-            response = self.read_from_serial_until()
+        # elif com[0] in self.apd_dict.keys():
+        #     if len(com) > 1:
+        #         command = '{} {}'.format(self.apd_dict[com[0]], com[1])
+        #     else:
+        #         command = self.apd_dict[com[0]]
+        #     self.send_command_to_UNO(command)
+        #     time.sleep(0.1)
+        #     # response = self.read_command_from_uno()
+        #     response = self.read_from_serial_until()
 
         elif com[0] in self.spectrometer_dict.keys():
             if len(com) > 1:
@@ -508,8 +528,9 @@ class Microscope:
             for item in split_responses:
                 if item == end_flag:
                     return end_responses
-                end_responses.append(item)
-                print(item)
+                if item != '':
+                    end_responses.append(item)
+                    print(item)
             time.sleep(0.01)
             # else:
 
@@ -818,7 +839,7 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope(debug_skip=['laser'], unoCOM='COM10')
+    microscope = Microscope(debug_skip=['laser','TRIAX'], unoCOM='COM10')
     try:
         microscope.cli_commands()
     except Exception as e:

@@ -1,17 +1,19 @@
 #include <Wire.h>
 #include <AccelStepper.h>
 
+// TODO: Add case separators for relative and asbolute positioning
+
 // Define stepper motor connections (adjust pin numbers based on CNC Shield wiring)
 AccelStepper stepperX(AccelStepper::DRIVER, 2, 5);  // Pin 2 = step, Pin 5 = direction for X Axis
 AccelStepper stepperY(AccelStepper::DRIVER, 3, 6);  // Pin 3 = step, Pin 6 = direction for Y Axis
 AccelStepper stepperZ(AccelStepper::DRIVER, 4, 7);  // Pin 4 = step, Pin 7 = direction for Z Axis
-AccelStepper stepperA(AccelStepper::DRIVER, 10, 11); // Pin 10 = step, Pin 11 = direction for A Axis
+AccelStepper stepperA(AccelStepper::DRIVER, 12, 13); // Pin 10 = step, Pin 11 = direction for A Axis
 
-const int stepPin = 3;
-const int enablePinA = 8;  // Enable pin for Stepper A
-const int enablePinB = 9;  // Enable pin for Stepper B
-const int enablePinC = 12; // Enable pin for Stepper C (Z Axis)
-const int enablePinD = 13; // Enable pin for Stepper D (A Axis)
+// const int stepPin = 3;
+// const int enablePinA = 8;  // Enable pin for Stepper A
+// const int enablePinB = 9;  // Enable pin for Stepper B
+// const int enablePinC = 12; // Enable pin for Stepper C (Z Axis)
+// const int enablePinD = 13; // Enable pin for Stepper D (A Axis)
 
 const int SLAVE_ADDRESS = 9;  // I2C address of this slave Arduino
 String testFlag = "0";
@@ -29,11 +31,11 @@ void setup() {
   Wire.onRequest(requestEvent);  // Register event handler for data requests
   Serial.begin(9600);
 
-  pinMode(stepPin, OUTPUT);
-  pinMode(enablePinA, OUTPUT);
-  pinMode(enablePinB, OUTPUT);
-  pinMode(enablePinC, OUTPUT);
-  pinMode(enablePinD, OUTPUT);
+  // pinMode(stepPin, OUTPUT);
+  // pinMode(enablePinA, OUTPUT);
+  // pinMode(enablePinB, OUTPUT);
+  // pinMode(enablePinC, OUTPUT);
+  // pinMode(enablePinD, OUTPUT);
 
   stepperX.setMaxSpeed(1000);
   stepperX.setAcceleration(1000);
@@ -79,26 +81,31 @@ void receiveEvent(int howMany) {
   } 
   else if (command == "status") {
     response = identifier;
-  } else if (command.startsWith("X")) {
+  } 
+  else if (command == "pos") {
+    String currentPosition = ("<PX"+String(stepperX.currentPosition())+",Y"+String(stepperY.currentPosition())+",Z"+String(stepperZ.currentPosition())+",A"+String(stepperA.currentPosition())+"P>");
+    response = currentPosition;
+  }
+    else if (command.startsWith("X")) {
     // Extract number from command and move X-axis
     int pos = command.substring(1).toInt();
-    stepperX.moveTo(pos);
-    response = "Moving X to " + String(pos);
+    stepperX.move(pos);
+    response = "X" + String(pos);
   } else if (command.startsWith("Y")) {
     // Extract number from command and move Y-axis
     int pos = command.substring(1).toInt();
-    stepperY.moveTo(pos);
-    response = "Moving Y to " + String(pos);
+    stepperY.move(pos);
+    response = "Y" + String(pos);
   } else if (command.startsWith("Z")) {
     // Extract number from command and move Z-axis
     int pos = command.substring(1).toInt();
-    stepperZ.moveTo(pos);
-    response = "Moving Z to " + String(pos);
+    stepperZ.move(pos);
+    response = "Z" + String(pos);
   } else if (command.startsWith("A")) {
     // Extract number from command and move A-axis
     int pos = command.substring(1).toInt();
-    stepperA.moveTo(pos);
-    response = "Moving A to " + String(pos);
+    stepperA.move(pos);
+    response = "A" + String(pos);
   } else {
     testFlag = "0";
     response = "Unknown command";

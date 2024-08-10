@@ -9,11 +9,13 @@ import numpy as np
 
 dataDir = os.path.join(os.path.dirname(__file__), 'data')
 files = [f for f in os.listdir(dataDir) if f.endswith('.txt')]
+breakpoint()
 
 for file in files:
     with open(os.path.join(dataDir, file), 'r') as f:
         lines = f.readlines()
         try:
+            print(file)
             x = [float(line.split(',')[0]) for line in lines]
             x = range(len(x))
             x = np.array(x).astype(float)/max(x)

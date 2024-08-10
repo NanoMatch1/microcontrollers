@@ -3,6 +3,8 @@ import pyvisa
 import time
 import serial
 import struct
+import threading
+import matplotlib.animation as animation
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 Initial grating is Blaze 500, 1200 g/mm
@@ -232,6 +234,81 @@ class DynamicPlotApp:
 #         print(self.results)
 #         pass
 
+class DualMonochromator:
+
+    def __init__(self, microscope):
+        self.microscope = microscope
+        self.get_motor_positions()
+
+        self.current_mode = 'additive'
+        self.current_pos = (0, 0)
+
+    def get_motor_positions(self):
+        response = self.microscope.process_coms('Cgetinfo')
+        if response == 'NONE':
+            initial_pos = self.current_pos()
+            home_pos = self.home_motors()
+
+    
+    def home_motors(self):
+        response = self.microscope.process_coms('Chome')
+        self.current_pos = (0, 0)
+        return response
+    
+    def calibration_1(self, wavelength):
+        return # function from calibration file, creating a position in steps for motor 1
+    
+    def calibration_2(self, wavelength):
+        return # function from calibration file, creating a position in steps for motor 2
+    
+    def move_to(self, target_pos):
+        motor_1_pos = self.calibration_1(target_pos)
+        motor_2_pos = self.calibration_2(target_pos)
+
+        response = self.microscope.process_coms('Cmove {} {}'.format(motor_1_pos, motor_2_pos))
+        if response == 'OK':
+            self.current_pos = (motor_1_pos, motor_2_pos)
+        else:
+            print('Error moving monochromator motors')
+            print(response)
+        pass
+
+    def load_calibrations(self):
+        if self.current_mode == 'additive':
+            # load additive calibration file
+            # self.load_additive_calibration()
+            # Shoudl contain calibration for motor 1 and motor 2
+            pass
+        elif self.current_mode == 'subtractive':
+            # load subtractive calibration file
+            pass
+            # self.load_subtractive_calibration()
+            # Should contain calibration for motor 1 and motor 2
+    
+
+        
+
+
+    def add_mode(self):
+        pass
+
+'''Code plan.
+Make dual monochromator class. The mono should know what mode it is in based on a current or previous format. 
+The class is a wrapper for communication with an individual microcontroller. 
+1. It should, on initialisation, send a message to the microcontroller and request motor positions and current mode.
+    a. the current mode should be conveyed to the microcontroller and stored there
+2. if the microcontroller does not have the required information (such as during boot), the mono should home itself.
+    a. before homing, it should save the current position, so that it can return here, including backlash compensation.
+3. all motors should operate under a backlash compensation regime, and approach the target position from the same direction.
+4. the mono should have a method for moving to a target position, and a method for moving to a target wavelength. 
+    a. in Additive mode, Target wavelength will be the primary method for moving the mono.
+    b. in subtractive mode, the target wavelength will also be the primary method for moving, but in this case the target wavelength needs to be BLOCKED rather than transmitted.
+        i. therefore, a two calibration files need to be stored, one for each mode. In additive, the calibration tells the code what wavelength transmission correspons to what motor position. In subtractive, the calibration tells the code what motor position causes the desired wavelength to be blocked.
+        ii. there should be a correction factor which allows one to get closer to the laser line. The correction factor applied will be in units of wavenumbers, which are calibrated to steps by the calibration file.
+5. for safety, the mono class should only allow movement of the motors when the beam is blocked. This can be achieved by having a method which checks the beam status within the microscope class, and if the beam is not blocked, it will block the beam and then move the motors.
+
+there will be homing motors that the monochromator should.'''
+
 class Microscope:
 
     def __init__(self, debug_skip=[], unoCOM='COM8'):
@@ -252,7 +329,7 @@ class Microscope:
 
 
         self.microscope_functions = {
-            'scan': self.run_scan,
+            'scan': self.run_scan_custom,
             'get_grating_position': self.get_grating_position,
             'scan_min': self.set_scan_min,
             'scan_max': self.set_scan_max,
@@ -271,9 +348,9 @@ class Microscope:
             'grating': 'F0,',
             'g': 'F0,',
             'read_enter': 'j0,0',
-            'rex': 'j0,0',
+            'ren': 'j0,0',
             'read_exit': 'j0,3',
-            'ren': 'j0,3',
+            'rex': 'j0,3',
             'move_enter': 'k0,0,',
             'men': 'k0,0,',
             'move_exit': 'k0,3,',
@@ -282,38 +359,53 @@ class Microscope:
             'ccd_mode': 'f0',
             'ccd': 'f0',
             'apd_mode': 'e0',
-            'apd': 'e0'
+            'apd': 'e0',
+            'gotoir': 'F0,375131'
             #'entrance mirror to front enterance': 'c0',
             #'entrance mirror to side enterance': 'd0'
         }
 
         # commands for sample/stage motion and imaging beamsplitter
         self.stage_dict = {
-            'X': 'X',
-            'Y': 'Y',
-            'Z': 'Z',
-            'imagemode': 'G0 E-500',
-            'ramanmode': 'G0 E500'
+            # 'relative': 'relative',
+            # 'absolute': 'absolute',
+            # 'X': 'X',
+            # 'Y': 'Y',
+            # 'Z': 'Z',
+            # 'imagemode': 'G0 E-500',
+            # 'ramanmode': 'G0 E500'
+        }
+
+        self.dual_mono_dict = {
+            'add_mode': 'additive',
+            'sub_mode': 'subtractive',
+
         }
 
         # commands for controlling laser properties
-        self.tuning_motor_dict = {
+        self.tuning_motor_dict = { # TODO: separate into Stage motion and laser tuning
             'lambda': 'lambda',
-            'Atest': 'Atest',
-            'Btest': 'Btest',
-            'Ctest': 'Ctest',
-            'Creport': 'Creport',
-            'Astatus': 'Astatus',
-            'Bstatus': 'Bstatus',
-            'Cstatus': 'Cstatus',
-            'Z': 'BZ',
-            'Y': 'BY',
-            'X': 'BX',
+            'atest': 'Atest',
+            'btest': 'Btest',
+            'ctest': 'Ctest',
+            'creport': 'Creport',
+            'astatus': 'Astatus',
+            'bstatus': 'Bstatus',
+            'cstatus': 'Cstatus',
+            'z': 'BZ',
+            'y': 'BY',
+            'x': 'BX',
+            'a': 'BY', # TODO: BUG: Temporarilly ported A to Y for testing
+            'getpos': 'Bpos',
+            'gp' : 'Bpos',
+            'pos': 'Bpos'
+
         }
 
         self.acquisition_dict = {
             'acq': 'acq', 
-            'run': 'run'
+            'run': 'run',
+
         }
 
         self.laser_dict = {
@@ -368,8 +460,10 @@ class Microscope:
             print('Invalid value for acquisition time')
         print('Acquisition Time Set: {}'.format(self.acq_time))
 
-    def process_coms(self, com):
+    def process_coms(self, coms: str):
         response = None
+
+        com = [item.lower() for item in coms.split(' ')]
 
         if com[0] in self.general_dict.keys():
             self.general_dict[com[0]]()
@@ -384,9 +478,11 @@ class Microscope:
             self.send_command_to_UNO(command)
             time.sleep(0.1)
             response = self.read_from_serial_until()
+            return response
 
 
         elif com[0] in self.tuning_motor_dict.keys():
+            print('entered turning dict')
             if len(com) > 1:
                 command = 'o{}{}o'.format(self.tuning_motor_dict[com[0]], com[1])
             else:
@@ -396,7 +492,8 @@ class Microscope:
             time.sleep(0.1)
             # breakpoint()
             response = self.read_from_serial_until()
-            print(response)
+            # print(response)
+            return response
             # breakpoint()
         
         elif com[0] in self.laser_dict.keys():
@@ -407,6 +504,7 @@ class Microscope:
             # response = self.laser_serial.read(self.laser_serial.inWaiting())
             response = self.read_from_laser()
             print(response)
+            return response
             # breakpoint()
 
         elif com[0] in self.microscope_functions.keys():
@@ -414,6 +512,8 @@ class Microscope:
                 response = self.microscope_functions[com[0]](com[1])
             else:
                 response = self.microscope_functions[com[0]]()
+
+            return response
 
         # elif com[0] in self.apd_dict.keys():
         #     if len(com) > 1:
@@ -432,9 +532,11 @@ class Microscope:
                 command = self.spectrometer_dict[com[0]]
 
             response = self.send_command_to_spectrometer(command)
+            return response
         
         elif com[0] in self.stage_dict.keys():
             pass # palceholder for stage control
+            return response
 
 
         else:
@@ -534,12 +636,25 @@ class Microscope:
             time.sleep(0.01)
             # else:
 
+    # def extract_data_old(self, response):
+    #     new_data = []
+    #     for item in response:
+    #         if item.startswith("#DAT"):
+    #             try:
+    #                 new_data.append(float(item[4:]))
+    #             except Exception as e:
+    #                 print('Error processing data')
+    #                 print(e)
+    #     return new_data
+    
     def extract_data(self, response):
         new_data = []
         for item in response:
-            if item.startswith("#DAT"):
+            if item.startswith("COUNTS:"):
                 try:
-                    new_data.append(float(item[4:]))
+                    value = item[item.index(':')+2:item.index('/')]
+                    timestamp = item[item.index('/')+1:]
+                    new_data = [float(value), float(timestamp)]
                 except Exception as e:
                     print('Error processing data')
                     print(e)
@@ -553,51 +668,218 @@ class Microscope:
         print('Grating Pos: {}'.format(response))
         return grating_pos
 
-    def run_scan(self, plot=True):
-        scan_results = np.empty((0, 2)).astype(float)
-        self.grating_pos = self.get_grating_position()
-        initial_pos = self.grating_pos
-        current_pos = initial_pos
+
+
+    # def run_scan_custom(self, plot=True):
+
+
+    #     # Create figure for plotting
+    #     fig, ax = plt.subplots()
+    #     xs = [0]  # List to store x-axis values (time steps)
+    #     ys = [0]  # List to store y-axis values (data points)
+
+    #     # Initialize plot
+    #     line, = ax.plot(xs, ys, 'r-')  # 'r-' means red line
+
+    #     def init():
+    #         ax.set_xlim(0, 10)  # Set initial x-axis limits
+    #         ax.set_ylim(0, 1)  # Set initial y-axis limits
+    #         return line,
+
+    #     def update_plot(frame):
+    #         # Update line data
+    #         line.set_data(xs, ys)
+            
+    #         # Adjust x-axis and y-axis limits dynamically
+    #         ax.set_xlim(min(xs), max(xs))
+    #         ax.set_ylim(min(ys), max(ys))
+            
+    #         return line,
+
+    #     # Create an animation
+    #     ani = animation.FuncAnimation(fig, update_plot, init_func=init, blit=True, interval=100)
+
+    #     # Display the plot
+    #     plt.ion()
+    #     plt.show()
+
+    #     def add_data_point(newData):
+    #         # Append new data points to the lists
+    #         xs.append(newData[0])
+    #         ys.append(newData[1])
+    #         plt.draw()
+
+    #     def scan():
+    #         # TODO: Eventually replace code to skip process_coms and call send_to_UNO
+    #         self.scan_min = 0
+    #         self.scan_max = 10
+    #         self.scan_res = 1
+    #         self.acq_time = 0.5
+
+    #         print("custom scan")
+    #         scan_results = np.empty((0, 3)).astype(float)
+    #         response_list = self.process_coms('getpos')
+
+    #         stepper_pos = {}
+    #         for item in response_list:
+    #             if '<P' in item:
+    #                 positions = item.split('P')[1]
+    #                 positions = positions.split(',')
+    #                 for pos in positions:
+    #                     stepper_pos[pos[0]] = int(pos[1:]) # position in steps -> refer to calibration dataset for conversion
+    #         print("Established current motor positions:", stepper_pos)
+    #         self.grating_pos = stepper_pos['Y']
+    #         scan_pos = self.grating_pos
+    #         scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_res)
+    #         print(scan_dims)
+    #         input('\nScan to commence:')
+    #         self.process_coms('A {}'.format(self.scan_min))
+    #         scan_pos += self.scan_min
+    #         print("Beginning scan...")
+    #         time.sleep(0.5)
+    #         for idx, val in enumerate(scan_dims):
+    #             if idx != 0:
+    #                 self.process_coms('A {}'.format(self.scan_res))
+    #                 scan_pos += self.scan_res
+    #             time.sleep(0.1)
+    #             response = self.process_coms('acq {}'.format(self.acq_time))
+    #             time.sleep(0.1)
+    #             data = self.extract_data(response)
+    #             intensity = float(data[0])
+    #             print('{}:{}'.format(scan_pos, intensity))
+    #             add_data_point([scan_pos, intensity])
+    #             scan_results = np.vstack((scan_results, [scan_pos, data[0], data[1]]))
+
+    #         self.results = np.array(scan_results).astype(float)
+    #         print(self.results)
+    #         self.process_coms('A {}'.format(self.grating_pos-scan_pos))
+    #         filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
+    #         np.savetxt(filename, self.results)
+
+    #     # Run the scan in a separate thread
+    #     scan_thread = threading.Thread(target=scan)
+    #     scan_thread.start()
+
+    def run_scan_custom(self, plot=True):
+        # Create figure for plotting
+        fig, ax = plt.subplots()
+        xs = [0]  # List to store x-axis values (time steps)
+        ys = [0]  # List to store y-axis values (data points)
+
+        # Initialize plot
+        line, = ax.plot(xs, ys, 'r-')  # 'r-' means red line
+        ax.set_xlim(0, 10)  # Set initial x-axis limits
+        ax.set_ylim(0, 1)  # Set initial y-axis limits
+
+        # Display the plot
+        plt.ion()
+        plt.show()
+
+        def add_data_point(newData):
+            # Append new data points to the lists
+            xs.append(float(newData[0]))
+            ys.append(float(newData[1]))
+            
+            # Update line data
+            line.set_data(xs, ys)
+            
+            # Adjust x-axis and y-axis limits dynamically
+            ax.set_xlim(min(xs), max(xs))
+            ax.set_ylim(min(ys) - 0.1, max(ys) + 0.1)
+            
+            # Redraw the plot
+            plt.draw()
+            plt.pause(0.01)
+
+        # TODO: Eventually replace code to skip process_coms and call send_to_UNO
+
+
+        print("custom scan")
+        scan_results = np.empty((0, 3)).astype(float)
+        response_list = self.process_coms('getpos')
+
+        stepper_pos = {}
+        for item in response_list:
+            if '<P' in item:
+                positions = item.split('P')[1]
+                positions = positions.split(',')
+                for pos in positions:
+                    stepper_pos[pos[0]] = int(pos[1:]) # position in steps -> refer to calibration dataset for conversion
+        print("Established current motor positions:", stepper_pos)
+        self.grating_pos = stepper_pos['Y']
+        scan_pos = self.grating_pos
         scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_resolution)
         print(scan_dims)
         input('\nScan to commence:')
-        self.send_command_to_spectrometer('F0, {}'.format(self.scan_min))
-        current_pos += self.scan_min
+        self.process_coms('A {}'.format(self.scan_min))
+        scan_pos += self.scan_min
         print("Beginning scan...")
         time.sleep(0.5)
         for idx, val in enumerate(scan_dims):
             if idx != 0:
-                self.send_command_to_spectrometer('F0, {}'.format(self.scan_resolution))
-                current_pos += self.scan_resolution
-            time.sleep(0.5)
-            self.send_command_to_UNO('oDacq{}o'.format(self.acq_time))
-            # time.sleep(self.acq_time)
-            # response = self.read_from_uno()
-            response = self.read_from_serial_until()
+                self.process_coms('A {}'.format(self.scan_resolution))
+                scan_pos += self.scan_resolution
+            time.sleep(0.1)
+            response = self.process_coms('acq {}'.format(self.acq_time))
+            time.sleep(0.1)
             data = self.extract_data(response)
-            if len(data) > 1:
-                print("data is bigger than expected - change code to accommodate array of data")
             intensity = float(data[0])
-            # scan_results.append([step, response])
-            # scan_pos = self.grating_pos+(idx*self.scan_resolution)
-            print('{} : {}'.format(current_pos, intensity))
-            scan_results = np.vstack((scan_results, [current_pos, intensity]))
-            # self.plot.update_plot([self.microscope.grating_pos, intensity])
-            # self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
+            print('{}:{}'.format(scan_pos, intensity))
+            add_data_point([scan_pos, intensity])
+            scan_results = np.vstack((scan_results, [scan_pos, data[0], data[1]]))
+
         self.results = np.array(scan_results).astype(float)
         print(self.results)
-        # return to start pos
-        self.send_command_to_spectrometer('F0, {}'.format(initial_pos-current_pos))
-        print('Initial pos: {}'.format(initial_pos))
-        print('Current pos: {}'.format(current_pos))
-        print('Difference: {}'.format(current_pos-initial_pos))
-        # breakpoint()
+        self.process_coms('A {}'.format(self.grating_pos-scan_pos))
         filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
         np.savetxt(filename, self.results)
-        if plot:
-            # self.plot_scan_results(self.results)
-            plt.plot(self.results[:, 0], self.results[:, 1])
-            plt.show()
+
+    # def run_scan_TRIAX(self, plot=True):
+    #     scan_results = np.empty((0, 2)).astype(float)
+    #     self.grating_pos = self.get_grating_position()
+    #     initial_pos = self.grating_pos
+    #     current_pos = initial_pos
+    #     scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_resolution)
+    #     print(scan_dims)
+    #     input('\nScan to commence:')
+    #     self.send_command_to_spectrometer('F0, {}'.format(self.scan_min))
+    #     current_pos += self.scan_min
+    #     print("Beginning scan...")
+    #     time.sleep(0.5)
+    #     for idx, val in enumerate(scan_dims):
+    #         if idx != 0:
+    #             self.send_command_to_spectrometer('F0, {}'.format(self.scan_resolution))
+    #             current_pos += self.scan_resolution
+    #         time.sleep(0.5)
+    #         self.send_command_to_UNO('oDacq{}o'.format(self.acq_time))
+    #         # time.sleep(self.acq_time)
+    #         # response = self.read_from_uno()
+    #         response = self.read_from_serial_until()
+    #         data = self.extract_data(response)
+    #         if len(data) > 1:
+    #             print("data is bigger than expected - change code to accommodate array of data")
+    #         intensity = float(data[0])
+    #         # scan_results.append([step, response])
+    #         # scan_pos = self.grating_pos+(idx*self.scan_resolution)
+    #         print('{} : {}'.format(current_pos, intensity))
+    #         scan_results = np.vstack((scan_results, [current_pos, intensity]))
+    #         # self.plot.update_plot([self.microscope.grating_pos, intensity])
+    #         # self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
+    #     self.results = np.array(scan_results).astype(float)
+    #     print(self.results)
+    #     # return to start pos
+    #     self.send_command_to_spectrometer('F0, {}'.format(initial_pos-current_pos))
+    #     print('Initial pos: {}'.format(initial_pos))
+    #     print('Current pos: {}'.format(current_pos))
+    #     print('Difference: {}'.format(current_pos-initial_pos))
+    #     # breakpoint()
+    #     filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
+    #     np.savetxt(filename, self.results)
+    #     if plot:
+    #         # self.plot_scan_results(self.results)
+    #         plt.plot(self.results[:, 0], self.results[:, 1])
+    #         plt.show()
+
 
 
 
@@ -607,8 +889,8 @@ class Microscope:
             coms = input('Enter command:\n')
             if coms == '':
                 continue
-            com = coms.split(' ')
-            response = self.process_coms(com)
+            # com = [item.lower() for item in coms.split(' ')]
+            response = self.process_coms(coms)
             if response is None:
                 continue
             data = self.extract_data(response)
@@ -839,7 +1121,7 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope(debug_skip=['laser','TRIAX'], unoCOM='COM10')
+    microscope = Microscope(debug_skip=['laser', 'TRIAX'], unoCOM='COM10')
     try:
         microscope.cli_commands()
     except Exception as e:
@@ -866,6 +1148,9 @@ if __name__ == '__main__':
 
 
     # def connect(instrument):
+        spectrometer.write('O2000')
+        time.sleep(0.0001)
+        state = spectrometer.read()
         spectrometer.write('WHERE AM I')
         time.sleep(0.0001)
         state = spectrometer.read()

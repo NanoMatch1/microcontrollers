@@ -478,6 +478,10 @@ class Microscope:
 
         if com[0] == 'eept':
             command = 'o{}o'.format(self.tuning_motor_dict['gpa'])
+            if len(com) > 1:
+                extra = ','.join(com[1:])
+            else:
+                extra = ''
             # print('UI>UNO:{}'.format(command))
             self.send_command_to_UNO(command)
             time.sleep(0.1)
@@ -499,9 +503,11 @@ class Microscope:
             gpb = response[1].split('<P')[1]
             gpb = gpb.split('P>')[0]
             gpb = gpb.split(',')
+
+            
             with open(os.path.join(self.scriptDir, 'eept.txt'), 'a') as f:
-                f.write('{}:{}\n'.format(gpa, gpb))
-            print(f'exporting {gpa}:{gpb}')
+                f.write('{}:{}:{}\n'.format(gpa, gpb, extra))
+            print(f'exporting {gpa}:{gpb}:{extra}')
             return (f'exporting {gpa}:{gpb}')
             
 

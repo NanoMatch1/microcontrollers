@@ -7,6 +7,7 @@ import threading
 import matplotlib.animation as animation
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
+# Polyfit calibration 24/08/27: [-1.28255101e-02 -4.23233709e+01  4.22414334e+04]
 Initial grating is Blaze 500, 1200 g/mm
 centre for 532 nm is roughly 241543
 centre for sulfur at ~800 nm is 376886 (apd laser at "370686"/371736) (NEW 23/05 375131) (ccd+= 6000) 374414
@@ -327,6 +328,8 @@ class Microscope:
 
         self.data = []
 
+        self.laser_calibration = [-1.28255101e-02, -4.23233709e+01, 4.22414334e+04]
+
 
         self.microscope_functions = {
             'scan': self.run_scan_custom,
@@ -396,11 +399,19 @@ class Microscope:
             'y': 'BY',
             'x': 'BX',
             'a': 'BY', # TODO: BUG: Temporarilly ported A to Y for testing
-            'getpos': 'Bpos',
-            'gp' : 'Bpos',
-            'pos': 'Bpos'
+            'g1': 'BX',
+            'g2': 'BY',
+            'l1' : 'AX',
+            'l2' : 'AY',
+
+            'getposa': 'Apos',
+            'gpa' : 'Apos',
+            'getposb': 'Bpos',
+            'gpb' : 'Bpos',
 
         }
+
+        # additive position: Y -12984, subtractive = 0
 
         self.acquisition_dict = {
             'acq': 'acq', 
@@ -464,6 +475,35 @@ class Microscope:
         response = None
 
         com = [item.lower() for item in coms.split(' ')]
+
+        if com[0] == 'eept':
+            command = 'o{}o'.format(self.tuning_motor_dict['gpa'])
+            # print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # breakpoint()
+            response = self.read_from_serial_until()
+            # print(response)
+            # breakpoint()
+            gpa = response[1].split('<P')[1]
+            gpa = gpa.split('P>')[0]
+            gpa = gpa.split(',')
+
+            command = 'o{}o'.format(self.tuning_motor_dict['gpb'])
+            # print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # breakpoint()
+            response = self.read_from_serial_until()
+            # print(response)
+            gpb = response[1].split('<P')[1]
+            gpb = gpb.split('P>')[0]
+            gpb = gpb.split(',')
+            with open(os.path.join(self.scriptDir, 'eept.txt'), 'a') as f:
+                f.write('{}:{}\n'.format(gpa, gpb))
+            print(f'exporting {gpa}:{gpb}')
+            return (f'exporting {gpa}:{gpb}')
+            
 
         if com[0] in self.general_dict.keys():
             self.general_dict[com[0]]()
@@ -763,8 +803,8 @@ class Microscope:
     def run_scan_custom(self, plot=True):
         # Create figure for plotting
         fig, ax = plt.subplots()
-        xs = [0]  # List to store x-axis values (time steps)
-        ys = [0]  # List to store y-axis values (data points)
+        xs = []  # List to store x-axis values (time steps)
+        ys = []  # List to store y-axis values (data points)
 
         # Initialize plot
         line, = ax.plot(xs, ys, 'r-')  # 'r-' means red line

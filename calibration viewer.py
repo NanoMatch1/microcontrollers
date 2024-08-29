@@ -1,4 +1,5 @@
 import csv
+import json
 
 
 '''make a quick plot of calibration data'''
@@ -216,14 +217,9 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
         triax_steps_to_shift_lambda = spectrometer_steps - (wavelength_from_50/calib_dict['nm_per_triax_step'])
         spectrometer_position.append(triax_steps_to_shift_lambda)
     
-    print(spectrometer_position)
-    breakpoint()    
-
-
 
     new_data_array = np.column_stack((wavelength_axis, data_l1, data_l2, data_g1, data_g2))
-    print(wavelength_axis)
-    breakpoint()
+
     fit_coeff_laser = np.polyfit(data_l1, data_l2, 1)
     fit_coeff_grating = np.polyfit(data_g1, data_g2, 1)
     ax[0].scatter(data_l1, data_l2, label='L1 vs L2')
@@ -253,22 +249,47 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
     if show is True:
         plt.show()
 
+    
+
     print(f'l1xl2 fit: {fit_coeff_laser}')
     print(f'g1xg2 fit: {fit_coeff_grating}')
     
-    wavelength_cal_laser = np.poly1d(wavelength_axis, data_l1, 1)
-    wavelength_cal_grating = np.poly1d(wavelength_axis, data_g1, 1)
+    calibrations['laser'] = fit_coeff_laser.tolist()
+    calibrations['grating'] = fit_coeff_grating.tolist()
 
     fig, ax = plt.subplots(3,1)
+    wavelength_cal_laser = np.polyfit(wavelength_axis, data_l1, 2)
+    wavelength_cal_grating = np.polyfit(wavelength_axis, data_g1, 1)
+    p_wavelength_laser = np.poly1d(wavelength_cal_laser)
+    p_wavelength_grating = np.poly1d(wavelength_cal_grating)
     ax[0].scatter(wavelength_axis, data_l1, label='Lambda L1')
+    ax[0].plot(wavelength_axis, p_wavelength_laser(wavelength_axis), label='Lambda L1 fit', color='tab:purple')
     ax[1].scatter(wavelength_axis, data_g1, label='Lambda G1')
+    ax[1].plot(wavelength_axis, p_wavelength_grating(wavelength_axis), label='Lambda G1 fit', color='tab:purple')
+    
+    res_1 = data_l1 - p_wavelength_laser(wavelength_axis)
+    res_2 = data_g1 - p_wavelength_grating(wavelength_axis)
+    ax[2].plot(wavelength_axis, res_1, label='Lambda L1 residuals', marker='o')
+    ax[2].plot(wavelength_axis, res_2, label='Lambda G1 residuals', marker='o')
 
+    ax[0].legend()
+    ax[1].legend()
+    ax[2].legend()
+
+    if show is True:
+        plt.show()
+    
+    calibrations['wavelength_laser'] = wavelength_cal_laser.tolist()
+    calibrations['wavelength_grating'] = wavelength_cal_grating.tolist()
+
+    print(f'wavelength_laser fit: {wavelength_cal_laser}')
+    print(f'wavelength_grating fit: {wavelength_cal_grating}')
+
+
+    return calibrations
 
     # residuals
     
-
-
-
 if __name__ == '__main__':
     wavelength_cal = wavelength_calibration(laser_calibration, show=False)
     
@@ -287,5 +308,11 @@ if __name__ == '__main__':
 
     # breakpoint()
     headers, cal_data = process_eept(eept_file)
-    run_moror_calibration(headers, cal_data, calib_dict, wavelength_cal)
+    calibrations = run_moror_calibration(headers, cal_data, calib_dict, wavelength_cal)
+    # save calibration data as json
+
+    with open(os.path.join(os.path.dirname(__file__), 'calibrations.json'), 'w') as f:
+        json.dump(calibrations, f)
+
+
 

@@ -331,6 +331,12 @@ class Microscope:
             self.calibrations = self.calibration_backup
             print('Calibration file not found, using backup')
 
+        self.cal_laser_2 = np.poly1d(self.calibrations['laser'])
+        self.cal_grating_2 = np.poly1d(self.calibrations['grating'])
+        self.cal_wavelength_laser = np.poly1d(self.calibrations['wavelength_laser'])
+        self.cal_wavelength_grating = np.poly1d(self.calibrations['wavelength_grating'])
+        self.cal_triax_steps = np.poly1d(self.calibrations['triax_steps'])
+
         self.scan_min = -1000
         self.scan_max = 1000
         self.scan_resolution = 50
@@ -340,8 +346,6 @@ class Microscope:
 
         self.data = []
 
-
-
         self.microscope_functions = {
             'scan': self.run_scan_custom,
             'get_grating_position': self.get_grating_position,
@@ -349,7 +353,8 @@ class Microscope:
             'scan_max': self.set_scan_max,
             'scan_res': self.set_scan_resolution,
             'acq_time': self.set_acquisition_time,
-            'goto': self.go_to_wavelength,
+            'sl': self.go_to_laser_wavelength,
+            'sd': self.go_to_grating_wavelength,
         }
         
         
@@ -476,7 +481,61 @@ class Microscope:
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
 
+    def get_laser_position(self):
+        print('entered get laser')
+        try:
+            response = self.process_coms('gpa')
+            print('got response')
+            positions = response[1].split(':')[1]
+            positions = positions.strip('<P>P')
+            positions = positions.split(',')
+            current_pos = [float(x[1:]) for x in positions]
+        except Exception as e:
+            print('Error getting laser position')
+            print(e)
+            return
+        
+        print('Curretn pos: {}'.format(current_pos))
+        return current_pos
 
+    def go_to_laser_wavelength(self, wavelength):
+        '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.
+        Uses the calibrations to move the laser motors into position for a specified wavelength.'''
+        # breakpoint()
+        # if self.current_mode == 'additive':
+        #     target_pos = self.cal_wavelength_laser(wavelength)
+        # elif self.current_mode == 'subtractive':
+        #     target_pos = self.cal_wavelength_grating(wavelength)
+        try:
+            wavelength = float(wavelength)
+        except ValueError:
+            print('Invalid value for wavelength - use a number')
+            return
+
+        current_pos = self.get_laser_position()
+        if current_pos is None:
+            return 
+
+        l1_target = self.cal_wavelength_laser(wavelength)
+        print("l1 target: {}".format(l1_target))
+
+        l2_target = self.cal_laser_2(l1_target)
+        print("l2 target: {}".format(l2_target))
+        move_l1 = round(l1_target - current_pos[0])
+        move_l2 = round(l2_target - current_pos[1])
+
+        # self.move_to(target_pos)
+        if move_l1 != 0:
+            response = self.process_coms('l1 {}'.format(move_l1))
+        if move_l2 != 0:
+            response = self.process_coms('l2 {}'.format(move_l2))
+
+        print('laser excitation at {}'.format(wavelength))
+    
+    def go_to_grating_wavelength(self, wavelength):
+        
+
+        print('grating at {}'.format(wavelength))
 
 
     def set_acquisition_time(self, acq_time):

@@ -209,15 +209,14 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
 
     wavelength_axis = nm_per_laser_steps(data_l1)
     spectrometer_position = []
-    for x in range(len(cal_data[:, 8])):
+    for x in range(len(sorted_data[:, 8])):
         wavelength = wavelength_axis[x]
-        spectrometer_steps = cal_data[x, 8]
-        pixel_number = cal_data[x, 9]
+        spectrometer_steps = sorted_data[x, 8]
+        pixel_number = sorted_data[x, 9]
         wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel_number)
         triax_steps_to_shift_lambda = spectrometer_steps - (wavelength_from_50/calib_dict['nm_per_triax_step'])
         spectrometer_position.append(triax_steps_to_shift_lambda)
     
-
     new_data_array = np.column_stack((wavelength_axis, data_l1, data_l2, data_g1, data_g2))
 
     fit_coeff_laser = np.polyfit(data_l1, data_l2, 1)
@@ -285,6 +284,20 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
     print(f'wavelength_laser fit: {wavelength_cal_laser}')
     print(f'wavelength_grating fit: {wavelength_cal_grating}')
 
+    breakpoint()
+    triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 1)
+    p_triax_steps = np.poly1d(triax_steps)
+    fig, ax = plt.subplots(2, 1)
+    ax[0].scatter(wavelength_axis, spectrometer_position, label='Triax Steps')
+    ax[0].plot(wavelength_axis, p_triax_steps(wavelength_axis), label='Triax Steps fit', color='tab:purple')
+    residuals = spectrometer_position - p_triax_steps(wavelength_axis)
+    ax[1].plot(wavelength_axis, residuals, label='Triax Steps residuals', marker='o')
+    ax[0].legend()
+    ax[1].legend()
+    if show is True:
+        plt.show()
+    
+    calibrations['triax_steps'] = triax_steps.tolist()
 
     return calibrations
 
@@ -308,7 +321,7 @@ if __name__ == '__main__':
 
     # breakpoint()
     headers, cal_data = process_eept(eept_file)
-    calibrations = run_moror_calibration(headers, cal_data, calib_dict, wavelength_cal)
+    calibrations = run_moror_calibration(headers, cal_data, calib_dict, wavelength_cal, show=True)
     # save calibration data as json
 
     with open(os.path.join(os.path.dirname(__file__), 'calibrations.json'), 'w') as f:

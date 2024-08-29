@@ -5,6 +5,7 @@ import serial
 import struct
 import threading
 import matplotlib.animation as animation
+import json
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 # Polyfit calibration 24/08/27: [-1.28255101e-02 -4.23233709e+01  4.22414334e+04]
@@ -312,12 +313,23 @@ there will be homing motors that the monochromator should.'''
 
 class Microscope:
 
+    calibration_backup = {"laser": [-0.42078367938194094, 13.182099307902691], "grating": [1.0370034283344927, 10.925199912128772], "wavelength_laser": [-0.013186836473750425, -41.70675588176, 41979.647251902534], "wavelength_grating": [9.14706131106529, -7363.889052419929], "triax_steps": [517.0135871419345, -32648.41660404592]}
+
     def __init__(self, debug_skip=[], unoCOM='COM8'):
 
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
         if not os.path.exists(self.dataDir):
             os.makedirs(self.dataDir)
+
+        if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
+            with open(os.path.join(self.scriptDir, 'calibrations.json'), 'r') as f:
+                self.calibrations = json.load(f)
+                print('Calibrations loaded from file')
+        
+        else:
+            self.calibrations = self.calibration_backup
+            print('Calibration file not found, using backup')
 
         self.scan_min = -1000
         self.scan_max = 1000
@@ -328,7 +340,6 @@ class Microscope:
 
         self.data = []
 
-        self.laser_calibration = [-1.28255101e-02, -4.23233709e+01, 4.22414334e+04]
 
 
         self.microscope_functions = {
@@ -337,7 +348,8 @@ class Microscope:
             'scan_min': self.set_scan_min,
             'scan_max': self.set_scan_max,
             'scan_res': self.set_scan_resolution,
-            'acq_time': self.set_acquisition_time
+            'acq_time': self.set_acquisition_time,
+            'goto': self.go_to_wavelength,
         }
         
         
@@ -463,6 +475,9 @@ class Microscope:
     # def connect_to_APD(self):
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
+
+
+
 
     def set_acquisition_time(self, acq_time):
         try:

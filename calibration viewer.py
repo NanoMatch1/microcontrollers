@@ -33,7 +33,9 @@ calibration_records = {
     ,
 
     'manual_measurements': {
-        'nm_per_pixel': 6.38064/400, # retrieved from recent calibration sweep
+        'nm_per_laser_step': 0.0158,
+        'lamba_change_for_400_steps': 6.32,
+        'nm_per_pixel': 4/400, # retrieved from recent calibration sweep
         # nm_per_step = 0
         'triax_steps': 410000,
         'nm_per_triax_step': 0.00110267
@@ -62,19 +64,32 @@ files = [f for f in os.listdir(dataDir) if f.endswith('.txt')]
 
 eept_file = os.path.join(os.path.dirname(__file__), 'eept.txt')
 
-nm_per_pixel = 6.38064/400 # retrieved from recent calibration sweep
-# nm_per_step = 0
-triax_steps = 410000
-nm_per_triax_step = 0.00110267
+# nm_per_pixel = 6.38064/400 # retrieved from recent calibration sweep
+# # nm_per_step = 0
+# triax_steps = 375000
+# nm_per_triax_step = 0.00110267
 
 # absolute = 802.5-(643*nm_per_pixel)
 # new = absolute + (nm_per_triax_step*(410000-375000)) + (nm_per_pixel*558)
 
+#662/469
+
+#731.162-734.432 = -3.27 nm
+#-3.27nm/200steps = -0.01635 nm/step
+#293-660pix=-367
+#0.0168557nm/pix*-367pix = -6.186 nm/3000 steps triax
+# -0.002062 nm/step triax
+
+
 calib_dict = {
-    'nm_per_pixel': 6.38064/400, # retrieved from recent calibration sweep
+    'pixels_per_laser_step': -194/200,
+    'nm_per_laser_step': -0.01635,
+    'nm_per_pixel': -0.01635/-0.97, #0.0168557
+
+    # 'nm_per_pixel': -6.32/400, # retrieved from recent calibration sweep
     # nm_per_step = 0
-    'triax_steps': 410000,
-    'nm_per_triax_step': 0.00110267
+    'triax_steps': 375000,
+    'nm_per_triax_step': -0.002062
 }
 
 laser_calibration = {}
@@ -209,13 +224,46 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
 
     wavelength_axis = nm_per_laser_steps(data_l1)
     spectrometer_position = []
-    for x in range(len(sorted_data[:, 8])):
-        wavelength = wavelength_axis[x]
-        spectrometer_steps = sorted_data[x, 8]
-        pixel_number = sorted_data[x, 9]
-        wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel_number)
-        triax_steps_to_shift_lambda = spectrometer_steps - (wavelength_from_50/calib_dict['nm_per_triax_step'])
-        spectrometer_position.append(triax_steps_to_shift_lambda)
+    spectrometer_adjustment = []
+    spectrometer_steps = sorted_data[:, 8]
+    pixel_number = sorted_data[:, 9]
+    print(spectrometer_steps)
+    print(pixel_number)
+    # fig, ax = plt.subplots(2, 1)
+    # ax[0].scatter(wavelength_axis, spectrometer_steps, label='Triax Steps vs Wavelength')
+    # ax[1].scatter(wavelength_axis, pixel_number, label='Pixel Number vs Wavelength')
+    # ax[0].legend()
+    # ax[1].legend()
+    # plt.show()
+
+    for idx, steps in enumerate(spectrometer_steps):
+        wavelength = wavelength_axis[idx]
+        pixel = pixel_number[idx]
+        wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel)
+        triax_steps_to_shift = wavelength_from_50/calib_dict['nm_per_triax_step']
+        print(pixel, triax_steps_to_shift, steps, wavelength)
+        triax_actual_steps = steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
+        spectrometer_position.append(triax_actual_steps)
+        spectrometer_adjustment.append(triax_actual_steps)
+    # breakpoint()
+
+    print(spectrometer_position)
+    print(spectrometer_adjustment)
+    # breakpoint()
+
+
+    # for x in range(len(sorted_data[:, 8])):
+    #     wavelength = wavelength_axis[x]
+    #     spectrometer_steps = sorted_data[x, 8]
+    #     pixel_number = sorted_data[x, 9]
+    #     wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel_number)
+    #     triax_steps_to_shift_lambda = spectrometer_steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
+    #     spectrometer_position.append(triax_steps_to_shift_lambda)
+
+    # breakpoint()
+    plt.plot(wavelength_axis, spectrometer_position, label='Triax Steps vs Wavelength')
+    plt.title('Triax Steps vs Wavelength')
+    plt.show()
     
     new_data_array = np.column_stack((wavelength_axis, data_l1, data_l2, data_g1, data_g2))
 
@@ -281,11 +329,37 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
     calibrations['wavelength_laser'] = wavelength_cal_laser.tolist()
     calibrations['wavelength_grating'] = wavelength_cal_grating.tolist()
 
+    steps_cal_laser = np.polyfit(data_l1, wavelength_axis, 2)
+    steps_cal_grating = np.polyfit(data_g1, wavelength_axis, 1)
+    p_steps_laser = np.poly1d(steps_cal_laser)
+    p_steps_grating = np.poly1d(steps_cal_grating)
+
+    fig, ax = plt.subplots(4,1)
+    ax[0].scatter(data_l1, wavelength_axis, label='Lambda L1')
+    ax[1].scatter(data_g1, wavelength_axis, label='Lambda G1')
+    ax[0].plot(data_l1, p_steps_laser(data_l1), label='Lambda L1 fit', color='tab:purple')
+    ax[1].plot(data_g1, p_steps_grating(data_g1), label='Lambda G1 fit', color='tab:purple')
+    ax[0].set_title('back calibrate stepts to wavelength')
+    residual_laser = wavelength_axis - p_steps_laser(data_l1)
+    residual_grating = wavelength_axis - p_steps_grating(data_g1)
+    ax[2].plot(data_l1, residual_laser, label='Lambda L1 residuals', marker='o')
+    ax[3].plot(data_g1, residual_grating, label='Lambda G1 residuals', marker='o')
+    # ax[0].set_title()
+    ax[0].legend()
+    ax[1].legend()
+    ax[2].legend()
+    ax[3].legend()
+    plt.show()
+
+    calibrations['steps_laser'] = steps_cal_laser.tolist()
+    calibrations['steps_grating'] = steps_cal_grating.tolist()
+
+    print(f'steps_laser fit: {steps_cal_laser}')
+    print(f'steps_grating fit: {steps_cal_grating}')
     print(f'wavelength_laser fit: {wavelength_cal_laser}')
     print(f'wavelength_grating fit: {wavelength_cal_grating}')
 
-    breakpoint()
-    triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 1)
+    triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 2)
     p_triax_steps = np.poly1d(triax_steps)
     fig, ax = plt.subplots(2, 1)
     ax[0].scatter(wavelength_axis, spectrometer_position, label='Triax Steps')

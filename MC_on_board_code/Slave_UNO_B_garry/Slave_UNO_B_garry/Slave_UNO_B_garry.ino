@@ -79,6 +79,34 @@ void receiveEvent(int howMany) {
     testFlag = "2";
     response = "Test mode activated";
   } 
+  else if (command.startsWith("setpos")) {
+    String newPositions = command.substring(6);
+    char str[newPositions.length() + 1];
+    newPositions.toCharArray(str, newPositions.length() + 1);
+
+    int pos1, pos2, pos3, pos4;
+
+    // Pointer to hold each part after splitting
+    char *token;
+
+    // Split the string by ',' and process each token
+    // Split the string by ',' and process each token
+    token = strtok(str, ",");
+    if (token != NULL) pos1 = atoi(token); // Assign first value to pos1
+    token = strtok(NULL, ",");
+    if (token != NULL) pos2 = atoi(token); // Assign second value to pos2
+    token = strtok(NULL, ",");
+    if (token != NULL) pos3 = atoi(token); // Assign third value to pos3
+    token = strtok(NULL, ",");
+    if (token != NULL) pos4 = atoi(token); // Assign fourth value to pos4
+    // response = token;
+    //Serial.println("newPosition");
+
+    stepperX.setCurrentPosition(pos1);
+    stepperY.setCurrentPosition(pos2);
+    
+    response = "S0";
+  }
   else if (command == "status") {
     response = identifier;
   } 

@@ -313,7 +313,7 @@ there will be homing motors that the monochromator should.'''
 
 class Microscope:
 
-    calibration_backup = {"laser": [-0.42078367938194094, 13.182099307902691], "grating": [1.0370034283344927, 10.925199912128772], "wavelength_laser": [-0.013186836473750425, -41.70675588176, 41979.647251902534], "wavelength_grating": [9.14706131106529, -7363.889052419929], "steps_laser": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "steps_grating": [0.10924618909058334, 805.0765596939007], "triax_steps": [517.0135871419345, -32648.41660404592]}
+    calibration_backup = {"wl_triax_steps": [0.10804683994803718, 331.8588098129754, 43950.89354704326], "triax_steps_wl": [-8.032233265071597e-10, 0.002589893546654974, -65.392713732836], "laser": [-0.42078367938194094, 13.182099307902691], "grating": [1.0370034283344927, 10.925199912128772], "wavelength_laser": [-0.013186836473750425, -41.70675588176, 41979.647251902534], "wavelength_grating": [9.14706131106529, -7363.889052419929], "steps_laser": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "steps_grating": [0.10924618909058334, 805.0765596939007]}
 
     def __init__(self, debug_skip=[], unoCOM='COM8'):
 
@@ -337,7 +337,8 @@ class Microscope:
         self.cal_wavelength_to_grating_steps = np.poly1d(self.calibrations['wavelength_grating'])
         self.cal_laser_steps_to_wavelength = np.poly1d(self.calibrations['steps_laser'])
         self.cal_grating_steps_to_wavelength = np.poly1d(self.calibrations['steps_grating'])
-        self.cal_triax_steps = np.poly1d(self.calibrations['triax_steps'])
+        self.cal_wavelength_to_triax_steps = np.poly1d(self.calibrations['wl_triax_steps'])
+        self.cal_triax_steps_to_wavelength = np.poly1d(self.calibrations['triax_steps_wl'])
 
         self.scan_min = -1000
         self.scan_max = 1000
@@ -359,7 +360,8 @@ class Microscope:
             'sd': self.go_to_grating_wavelength,
             'shift': self.go_to_grating_wavelength,
             'wai': self.get_all_current_positions,
-            'reference': self.reference_calibration
+            'reference': self.reference_calibration,
+            # 'setpos': self.set_absolute_positions
         }
         
         
@@ -385,7 +387,7 @@ class Microscope:
             'ccd': 'f0',
             'apd_mode': 'e0',
             'apd': 'e0',
-            'gotoir': 'F0,375131'
+            # 'gotoir': 'F0,375131'
             #'entrance mirror to front enterance': 'c0',
             #'entrance mirror to side enterance': 'd0'
         }
@@ -425,6 +427,8 @@ class Microscope:
             'g2': 'BY',
             'l1' : 'AX',
             'l2' : 'AY',
+            'setposa': 'Asetpos',
+            'setposb' : 'Bsetpos',
 
             'getposa': 'Apos',
             'gpa' : 'Apos',
@@ -610,9 +614,49 @@ class Microscope:
 
         print('Grating detection at {}'.format(wavelength))
 
-    def reference_calibration(self, steps, pixels):
+    def reference_calibration(self, steps):
         '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
+        # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
+        # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
+        true_wavelength = self.cal_triax_steps_to_wavelength(float(steps))
+        print('True wavelength: {}. Moving motors to true wavelength'.format(true_wavelength))
+        
+        # Set 
+        l1_target = round(self.cal_wavelength_to_laser_steps(true_wavelength))
+        l2_target = round(self.cal_laser1_to_laser2(l1_target))
+        g1_target = round(self.cal_wavelength_to_grating_steps(true_wavelength))
+        g2_target = round(self.cal_grating1_to_grating2(g1_target))
 
+        self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
+
+        laser_pos = self.get_laser_motor_positions()
+        grating_pos = self.get_grating_motor_positions()
+
+        if l1_target == laser_pos[0] and l2_target == laser_pos[1]:
+            print('Laser motors successfully calibrated')
+        else:
+            print('Error calibrating laser motors')
+            print('Expected: {}, {}'.format(l1_target, l2_target))
+            print('Actual: {}, {}'.format(laser_pos[0], laser_pos[1]))
+        
+        if g1_target == grating_pos[0] and g2_target == grating_pos[1]:
+            print('Grating motors successfully calibrated')
+        else:
+            print('Error calibrating grating motors')
+            print('Expected: {}, {}'.format(g1_target, g2_target))
+            print('Actual: {}, {}'.format(grating_pos[0], grating_pos[1]))
+
+
+    def set_absolute_positions_A(self, positions):
+        # command = 'o{}o'.format(self.tuning_motor_dict['setposA'], positions)
+        print("Setting absolute positions A: {}".format(positions))
+        response = self.process_coms('setposA {}'.format(positions))
+    
+    def set_absolute_positions_B(self, positions):
+        print("Setting absolute positions B: {}".format(positions))
+        # command = 'o{}o'.format(self.tuning_motor_dict['setposA'], positions)
+        response = self.process_coms('setposB {}'.format(positions))
 
 
     def set_acquisition_time(self, acq_time):

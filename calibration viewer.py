@@ -236,8 +236,9 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
     # ax[0].legend()
     # ax[1].legend()
     # plt.show()
+    def calculate_triax_steps(sorted_data, wavelength_axis, calib_dict,):
+        '''calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
 
-    def wavelength_to_triax(sorted_data, wavelength_axis, calib_dict, show=True):
         spectrometer_position = []
         # spectrometer_adjustment = []
 
@@ -252,28 +253,52 @@ def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration,
             print(pixel, triax_steps_to_shift, steps, wavelength)
             triax_actual_steps = steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
             spectrometer_position.append(triax_actual_steps)
-            # spectrometer_adjustment.append(triax_actual_steps)
-            # plt.plot(wavelength_axis, spectrometer_position, label='Triax Steps vs Wavelength')
-            # plt.title('Triax Steps vs Wavelength')
-            # plt.show()
+
+        return spectrometer_position
+    
+
+    spectrometer_position = calculate_triax_steps(sorted_data, wavelength_axis, calib_dict)
+
+    def wavelength_to_triax(spectrometer_position, wavelength_axis, show=True):
 
         triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 2)
         p_triax_steps = np.poly1d(triax_steps)
-        fig, ax = plt.subplots(2, 1)
-        ax[0].scatter(wavelength_axis, spectrometer_position, label='Triax Steps')
-        ax[0].plot(wavelength_axis, p_triax_steps(wavelength_axis), label='Triax Steps fit', color='tab:purple')
-        residuals = spectrometer_position - p_triax_steps(wavelength_axis)
-        ax[1].plot(wavelength_axis, residuals, label='Triax Steps residuals', marker='o')
-        ax[0].legend()
-        ax[1].legend()
         if show is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(wavelength_axis, spectrometer_position, label='Triax Steps')
+            ax[0].plot(wavelength_axis, p_triax_steps(wavelength_axis), label='Triax Steps fit', color='tab:purple')
+            residuals = spectrometer_position - p_triax_steps(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='Triax Steps residuals', marker='o')
+            ax[0].legend()
+            ax[1].legend()
             plt.show()
 
         return triax_steps
     
-    triax_steps = wavelength_to_triax(sorted_data, wavelength_axis, calib_dict, show=False)
+    triax_steps = wavelength_to_triax(spectrometer_position, wavelength_axis, show=False)
     calibrations['wl_triax_steps'] = triax_steps.tolist()
+
+    def triax_steps_to_wavelength(spectrometer_position, wavelength_axis, show=True):
+
+        steps_to_wavelength = np.polyfit(spectrometer_position, wavelength_axis, 2)
+        p_steps_to_wavelength = np.poly1d(steps_to_wavelength)
+
+        if show is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(spectrometer_position, wavelength_axis, label='Triax Steps')
+            ax[0].plot(spectrometer_position, p_steps_to_wavelength(spectrometer_position), label='Triax Steps fit', color='tab:purple')
+            residuals = wavelength_axis - p_steps_to_wavelength(spectrometer_position)
+            ax[1].plot(spectrometer_position, residuals, label='Triax Steps residuals', marker='o')
+            ax[0].legend()
+            ax[1].legend()
+            ax[0].set_title('Triax Steps to Wavelength')
+            plt.show()
+
+        return steps_to_wavelength
     
+    triax_steps = triax_steps_to_wavelength(spectrometer_position, wavelength_axis, show=True)
+    calibrations['triax_steps_wl'] = triax_steps.tolist()
+        
     new_data_array = np.column_stack((wavelength_axis, data_l1, data_l2, data_g1, data_g2))
 
     fit_coeff_laser = np.polyfit(data_l1, data_l2, 1)

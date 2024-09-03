@@ -107,6 +107,25 @@ void receiveEvent(int howMany) {
     
     response = "S0";
   }
+  else if (command == "isrun") {
+    if (stepperX.isRunning() == true) {
+      response = "R1";
+    }
+    else if (stepperY.isRunning() == true) {
+      response = "R1";
+    }
+    else if (stepperZ.isRunning() == true) {
+      response = "R1";
+    }
+    else if (stepperA.isRunning() == true) {
+      response = "R1";
+    }
+
+    else {
+      response = "S0";
+    
+    }
+  }
   else if (command == "status") {
     response = identifier;
   } 

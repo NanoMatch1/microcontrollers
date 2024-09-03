@@ -79,6 +79,24 @@ void receiveEvent(int howMany) {
     testFlag = "2";
     response = "Test mode activated";
   } 
+  else if (command == "isrun") {
+    if (stepperX.isRunning() == true) {
+      response = "R1";
+    }
+    else if (stepperY.isRunning() == true) {
+      response = "R1";
+    }
+    else if (stepperZ.isRunning() == true) {
+      response = "R1";
+    }
+    else if (stepperA.isRunning() == true) {
+      response = "R1";
+    }
+
+    else {
+      response = "S0";
+    }
+  }
   else if (command.startsWith("setpos")) {
     String newPositions = command.substring(6);
     char str[newPositions.length() + 1];

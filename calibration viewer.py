@@ -131,7 +131,7 @@ class Calibration:
         self.calibration_metrics = {}
         self.calibrations = {}
 
-        wavelength_cal = self.initial_wavelength_calibration(show=False)
+        wavelength_cal = self.wavelength_to_l1_calibration(show=False)
 
     def load_calibration_file(self):
         file = self.files[0]
@@ -162,14 +162,16 @@ class Calibration:
 
         return FitMetrics(r2, rmse_val, mae_val, res_std)
 
-
-    def initial_wavelength_calibration(self, show=False):
+    def wavelength_to_l1_calibration(self, show=False):
 
         fig, ax = plt.subplots(2,1)
 
         wavelength_data = self.load_calibration_file()
         wavelength, l1_steps = wavelength_data[:, 0], wavelength_data[:, 1]
 
+        # store wavelength data for later calibrations
+        self.wavelength_axis = wavelength
+        
         coeff_wl_to_l1 = np.polyfit(wavelength, l1_steps, 2)
         p_l1_steps = np.poly1d(coeff_wl_to_l1)
 
@@ -192,6 +194,7 @@ class Calibration:
             plt.show()
 
         self.calibration_metrics['wl_to_l1'] = fit_metrics
+        self.calibrations['wl_to_l1'] = coeff_wl_to_l1.tolist()
 
         return coeff_wl_to_l1
 

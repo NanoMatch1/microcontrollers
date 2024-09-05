@@ -204,7 +204,7 @@ def process_eept(eept_file, plot_rows=[0,1,4,5]):
         # print(f'fit: {fit_scalars}')
         # return fit_scalars
 
-def run_moror_calibration(headers, cal_data, calib_dict, wavelength_calibration, show=True):
+def run_motor_calibration(headers, cal_data, calib_dict, wavelength_calibration, show=True):
     # cal_data = process_eept(eept_file)
     # calibration_modes = [('L1', 'L2'), ('G1', 'G2'), ('Lx', 'Gx')]
     # print(wavelength_calibration)
@@ -418,7 +418,7 @@ if __name__ == '__main__':
 
     # breakpoint()
     headers, cal_data = process_eept(eept_file)
-    calibrations = run_moror_calibration(headers, cal_data, calib_dict, wavelength_cal, show=True)
+    calibrations = run_motor_calibration(headers, cal_data, calib_dict, wavelength_cal, show=True)
     # save calibration data as json
 
     with open(os.path.join(os.path.dirname(__file__), 'calibrations.json'), 'w') as f:

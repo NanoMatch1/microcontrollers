@@ -521,79 +521,94 @@ class Microscope:
     def current_laser_wavelength(self):
         return self.calculate_laser_position()
 
-    def simple_calibration_shift(self): # TODO: Change these to use @property decorators and setters and getters
-        '''used to shift the current calibration to some measured reference point. Use when aligned through the pinhole and into the spectrograph, so as to synchronise all motors simultaneously to one point.'''
-        self.current_wavelength = self.calculate_laser_position()
+#     def simple_calibration_shift(self): # TODO: Change these to use @property decorators and setters and getters
+#         '''used to shift the current calibration to some measured reference point. Use when aligned through the pinhole and into the spectrograph, so as to synchronise all motors simultaneously to one point.'''
+#         self.current_wavelength = self.calculate_laser_position()
 
-        self.laser_motor_positions = MotorPositions(*self.get_laser_motor_positions())
-        self.grating_motor_positions = MotorPositions(*self.get_grating_motor_positions())
+#         self.laser_motor_positions = MotorPositions(*self.get_laser_motor_positions())
+#         self.grating_motor_positions = MotorPositions(*self.get_grating_motor_positions())
 
-        # breakpoint()
+#         # breakpoint()
 
 
-        expected_l1 = round(self.cal_wavelength_to_laser_steps(self.current_laser_wavelength))
-        actual_l1 = self.laser_motor_positions.x
-        expected_l2 = round(self.cal_laser1_to_laser2(expected_l1))
-        actual_l2 = self.laser_motor_positions.y
+#         expected_l1 = round(self.cal_wavelength_to_laser_steps(self.current_laser_wavelength))
+#         actual_l1 = self.laser_motor_positions.x
+#         expected_l2 = round(self.cal_laser1_to_laser2(expected_l1))
+#         actual_l2 = self.laser_motor_positions.y
 
-        expected_g1 = round(self.cal_wavelength_to_grating_steps(self.current_laser_wavelength))
-        actual_g1 = self.grating_motor_positions.x
-        expected_g2 = round(self.cal_grating1_to_grating2(expected_g1))
-        actual_g2 = self.grating_motor_positions.y
-        # print("l1 target: {}".format(l1_target))
+#         expected_g1 = round(self.cal_wavelength_to_grating_steps(self.current_laser_wavelength))
+#         actual_g1 = self.grating_motor_positions.x
+#         expected_g2 = round(self.cal_grating1_to_grating2(expected_g1))
+#         actual_g2 = self.grating_motor_positions.y
+#         # print("l1 target: {}".format(l1_target))
 
-        diff_l1 = expected_l1 - actual_l1
-        diff_l2 = expected_l2 - actual_l2
-        diff_g1 = expected_g1 - actual_g1
-        diff_g2 = expected_g2 - actual_g2
+#         diff_l1 = expected_l1 - actual_l1
+#         diff_l2 = expected_l2 - actual_l2
+#         diff_g1 = expected_g1 - actual_g1
+#         diff_g2 = expected_g2 - actual_g2
 
-        # print('Laser motor 1: Expected: {}, Actual: {}, Difference: {}'.format(expected_l1, actual_l1, diff_l))
-        print('Laser motor 2: Expected: {}, Actual: {}, Difference: {}'.format(expected_l2, actual_l2, diff_l2))
-        print('Grating motor 1: Expected: {}, Actual: {}, Difference: {}'.format(expected_g1, actual_g1, diff_g1))
-        print('Grating motor 2: Expected: {}, Actual: {}, Difference: {}'.format(expected_g2, actual_g2, diff_g2))
-        breakpoint()
-        # Skip cal_wavelength_to_laser_steps because the laser frequency is the reference
-        # print(self.cal_laser1_to_laser2)
-        print(self.calibrations['laser'])
+#         # print('Laser motor 1: Expected: {}, Actual: {}, Difference: {}'.format(expected_l1, actual_l1, diff_l))
+#         print('Laser motor 2: Expected: {}, Actual: {}, Difference: {}'.format(expected_l2, actual_l2, diff_l2))
+#         print('Grating motor 1: Expected: {}, Actual: {}, Difference: {}'.format(expected_g1, actual_g1, diff_g1))
+#         print('Grating motor 2: Expected: {}, Actual: {}, Difference: {}'.format(expected_g2, actual_g2, diff_g2))
+#         breakpoint()
+#         # Skip cal_wavelength_to_laser_steps because the laser frequency is the reference
+#         # print(self.cal_laser1_to_laser2)
+#         print(self.calibrations['laser'])
 
-        # new_cal_file = np.poly1d()
+#         # new_cal_file = np.poly1d()
 
-#         Current laser pos: [1.0, 13.0, 0.0, 0.0]
-# Laser motor 1: Expected: 2, Actual: 1.0, Difference: 1.0
-# Laser motor 2: Expected: 12, Actual: 13.0, Difference: -1.0
-# Grating motor 1: Expected: -21, Actual: -23.0, Difference: 2.0
-# Grating motor 2: Expected: -11, Actual: 35.0, Difference: -46.0
+# #         Current laser pos: [1.0, 13.0, 0.0, 0.0]
+# # Laser motor 1: Expected: 2, Actual: 1.0, Difference: 1.0
+# # Laser motor 2: Expected: 12, Actual: 13.0, Difference: -1.0
+# # Grating motor 1: Expected: -21, Actual: -23.0, Difference: 2.0
+# # Grating motor 2: Expected: -11, Actual: 35.0, Difference: -46.0
 
-# Current laser pos: [1.0, 13.0, 0.0, 0.0]
+# # Current laser pos: [1.0, 13.0, 0.0, 0.0]
+# # entered turning dict
+# # UI>UNO:oBposo
+# # UNO>B:pos
+# # <PX-23,Y35,Z0,A0P>
+# # UI<UNO<B:<PX-23,Y35,Z0,A0P>
+# # Current grating pos: [-23.0, 35.0, 0.0, 0.0]
+# # Current laser wavelength: 802.7494779639835
+# # Current grating wavelength: 802.5638973448173
+
+#         laser_cal = self.calibrations['laser']
+#         laser_cal[1] = laser_cal[1] + diff_l2
+#         # self.calibrations['laser'] = laser_cal
+
+
+#         wl_grating = self.calibrations['wavelength_grating']
+#         wl_grating[1] = wl_grating[1] + diff_g1
+#         self.calibrations['wavelength_grating'] = wl_grating
+
+
+#         grating_cal = self.calibrations['grating']
+#         grating_cal[1] = grating_cal[1] + diff_g2
+#         self.calibrations['grating'] = grating_cal
+
+#         # self.
+
+#         breakpoint()
+
+    def simple_calibration_shift(self):
+        current_laser_pos = self.get_laser_motor_positions()
+        current_wavelength = self.calculate_laser_position(current_laser_pos)
+
+        pass
+
+#     Current laser pos: [1.0, 13.0, 0.0, 0.0]
 # entered turning dict
 # UI>UNO:oBposo
 # UNO>B:pos
-# <PX-23,Y35,Z0,A0P>
-# UI<UNO<B:<PX-23,Y35,Z0,A0P>
-# Current grating pos: [-23.0, 35.0, 0.0, 0.0]
+# <PX9,Y47,Z0,A0P>
+# UI<UNO<B:<PX9,Y47,Z0,A0P>
+# Current grating pos: [9.0, 47.0, 0.0, 0.0]
 # Current laser wavelength: 802.7494779639835
-# Current grating wavelength: 802.5638973448173
+# Current grating wavelength: 806.0597753957159
+# Enter command:
 
-        laser_cal = self.calibrations['laser']
-        laser_cal[1] = laser_cal[1] + diff_l2
-        # self.calibrations['laser'] = laser_cal
-
-
-        wl_grating = self.calibrations['wavelength_grating']
-        wl_grating[1] = wl_grating[1] + diff_g1
-        self.calibrations['wavelength_grating'] = wl_grating
-
-
-        grating_cal = self.calibrations['grating']
-        grating_cal[1] = grating_cal[1] + diff_g2
-        self.calibrations['grating'] = grating_cal
-
-        self.
-
-        breakpoint()
-
-
-        
 
 
     def extract_coms_message(self, message):

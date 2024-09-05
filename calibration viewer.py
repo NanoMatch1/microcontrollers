@@ -79,16 +79,7 @@ calibration_records = {
 # -0.002062 nm/step triax
 
 
-calib_dict = {
-    'pixels_per_laser_step': -194/200,
-    'nm_per_laser_step': -0.01635,
-    'nm_per_pixel': -0.01635/-0.97, #0.0168557
 
-    # 'nm_per_pixel': -6.32/400, # retrieved from recent calibration sweep
-    # nm_per_step = 0
-    'triax_steps': 375000,
-    'nm_per_triax_step': -0.002062
-}
 
 laser_calibration = {}
 
@@ -122,6 +113,17 @@ class FitMetrics:
 
 class Calibration:
 
+    calib_dict = {
+    'pixels_per_laser_step': -194/200,
+    'nm_per_laser_step': -0.01635,
+    'nm_per_pixel': -0.01635/-0.97, #0.0168557
+
+    # 'nm_per_pixel': -6.32/400, # retrieved from recent calibration sweep
+    # nm_per_step = 0
+    'triax_steps': 375000,
+    'nm_per_triax_step': -0.002062
+    }
+
     def __init__(self, showplots=False):
         # self.data = data
         self.dataDir = os.path.join(os.path.dirname(__file__), 'laser_calibration')
@@ -151,56 +153,9 @@ class Calibration:
         wavelength_data = np.array(data_set_1).astype(float)
         return wavelength_data
     
-
-    def calculate_fit_metrics(self, actual, model):
-        # Fit quality metrics
-        r2 = r_squared(actual, model)
-        rmse_val = rmse(actual, model)
-        mae_val = mae(actual, model)
-        residuals = actual - model
-        res_std = residual_std(residuals)
-
-        return FitMetrics(r2, rmse_val, mae_val, res_std)
-
-    def wavelength_to_l1_calibration(self, show=False):
-
-        fig, ax = plt.subplots(2,1)
-
-        wavelength_data = self.load_calibration_file()
-        wavelength, l1_steps = wavelength_data[:, 0], wavelength_data[:, 1]
-
-        # store wavelength data for later calibrations
-        self.wavelength_axis = wavelength
-        
-        coeff_wl_to_l1 = np.polyfit(wavelength, l1_steps, 2)
-        p_l1_steps = np.poly1d(coeff_wl_to_l1)
-
-        y_pred = p_l1_steps(wavelength)
-        residuals = l1_steps - y_pred
-        residuals_scaled = (residuals/abs(l1_steps[0]-l1_steps[1])) * 100
-
-        # Fit quality metrics
-        fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
-
-        if show is True or self.showplots is True:
-            ax[0].scatter(wavelength, l1_steps, label='l1 steps')
-            ax[0].plot(wavelength, p_l1_steps(wavelength), label='wl to l1 fit', color='tab:purple')
-            ax[1].plot(wavelength, residuals_scaled, label='residuals', marker='o')
-            ax[1].set_ylabel('% of $\Delta_{steps}$')
-            ax[1].set_xlabel('Wavelength (nm)')
-            ax[0].set_title('Wavelength to L1 Steps')
-            ax[0].legend()
-            ax[1].legend()
-            plt.show()
-
-        self.calibration_metrics['wl_to_l1'] = fit_metrics
-        self.calibrations['wl_to_l1'] = coeff_wl_to_l1.tolist()
-
-        return coeff_wl_to_l1
-
-    def process_eept(self, eept_file, plot_rows=[0,1,4,5]):
+    def load_eept_file(self, plot_rows=[0,1,4,5]):
         cal_data = np.array(["L1", "L2", "NIU", "NIU", "G1", "G2", "NIU", "NIU", "triax_steps", "pixels"])
-        with open(eept_file, 'r') as f:
+        with open(self.eept_file, 'r') as f:
             lines = f.readlines()
 
             for line in lines:
@@ -237,249 +192,290 @@ class Calibration:
 
         return headers, cal_data
 
-
-def run_motor_calibration(headers, cal_data, calib_dict, wavelength_calibration, show=True):
-
-    calibrations = {}
-    report_dict = {}
-
-
-    fig, ax = plt.subplots(3,1)
-
-    sorted_data = cal_data[np.argsort(cal_data[:, 0])]
-    # breakpoint()
-    data_l1 = sorted_data[:, 0]
-    data_l2 = sorted_data[:, 1]
-    data_g1 = sorted_data[:, 4]
-    data_g2 = sorted_data[:, 5]
-
-    nm_per_laser_steps = np.poly1d(wavelength_calibration[1])
-    wavelength_axis = nm_per_laser_steps(data_l1)
-
-
-    def calculate_triax_steps(sorted_data, wavelength_axis, calib_dict,):
-        '''Perparatory calculation. Calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
-
-        spectrometer_position = []
-        # spectrometer_adjustment = []
-
-        spectrometer_steps = sorted_data[:, 8]
-        pixel_number = sorted_data[:, 9]
-
-        for idx, steps in enumerate(spectrometer_steps):
-            wavelength = wavelength_axis[idx]
-            pixel = pixel_number[idx]
-            wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel)
-            triax_steps_to_shift = wavelength_from_50/calib_dict['nm_per_triax_step']
-            print(pixel, triax_steps_to_shift, steps, wavelength)
-            triax_actual_steps = steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
-            spectrometer_position.append(triax_actual_steps)
-
-        return spectrometer_position
-    
-
-    spectrometer_position = calculate_triax_steps(sorted_data, wavelength_axis, calib_dict)
-
-    def wavelength_to_triax(spectrometer_position, wavelength_axis, show=True):
-        '''Calibration for using laser wavelength to calculate spectrometer position in TRIAX steps. '''
-        
-        triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 2)
-        p_triax_steps = np.poly1d(triax_steps)
-        
-        y_pred = p_triax_steps(wavelength_axis)
-        residuals = spectrometer_position - y_pred
-
+    def calculate_fit_metrics(self, actual, model):
         # Fit quality metrics
-        r2 = r_squared(spectrometer_position, y_pred)
-        rmse_val = rmse(spectrometer_position, y_pred)
-        mae_val = mae(spectrometer_position, y_pred)
+        r2 = r_squared(actual, model)
+        rmse_val = rmse(actual, model)
+        mae_val = mae(actual, model)
+        residuals = actual - model
         res_std = residual_std(residuals)
 
-        if show is True:
-            fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(wavelength_axis, spectrometer_position, label='Triax Steps')
-            ax[0].plot(wavelength_axis, y_pred, label=f'Triax Steps fit (R2={r2:.8f})', color='tab:purple')
-            ax[1].plot(wavelength_axis, residuals, label='Triax Steps residuals', marker='o')
-            ax[0].set_title('Wavelength to Triax Steps')
-            ax[0].legend()
-            ax[1].legend()
-            plt.show()
+        return FitMetrics(r2, rmse_val, mae_val, res_std)
 
-        print(f"R2: {r2:.4f}, RMSE: {rmse_val:.4f}, MAE: {mae_val:.4f}, Residual Std: {res_std:.4f}")
+    def wavelength_to_l1_calibration(self, show=False):
 
-        return triax_steps
+        fig, ax = plt.subplots(2,1)
 
-    # Use the updated function
-    triax_steps = wavelength_to_triax(spectrometer_position, wavelength_axis, show=True)
-    calibrations['wl_triax_steps'] = triax_steps.tolist()
+        wavelength_data = self.load_calibration_file()
+        wavelength, l1_steps = wavelength_data[:, 0], wavelength_data[:, 1]
 
+        # store wavelength data for later calibrations
+        self.wavelength_axis = wavelength
 
-    def triax_steps_to_wavelength(spectrometer_position, wavelength_axis, show=True):
-        '''Reverse calibration for calculating laser wavelength from spectrometer position in TRIAX steps.'''
+        coeff_wl_to_l1 = np.polyfit(wavelength, l1_steps, 2)
+        p_l1_steps = np.poly1d(coeff_wl_to_l1)
 
-        steps_to_wavelength = np.polyfit(spectrometer_position, wavelength_axis, 2)
-        p_steps_to_wavelength = np.poly1d(steps_to_wavelength)
-
-        y_pred = p_steps_to_wavelength(spectrometer_position)
-        residuals = wavelength_axis - y_pred
-        residuals_scaled = (residuals/wavelength_axis) * 100
+        y_pred = p_l1_steps(wavelength)
+        residuals = l1_steps - y_pred
+        residuals_scaled = (residuals/abs(l1_steps[0]-l1_steps[1])) * 100
 
         # Fit quality metrics
-        r2 = r_squared(wavelength_axis, y_pred)
-        rmse_val = rmse(wavelength_axis, y_pred)
-        mae_val = mae(wavelength_axis, y_pred)
-        res_std = residual_std(residuals)
+        fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
 
-
-        if show is True:
-            fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(spectrometer_position, wavelength_axis, label='Wavelength')
-            ax[0].plot(spectrometer_position, y_pred, label=f'Wavelength fit (R2={r2:.8f})', color='tab:purple')
-            ax[1].plot(spectrometer_position, residuals, label='Wavelength residuals', marker='o')
-            ax[0].set_title('Triax Steps to Wavelength')
-            ax[0].legend()
-            ax[1].legend()
-
-            print(f"R2: {r2:.4f}, RMSE: {rmse_val:.4f}, MAE: {mae_val:.4f}, Residual Std: {res_std:.4f}")
-
-            plt.show()
-
-        report_dict['triax_steps_to_wavelength'] = {
-            'residuals': residuals_scaled,
-            'r2': r2,
-            'rmse': rmse_val,
-            'mae': mae_val,
-            'res_std': res_std
-            }
-        return steps_to_wavelength
-    
-    triax_steps = triax_steps_to_wavelength(spectrometer_position, wavelength_axis, show=True)
-    calibrations['triax_steps_wl'] = triax_steps.tolist()
-        
-    new_data_array = np.column_stack((wavelength_axis, data_l1, data_l2, data_g1, data_g2))
-    
-    def wavelength_to_l1(new_data_array, show=True):
-        '''Calibration for using laser wavelength to calculate L1 steps. Redundant if using fits from initial wavelength calibration.'''
-
-        fit_coeff_wavelength_to_l1 = np.polyfit(new_data_array[:, 0], new_data_array[:, 1], 2)
-        p_wavelength_to_l1 = np.poly1d(fit_coeff_wavelength_to_l1)
-
-        if show is True:
-            fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(new_data_array[:, 0], new_data_array[:, 1], label='L1 Steps')
-            ax[0].plot(new_data_array[:, 0], p_wavelength_to_l1(new_data_array[:, 0]), label='L1 Steps fit', color='tab:purple')
-            residuals = new_data_array[:, 1] - p_wavelength_to_l1(new_data_array[:, 0])
-            ax[1].plot(new_data_array[:, 0], residuals, label='L1 Steps residuals', marker='o')
+        if show is True or self.showplots is True:
+            ax[0].scatter(wavelength, l1_steps, label='l1 steps')
+            ax[0].plot(wavelength, p_l1_steps(wavelength), label='wl to l1 fit', color='tab:purple')
+            ax[1].plot(wavelength, residuals_scaled, label='residuals', marker='o')
+            ax[1].set_ylabel('% of $\Delta_{steps}$')
+            ax[1].set_xlabel('Wavelength (nm)')
             ax[0].set_title('Wavelength to L1 Steps')
             ax[0].legend()
             ax[1].legend()
             plt.show()
 
-        return fit_coeff_laser
-    
-    fit_coeff_laser = wavelength_to_l1(new_data_array)
+        self.calibration_metrics['wl_to_l1'] = fit_metrics
+        self.calibrations['wl_to_l1'] = coeff_wl_to_l1.tolist()
+
+        return coeff_wl_to_l1
+
+    def run_motor_calibration(self, calib_dict, show=False):
+
+        calibrations = {}
+        report_dict = {}
+
+        headers, cal_data = self.load_eept_file()
+
+        fig, ax = plt.subplots(3,1)
+
+        sorted_data = cal_data[np.argsort(cal_data[:, 0])]
+        # breakpoint()
+        data_l1 = sorted_data[:, 0]
+        data_l2 = sorted_data[:, 1]
+        data_g1 = sorted_data[:, 4]
+        data_g2 = sorted_data[:, 5]
+
+
+        def calculate_triax_steps(sorted_data, wavelength_axis, calib_dict):
+            '''Perparatory calculation. Calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
+
+            spectrometer_position = []
+
+            spectrometer_steps = sorted_data[:, 8]
+            pixel_number = sorted_data[:, 9]
+
+            for idx, steps in enumerate(spectrometer_steps):
+                wavelength = wavelength_axis[idx]
+                pixel = pixel_number[idx]
+                wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel)
+                triax_steps_to_shift = wavelength_from_50/calib_dict['nm_per_triax_step']
+                print(pixel, triax_steps_to_shift, steps, wavelength)
+                triax_actual_steps = steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
+                spectrometer_position.append(triax_actual_steps)
+
+            return spectrometer_position
+
+        spectrometer_position = calculate_triax_steps(sorted_data, self.wavelength_axis, Calibration.calib_dict)
+
+        def wavelength_to_triax(spectrometer_position, wavelength_axis, show=True):
+            '''Calibration for using laser wavelength to calculate spectrometer position in TRIAX steps. '''
+            
+            triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 2)
+            p_triax_steps = np.poly1d(triax_steps)
+            
+            y_pred = p_triax_steps(wavelength_axis)
+            residuals = spectrometer_position - y_pred
+
+            # Fit quality metrics
+            fit_metrics = self.calculate_fit_metrics(spectrometer_position, y_pred)
+
+            if show is True:
+                fig, ax = plt.subplots(2, 1)
+                ax[0].scatter(wavelength_axis, spectrometer_position, label='Triax Steps')
+                ax[0].plot(wavelength_axis, y_pred, label=f'Triax Steps fit (R2={r2:.8f})', color='tab:purple')
+                ax[1].plot(wavelength_axis, residuals, label='Triax Steps residuals', marker='o')
+                ax[0].set_title('Wavelength to Triax Steps')
+                ax[0].legend()
+                ax[1].legend()
+                plt.show()
+
+            return triax_steps, fit_metrics
+
+        # Use the updated function
+        triax_steps, fm1 = wavelength_to_triax(spectrometer_position, self.wavelength_axis, show=True)
+        self.calibration_metrics['wl_to_triax_steps'] = fm1
+        self.calibrations['wl_to_triax_steps'] = triax_steps.tolist()
+
+
+        def triax_steps_to_wavelength(spectrometer_position, wavelength_axis, show=True):
+            '''Reverse calibration for calculating laser wavelength from spectrometer position in TRIAX steps.'''
+
+            steps_to_wavelength = np.polyfit(spectrometer_position, wavelength_axis, 2)
+            p_steps_to_wavelength = np.poly1d(steps_to_wavelength)
+
+            y_pred = p_steps_to_wavelength(spectrometer_position)
+            residuals = wavelength_axis - y_pred
+            residuals_scaled = (residuals/wavelength_axis) * 100
+
+            # Fit quality metrics
+            fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
+
+            if show is True:
+                fig, ax = plt.subplots(2, 1)
+                ax[0].scatter(spectrometer_position, wavelength_axis, label='Wavelength')
+                ax[0].plot(spectrometer_position, y_pred, label=f'Wavelength fit (R2={r2:.8f})', color='tab:purple')
+                ax[1].plot(spectrometer_position, residuals, label='Wavelength residuals', marker='o')
+                ax[0].set_title('Triax Steps to Wavelength')
+                ax[0].legend()
+                ax[1].legend()
+
+                # print(f"R2: {r2:.4f}, RMSE: {rmse_val:.4f}, MAE: {mae_val:.4f}, Residual Std: {res_std:.4f}")
+
+                plt.show()
+
+            # report_dict['triax_steps_to_wavelength'] = {
+            #     'residuals': residuals_scaled,
+            #     'r2': r2,
+            #     'rmse': rmse_val,
+            #     'mae': mae_val,
+            #     'res_std': res_std
+            #     }
+            return steps_to_wavelength, fit_metrics
+        
+        triax_steps, fm2 = triax_steps_to_wavelength(spectrometer_position, self.wavelength_axis, show=True)
+        self.calibration_metrics['triax_steps_to_wl'] = fm2
+        calibrations['triax_steps_to_wl'] = triax_steps.tolist()
+            
+        new_data_array = np.column_stack((self.wavelength_axis, data_l1, data_l2, data_g1, data_g2))
+        
+        def wavelength_to_l1(new_data_array, show=True):
+            '''Calibration for using laser wavelength to calculate L1 steps. Redundant if using fits from initial wavelength calibration.'''
+
+            l1_steps = new_data_array[:, 1]
+            fit_coeff_wavelength_to_l1 = np.polyfit(self.wavelength_axis, l1_steps, 2)
+            p_wavelength_to_l1 = np.poly1d(fit_coeff_wavelength_to_l1)
+
+            y_pred = p_wavelength_to_l1(self.wavelength_axis)
+            residuals = l1_steps - y_pred
+
+            # Fit quality metrics
+            fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
+
+            if show is True:
+                fig, ax = plt.subplots(2, 1)
+                ax[0].scatter(self.wavelength_axis, l1_steps, label='L1 Steps')
+                ax[0].plot(self.wavelength_axis, p_wavelength_to_l1(self.wavelength_axis), label='L1 Steps fit', color='tab:purple')
+                residuals = l1_steps - p_wavelength_to_l1(self.wavelength_axis)
+                ax[1].plot(self.wavelength_axis, residuals, label='L1 Steps residuals', marker='o')
+                ax[0].set_title('Wavelength to L1 Steps')
+                ax[0].legend()
+                ax[1].legend()
+                plt.show()
+
+            return fit_coeff_laser
+        
+        fit_coeff_laser = wavelength_to_l1(new_data_array)
 
 
 
-    fit_coeff_laser = np.polyfit(data_l1, data_l2, 1)
-    fit_coeff_grating = np.polyfit(data_g1, data_g2, 1)
-    ax[0].scatter(data_l1, data_l2, label='L1 vs L2')
-    ax[1].scatter(data_g1, data_g2, label='G1 vs G2')
+        fit_coeff_laser = np.polyfit(data_l1, data_l2, 1)
+        fit_coeff_grating = np.polyfit(data_g1, data_g2, 1)
+        ax[0].scatter(data_l1, data_l2, label='L1 vs L2')
+        ax[1].scatter(data_g1, data_g2, label='G1 vs G2')
 
-    
+        
 
-    # fit a line to the data
+        # fit a line to the data
 
-    # get fit parameters
-    p_laser = np.poly1d(fit_coeff_laser)
-    p_grating = np.poly1d(fit_coeff_grating)
+        # get fit parameters
+        p_laser = np.poly1d(fit_coeff_laser)
+        p_grating = np.poly1d(fit_coeff_grating)
 
-    ax[0].plot(data_l1, p_laser(data_l1), label='L1 vs L2 fit', color='tab:purple')
-    ax[1].plot(data_g1, p_grating(data_g1), label='G1 vs G2 fit', color='tab:purple')
+        ax[0].plot(data_l1, p_laser(data_l1), label='L1 vs L2 fit', color='tab:purple')
+        ax[1].plot(data_g1, p_grating(data_g1), label='G1 vs G2 fit', color='tab:purple')
 
-    # plot residuals
-    residuals_l = data_l2 - p_laser(data_l1)
-    residuals_g = data_g2 - p_grating(data_g1)
-    ax[2].plot(data_l1, residuals_l, label='L1 vs L2 residuals', marker='o')
-    ax[2].plot(data_l1, residuals_g, label='G1 vs G2 residuals', marker='o')
+        # plot residuals
+        residuals_l = data_l2 - p_laser(data_l1)
+        residuals_g = data_g2 - p_grating(data_g1)
+        ax[2].plot(data_l1, residuals_l, label='L1 vs L2 residuals', marker='o')
+        ax[2].plot(data_l1, residuals_g, label='G1 vs G2 residuals', marker='o')
 
-    ax[0].legend()
-    ax[1].legend()
-    ax[2].legend()
-    
-    if show is True:
+        ax[0].legend()
+        ax[1].legend()
+        ax[2].legend()
+        
+        if show is True:
+            plt.show()
+
+        
+
+        print(f'l1xl2 fit: {fit_coeff_laser}')
+        print(f'g1xg2 fit: {fit_coeff_grating}')
+        
+        calibrations['laser'] = fit_coeff_laser.tolist()
+        calibrations['grating'] = fit_coeff_grating.tolist()
+
+        fig, ax = plt.subplots(3,1)
+        wavelength_cal_laser = np.polyfit(wavelength_axis, data_l1, 2)
+        wavelength_cal_grating = np.polyfit(wavelength_axis, data_g1, 1)
+        p_wavelength_laser = np.poly1d(wavelength_cal_laser)
+        p_wavelength_grating = np.poly1d(wavelength_cal_grating)
+        ax[0].scatter(wavelength_axis, data_l1, label='Lambda L1')
+        ax[0].plot(wavelength_axis, p_wavelength_laser(wavelength_axis), label='Lambda L1 fit', color='tab:purple')
+        ax[1].scatter(wavelength_axis, data_g1, label='Lambda G1')
+        ax[1].plot(wavelength_axis, p_wavelength_grating(wavelength_axis), label='Lambda G1 fit', color='tab:purple')
+        
+        res_1 = data_l1 - p_wavelength_laser(wavelength_axis)
+        res_2 = data_g1 - p_wavelength_grating(wavelength_axis)
+        ax[2].plot(wavelength_axis, res_1, label='Lambda L1 residuals', marker='o')
+        ax[2].plot(wavelength_axis, res_2, label='Lambda G1 residuals', marker='o')
+
+        ax[0].legend()
+        ax[1].legend()
+        ax[2].legend()
+
+        if show is True:
+            plt.show()
+        
+        calibrations['wavelength_laser'] = wavelength_cal_laser.tolist()
+        calibrations['wavelength_grating'] = wavelength_cal_grating.tolist()
+
+        steps_cal_laser = np.polyfit(data_l1, wavelength_axis, 2)
+        steps_cal_grating = np.polyfit(data_g1, wavelength_axis, 1)
+        p_steps_laser = np.poly1d(steps_cal_laser)
+        p_steps_grating = np.poly1d(steps_cal_grating)
+
+        fig, ax = plt.subplots(4,1)
+        ax[0].scatter(data_l1, wavelength_axis, label='Lambda L1')
+        ax[1].scatter(data_g1, wavelength_axis, label='Lambda G1')
+        ax[0].plot(data_l1, p_steps_laser(data_l1), label='Lambda L1 fit', color='tab:purple')
+        ax[1].plot(data_g1, p_steps_grating(data_g1), label='Lambda G1 fit', color='tab:purple')
+        ax[0].set_title('back calibrate stepts to wavelength')
+        residual_laser = wavelength_axis - p_steps_laser(data_l1)
+        residual_grating = wavelength_axis - p_steps_grating(data_g1)
+        ax[2].plot(data_l1, residual_laser, label='Lambda L1 residuals', marker='o')
+        ax[3].plot(data_g1, residual_grating, label='Lambda G1 residuals', marker='o')
+        # ax[0].set_title()
+        ax[0].legend()
+        ax[1].legend()
+        ax[2].legend()
+        ax[3].legend()
         plt.show()
 
-    
+        calibrations['steps_laser'] = steps_cal_laser.tolist()
+        calibrations['steps_grating'] = steps_cal_grating.tolist()
 
-    print(f'l1xl2 fit: {fit_coeff_laser}')
-    print(f'g1xg2 fit: {fit_coeff_grating}')
-    
-    calibrations['laser'] = fit_coeff_laser.tolist()
-    calibrations['grating'] = fit_coeff_grating.tolist()
-
-    fig, ax = plt.subplots(3,1)
-    wavelength_cal_laser = np.polyfit(wavelength_axis, data_l1, 2)
-    wavelength_cal_grating = np.polyfit(wavelength_axis, data_g1, 1)
-    p_wavelength_laser = np.poly1d(wavelength_cal_laser)
-    p_wavelength_grating = np.poly1d(wavelength_cal_grating)
-    ax[0].scatter(wavelength_axis, data_l1, label='Lambda L1')
-    ax[0].plot(wavelength_axis, p_wavelength_laser(wavelength_axis), label='Lambda L1 fit', color='tab:purple')
-    ax[1].scatter(wavelength_axis, data_g1, label='Lambda G1')
-    ax[1].plot(wavelength_axis, p_wavelength_grating(wavelength_axis), label='Lambda G1 fit', color='tab:purple')
-    
-    res_1 = data_l1 - p_wavelength_laser(wavelength_axis)
-    res_2 = data_g1 - p_wavelength_grating(wavelength_axis)
-    ax[2].plot(wavelength_axis, res_1, label='Lambda L1 residuals', marker='o')
-    ax[2].plot(wavelength_axis, res_2, label='Lambda G1 residuals', marker='o')
-
-    ax[0].legend()
-    ax[1].legend()
-    ax[2].legend()
-
-    if show is True:
-        plt.show()
-    
-    calibrations['wavelength_laser'] = wavelength_cal_laser.tolist()
-    calibrations['wavelength_grating'] = wavelength_cal_grating.tolist()
-
-    steps_cal_laser = np.polyfit(data_l1, wavelength_axis, 2)
-    steps_cal_grating = np.polyfit(data_g1, wavelength_axis, 1)
-    p_steps_laser = np.poly1d(steps_cal_laser)
-    p_steps_grating = np.poly1d(steps_cal_grating)
-
-    fig, ax = plt.subplots(4,1)
-    ax[0].scatter(data_l1, wavelength_axis, label='Lambda L1')
-    ax[1].scatter(data_g1, wavelength_axis, label='Lambda G1')
-    ax[0].plot(data_l1, p_steps_laser(data_l1), label='Lambda L1 fit', color='tab:purple')
-    ax[1].plot(data_g1, p_steps_grating(data_g1), label='Lambda G1 fit', color='tab:purple')
-    ax[0].set_title('back calibrate stepts to wavelength')
-    residual_laser = wavelength_axis - p_steps_laser(data_l1)
-    residual_grating = wavelength_axis - p_steps_grating(data_g1)
-    ax[2].plot(data_l1, residual_laser, label='Lambda L1 residuals', marker='o')
-    ax[3].plot(data_g1, residual_grating, label='Lambda G1 residuals', marker='o')
-    # ax[0].set_title()
-    ax[0].legend()
-    ax[1].legend()
-    ax[2].legend()
-    ax[3].legend()
-    plt.show()
-
-    calibrations['steps_laser'] = steps_cal_laser.tolist()
-    calibrations['steps_grating'] = steps_cal_grating.tolist()
-
-    print(f'steps_laser fit: {steps_cal_laser}')
-    print(f'steps_grating fit: {steps_cal_grating}')
-    print(f'wavelength_laser fit: {wavelength_cal_laser}')
-    print(f'wavelength_grating fit: {wavelength_cal_grating}')
+        print(f'steps_laser fit: {steps_cal_laser}')
+        print(f'steps_grating fit: {steps_cal_grating}')
+        print(f'wavelength_laser fit: {wavelength_cal_laser}')
+        print(f'wavelength_grating fit: {wavelength_cal_grating}')
 
 
 
 
-    return calibrations
+        return calibrations
 
-    # residuals
-    
+        # residuals
+        
 if __name__ == '__main__':
     # wavelength_cal = wavelength_calibration(laser_calibration, show=False)
 

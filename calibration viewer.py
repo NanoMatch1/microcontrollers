@@ -1,5 +1,6 @@
 import csv
 import json
+from dataclasses import dataclass
 
 
 '''make a quick plot of calibration data'''
@@ -59,10 +60,7 @@ calibration_records = {
     }
 }
 
-dataDir = os.path.join(os.path.dirname(__file__), 'laser_calibration')
-files = [f for f in os.listdir(dataDir) if f.endswith('.txt')]
 
-eept_file = os.path.join(os.path.dirname(__file__), 'eept.txt')
 
 # nm_per_pixel = 6.38064/400 # retrieved from recent calibration sweep
 # # nm_per_step = 0
@@ -113,14 +111,32 @@ def adjusted_r_squared(y_true, y_pred, p):
     r2 = r_squared(y_true, y_pred)
     return 1 - (1 - r2) * (n - 1) / (n - p - 1)
 
+@dataclass
+class FitMetrics:
+    '''Dataclass for fit quality metrics.'''
+    r2: int
+    rmse: int
+    mae: int
+    res_std: int
 
-def wavelength_calibration(wavelength_calibration, show=True):
 
-    fig, ax = plt.subplots(3,1)
+class Calibration:
 
-    for file in files:
-        wavelength_calibration[file] = []
-        with open(os.path.join(dataDir, file), 'r') as f:
+    def __init__(self, showplots=False):
+        # self.data = data
+        self.dataDir = os.path.join(os.path.dirname(__file__), 'laser_calibration')
+        self.files = [f for f in os.listdir(self.dataDir) if f.endswith('.txt')]
+        self.eept_file = os.path.join(os.path.dirname(__file__), 'eept.txt')
+        self.showplots = showplots
+        self.calibration_metrics = {}
+        self.calibrations = {}
+
+        wavelength_cal = self.initial_wavelength_calibration(show=False)
+
+    def load_calibration_file(self):
+        file = self.files[0]
+
+        with open(os.path.join(self.dataDir, file), 'r') as f:
             lines = f.readlines()
             data_set_1 = []
             data_set_2 = []
@@ -128,79 +144,95 @@ def wavelength_calibration(wavelength_calibration, show=True):
                 if line.startswith('#'):
                     continue
                 cols = line.split(',')
-                data_set_1.append([float(cols[0]), float(cols[3])])
-                data_set_2.append([float(cols[3]), float(cols[0])])
-            wavelength_calibration[file] = (np.array(data_set_1).astype(float), np.array(data_set_2).astype(float))
-            ax[0].scatter(wavelength_calibration[file][0][:, 0], wavelength_calibration[file][0][:, 1], label=file)
-            ax[1].scatter(wavelength_calibration[file][1][:, 0], wavelength_calibration[file][1][:, 1], label=file)
-        
-        data_set_1
-        '''fit a line to the data'''
-        x1 = wavelength_calibration[file][0][:, 0]
-        y1 = wavelength_calibration[file][0][:, 1]
-        x2 = wavelength_calibration[file][1][:, 0]
-        y2 = wavelength_calibration[file][1][:, 1]
-        fit_scalars_1 = np.polyfit(x1, y1, 2)
-        fit_scalars_2 = np.polyfit(x2, y2, 2)
-        # get fit parameters
-        p1 = np.poly1d(fit_scalars_1)
-        p2 = np.poly1d(fit_scalars_2)
-        ax[0].plot(x1, p1(x1), label='{} fit'.format(file))
-        ax[1].plot(x2, p2(x2), label='{} fit'.format(file))
+                data_set_1.append([cols[0], cols[3]])
+                # data_set_2.append([float(cols[3]), float(cols[0])])
 
-        # plot residuals
-        residuals = y1 - p1(x1)
-        ax[2].plot(x1, residuals, label='{} residuals'.format(file), marker='o')
-        print(f'{file} fit_1: {fit_scalars_1}')
-        print(f'{file} fit_2: {fit_scalars_2}')
-        # ax[1].scatter(x, residuals)
-
-    plt.xlabel('Wavelength (nm)')
-    plt.ylabel('Steps L1')
-    plt.legend()
-    if show is True:
-        plt.show()
-
-    return fit_scalars_1, fit_scalars_2
-
-def process_eept(eept_file, plot_rows=[0,1,4,5]):
-    cal_data = np.array(["L1", "L2", "NIU", "NIU", "G1", "G2", "NIU", "NIU", "triax_steps", "pixels"])
-    with open(eept_file, 'r') as f:
-        lines = f.readlines()
-
-        for line in lines:
-            data = []
-            if line.startswith('#'):
-                continue
-            line = line.strip('\n')
-            if len(line) == 0:
-                continue
-            try:
-                set_avo, set_gary, set_triax = line.split(':')
-            except Exception as e:
-                print(e)
-                print("check data file eept.txt")
-                continue
+        # wavelength_data = (np.array(data_set_1).astype(float), np.array(data_set_2).astype(float))
+        wavelength_data = np.array(data_set_1).astype(float)
+        return wavelength_data
     
-            set_avo = set_avo.strip('[]')
-            set_gary = set_gary.strip('[]')
 
-            set_avo = set_avo.split(',')
-            set_gary = set_gary.split(',')
-            set_triax = set_triax.split(',')
+    def calculate_fit_metrics(self, actual, model):
+        # Fit quality metrics
+        r2 = r_squared(actual, model)
+        rmse_val = rmse(actual, model)
+        mae_val = mae(actual, model)
+        residuals = actual - model
+        res_std = residual_std(residuals)
 
-            data.extend([*set_avo, *set_gary, *set_triax])
-            new_data = []
-            for x in data:
-                value = float(x.strip("' XYZA"))
-                new_data.append(value)
+        return FitMetrics(r2, rmse_val, mae_val, res_std)
 
-            cal_data = np.column_stack((cal_data, new_data))
 
-    headers = cal_data.T[0, :]
-    cal_data = cal_data.T[1:, :].astype(float)
+    def initial_wavelength_calibration(self, show=False):
 
-    return headers, cal_data
+        fig, ax = plt.subplots(2,1)
+
+        wavelength_data = self.load_calibration_file()
+        wavelength, l1_steps = wavelength_data[:, 0], wavelength_data[:, 1]
+
+        coeff_wl_to_l1 = np.polyfit(wavelength, l1_steps, 2)
+        p_l1_steps = np.poly1d(coeff_wl_to_l1)
+
+        y_pred = p_l1_steps(wavelength)
+        residuals = l1_steps - y_pred
+        residuals_scaled = (residuals/abs(l1_steps[0]-l1_steps[1])) * 100
+
+        # Fit quality metrics
+        fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
+
+        if show is True or self.showplots is True:
+            ax[0].scatter(wavelength, l1_steps, label='l1 steps')
+            ax[0].plot(wavelength, p_l1_steps(wavelength), label='wl to l1 fit', color='tab:purple')
+            ax[1].plot(wavelength, residuals_scaled, label='residuals', marker='o')
+            ax[1].set_ylabel('% of $\Delta_{steps}$')
+            ax[1].set_xlabel('Wavelength (nm)')
+            ax[0].set_title('Wavelength to L1 Steps')
+            ax[0].legend()
+            ax[1].legend()
+            plt.show()
+
+        self.calibration_metrics['wl_to_l1'] = fit_metrics
+
+        return coeff_wl_to_l1
+
+    def process_eept(self, eept_file, plot_rows=[0,1,4,5]):
+        cal_data = np.array(["L1", "L2", "NIU", "NIU", "G1", "G2", "NIU", "NIU", "triax_steps", "pixels"])
+        with open(eept_file, 'r') as f:
+            lines = f.readlines()
+
+            for line in lines:
+                data = []
+                if line.startswith('#'):
+                    continue
+                line = line.strip('\n')
+                if len(line) == 0:
+                    continue
+                try:
+                    set_avo, set_gary, set_triax = line.split(':')
+                except Exception as e:
+                    print(e)
+                    print("check data file eept.txt")
+                    continue
+        
+                set_avo = set_avo.strip('[]')
+                set_gary = set_gary.strip('[]')
+
+                set_avo = set_avo.split(',')
+                set_gary = set_gary.split(',')
+                set_triax = set_triax.split(',')
+
+                data.extend([*set_avo, *set_gary, *set_triax])
+                new_data = []
+                for x in data:
+                    value = float(x.strip("' XYZA"))
+                    new_data.append(value)
+
+                cal_data = np.column_stack((cal_data, new_data))
+
+        headers = cal_data.T[0, :]
+        cal_data = cal_data.T[1:, :].astype(float)
+
+        return headers, cal_data
 
 
 def run_motor_calibration(headers, cal_data, calib_dict, wavelength_calibration, show=True):
@@ -309,11 +341,13 @@ def run_motor_calibration(headers, cal_data, calib_dict, wavelength_calibration,
 
             plt.show()
 
-        report_dict['triax_steps_to_wavelength'] = {'residuals': residuals_scaled,
-                                                    'r2': r2,
-                                                    'rmse': rmse_val,
-                                                    'mae': mae_val,
-                                                    'res_std': res_std}
+        report_dict['triax_steps_to_wavelength'] = {
+            'residuals': residuals_scaled,
+            'r2': r2,
+            'rmse': rmse_val,
+            'mae': mae_val,
+            'res_std': res_std
+            }
         return steps_to_wavelength
     
     triax_steps = triax_steps_to_wavelength(spectrometer_position, wavelength_axis, show=True)
@@ -444,7 +478,9 @@ def run_motor_calibration(headers, cal_data, calib_dict, wavelength_calibration,
     # residuals
     
 if __name__ == '__main__':
-    wavelength_cal = wavelength_calibration(laser_calibration, show=False)
+    # wavelength_cal = wavelength_calibration(laser_calibration, show=False)
+
+    calibration = Calibration(showplots=True)
     
     # return a solution for a given value of x, fed to the calibration function
     # x = 0.5

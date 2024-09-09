@@ -6,8 +6,11 @@ import struct
 import threading
 import matplotlib.animation as animation
 import json
+import sys
+import traceback
 from types import SimpleNamespace
 from dataclasses import dataclass
+
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 # Polyfit calibration 24/08/27: [-1.28255101e-02 -4.23233709e+01  4.22414334e+04]
@@ -314,7 +317,13 @@ The class is a wrapper for communication with an individual microcontroller.
 there will be homing motors that the monochromator should.'''
 
 
+# class Calibrations:
 
+#     def __init__(self, calibrations):
+#         self.coefficients = calibrations
+#         # self.__dict__.update(np.poly1d(calibrations))
+#         self.__dict__.update({calib: np.poly1d(self.coefficients[calib]) for calib in self.coefficients})
+        
 
 
 @dataclass
@@ -326,7 +335,7 @@ class MotorPositions:
 
 class Microscope:
 
-    calibration_backup = {"wl_triax_steps": [0.10804683994803718, 331.8588098129754, 43950.89354704326], "triax_steps_wl": [-8.032233265071597e-10, 0.002589893546654974, -65.392713732836], "laser": [-0.42078367938194094, 13.182099307902691], "grating": [1.0370034283344927, 10.925199912128772], "wavelength_laser": [-0.013186836473750425, -41.70675588176, 41979.647251902534], "wavelength_grating": [9.14706131106529, -7363.889052419929], "steps_laser": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "steps_grating": [0.10924618909058334, 805.0765596939007]}
+    # calibration_backup = {"wl_to_triax_steps": [0.10804683994803718, 331.8588098129754, 43950.89354704326], "triax_steps_to_wl": [-8.032233265071597e-10, 0.002589893546654974, -65.392713732836], "wl_to_l1": [-0.013186836473750425, -41.70675588176, 41979.647251902534], "l1_to_wl": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "wl_to_l2": [0.0044654441032724625, 19.364118550454624, -18407.332735973865], "l2_to_wl": [-2.314868977807367e-07, 0.03770216648918488, 802.1840388363821], "wl_to_g1": [9.14706131106529, -7363.889052419929], "g1_to_wl": [0.10924618909058334, 805.0765596939007], "wl_to_g2": [9.476770361542474, -7618.1369780449895], "g2_to_wl": [0.10490835215435425, 804.0545327018295], "wl_to_g2_add": [9.47677036154247, -20608.136978044986], "g2_to_wl_add": [0.10490835215435408, 2166.814027186889]}
 
     # standard positions:
     # Current laser wavelength: 802.7494779639835
@@ -341,30 +350,30 @@ class Microscope:
 
         if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
             with open(os.path.join(self.scriptDir, 'calibrations.json'), 'r') as f:
-                self.calibrations = json.load(f)
+                calibrations = json.load(f)
                 print('Calibrations loaded from file')
         
         else:
-            self.calibrations = self.calibration_backup
+            calibrations = Microscope.calibration_backup
             print('Calibration file not found, using backup')
 
-        self.cal_laser1_to_laser2 = np.poly1d(self.calibrations['laser'])
-        self.cal_grating1_to_grating2 = np.poly1d(self.calibrations['grating'])
-        self.cal_wavelength_to_laser_steps = np.poly1d(self.calibrations['wavelength_laser'])
-        self.cal_wavelength_to_grating_steps = np.poly1d(self.calibrations['wavelength_grating'])
-        self.cal_laser_steps_to_wavelength = np.poly1d(self.calibrations['steps_laser'])
-        self.cal_grating_steps_to_wavelength = np.poly1d(self.calibrations['steps_grating'])
-        self.cal_wavelength_to_triax_steps = np.poly1d(self.calibrations['wl_triax_steps'])
-        self.cal_triax_steps_to_wavelength = np.poly1d(self.calibrations['triax_steps_wl'])
+        # self.calibrations = SimpleNamespace(**self.calibrations)
+        self.calibrations = SimpleNamespace(**{calib: np.poly1d(calibrations[calib]) for calib in calibrations})
+        self.all_calibrations = calibrations
 
         self.scan_min = -1000
         self.scan_max = 1000
         self.scan_resolution = 50
 
+        # self.grating_calib = calibrations['']
+
 
 
         self.current_wavelength = None
         self.current_wavenumber = None
+        self.current_shift = 0
+        self.monochromator_mode = 'subtractive'
+        # self.to_addivite = -12990 -13108+39 
 
         self.acq_time = 1
         self.centre_wavelength = 376886
@@ -386,6 +395,12 @@ class Microscope:
             'shift': self.go_to_wavenumber,
             'calshift': self.simple_calibration_shift,
             'isrun': self.wait_for_motors,
+            'report': self.report_status,
+            'setmode': self.change_monochromator_mode,
+            'writemotora': self.set_absolute_positions_A,
+            'writemotorb': self.set_absolute_positions_B,
+
+            # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
         }
         
@@ -517,86 +532,148 @@ class Microscope:
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
 
+        self.guess_mode()
+
+        self.report_status()
+
+    def guess_mode(self):
+        current_grating_pos = self.get_grating_motor_positions()
+        if current_grating_pos[1] < -3000:
+            self.monochromator_mode = 'additive'
+            print('Guessed additive mode')
+            self._switch_calibrations('additive', overwrite=True)
+        else:
+            self.monochromator_mode = 'subtractive'
+            print('Guessed subtractive mode')
+
+    def _switch_calibrations(self, mode, overwrite=False):
+        if mode == 'additive':
+            # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
+            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2_add'])
+            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_add'])
+        elif mode == 'subtractive':
+            # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
+            self.calibrations.wl_to_g2 = np.poly1d(self.calibration_backup['wl_to_g2'])
+            self.calibrations.g2_to_wl = np.poly1d(self.calibration_backup['g2_to_wl'])
+
+    #g2 start -39
+    def change_monochromator_mode(self, mode):
+        if mode == self.monochromator_mode:
+            print('Already in mode {}'.format(mode))
+            ovr = input('Override? (y/n)')
+
+            if ovr == 'n':
+                return
+        if mode == 'additive':
+            self._switch_calibrations('additive')
+            self.monochromator_mode = 'additive'
+            print('Switched to additive mode')
+        elif mode == 'subtractive':
+            self._switch_calibrations('subtractive')
+            self.monochromator_mode = 'subtractive'
+            print('Switched to subtractive mode')
+        
+
+    
+            # self.to_addivite = -12990
+
+
+    def report_status(self):
+        report = {
+            'monochromator mode': self.monochromator_mode,
+            'laser lambda': self.current_laser_wavelength,
+            'g1 lambda': self.current_grating_wavelength,
+            'laser motor positions': self.get_laser_motor_positions(),
+            'grating motor positions': self.get_grating_motor_positions(),
+            'laser wavenumber': self.current_laser_wavenumber,
+            'grating wavenumber': self.current_raman_wavenumber,
+            'Raman shift': self.current_shift
+        }
+
+        if  report['g1 lambda'] < 500 or report['g1 lambda'] > 2000:
+            print('Grating wavelength out of range - please check monochromator mode')
+
+
+        print('-'*20)
+        for key, value in report.items():
+            print('{}: {}'.format(key, value))
+        print('-'*20)
+
+    @property
+    def current_grating_wavelength(self):
+        return self.calculate_grating_position()
+
     @property
     def current_laser_wavelength(self):
         return self.calculate_laser_position()
+    
+    @property
+    def current_laser_wavenumber(self):
+        '''Takes the current raman shift and calculates the corresponding wavelength (i.e. for the detector calibration).'''
+        return 10_000_000/self.current_laser_wavelength
+         
+    
+    @property
+    def current_raman_wavenumber(self):
+        '''Takes the current laser wavenumber and calculates the absolute wavenumber for the current raman shift.'''
+        return self.current_laser_wavenumber - self.current_shift
+    
+    def wavenumber_to_wavelength(self, wavenumber):
+        return 10_000_000/wavenumber
+    
+    def wavelength_to_wavenumber(self, wavelength):
+        return self.wavenumber_to_wavelength(wavelength)
 
-#     def simple_calibration_shift(self): # TODO: Change these to use @property decorators and setters and getters
-#         '''used to shift the current calibration to some measured reference point. Use when aligned through the pinhole and into the spectrograph, so as to synchronise all motors simultaneously to one point.'''
-#         self.current_wavelength = self.calculate_laser_position()
+    def simple_calibration_shift(self, raman_shift=None):
+        '''Takes the current motor positions as the new position for the current wavelength. Simply sets the motor steps to the calcualted position for the current wavelength.'''
 
-#         self.laser_motor_positions = MotorPositions(*self.get_laser_motor_positions())
-#         self.grating_motor_positions = MotorPositions(*self.get_grating_motor_positions())
+        if raman_shift is not None:
+            self.current_shift = float(raman_shift)
 
-#         # breakpoint()
-
-
-#         expected_l1 = round(self.cal_wavelength_to_laser_steps(self.current_laser_wavelength))
-#         actual_l1 = self.laser_motor_positions.x
-#         expected_l2 = round(self.cal_laser1_to_laser2(expected_l1))
-#         actual_l2 = self.laser_motor_positions.y
-
-#         expected_g1 = round(self.cal_wavelength_to_grating_steps(self.current_laser_wavelength))
-#         actual_g1 = self.grating_motor_positions.x
-#         expected_g2 = round(self.cal_grating1_to_grating2(expected_g1))
-#         actual_g2 = self.grating_motor_positions.y
-#         # print("l1 target: {}".format(l1_target))
-
-#         diff_l1 = expected_l1 - actual_l1
-#         diff_l2 = expected_l2 - actual_l2
-#         diff_g1 = expected_g1 - actual_g1
-#         diff_g2 = expected_g2 - actual_g2
-
-#         # print('Laser motor 1: Expected: {}, Actual: {}, Difference: {}'.format(expected_l1, actual_l1, diff_l))
-#         print('Laser motor 2: Expected: {}, Actual: {}, Difference: {}'.format(expected_l2, actual_l2, diff_l2))
-#         print('Grating motor 1: Expected: {}, Actual: {}, Difference: {}'.format(expected_g1, actual_g1, diff_g1))
-#         print('Grating motor 2: Expected: {}, Actual: {}, Difference: {}'.format(expected_g2, actual_g2, diff_g2))
-#         breakpoint()
-#         # Skip cal_wavelength_to_laser_steps because the laser frequency is the reference
-#         # print(self.cal_laser1_to_laser2)
-#         print(self.calibrations['laser'])
-
-#         # new_cal_file = np.poly1d()
-
-# #         Current laser pos: [1.0, 13.0, 0.0, 0.0]
-# # Laser motor 1: Expected: 2, Actual: 1.0, Difference: 1.0
-# # Laser motor 2: Expected: 12, Actual: 13.0, Difference: -1.0
-# # Grating motor 1: Expected: -21, Actual: -23.0, Difference: 2.0
-# # Grating motor 2: Expected: -11, Actual: 35.0, Difference: -46.0
-
-# # Current laser pos: [1.0, 13.0, 0.0, 0.0]
-# # entered turning dict
-# # UI>UNO:oBposo
-# # UNO>B:pos
-# # <PX-23,Y35,Z0,A0P>
-# # UI<UNO<B:<PX-23,Y35,Z0,A0P>
-# # Current grating pos: [-23.0, 35.0, 0.0, 0.0]
-# # Current laser wavelength: 802.7494779639835
-# # Current grating wavelength: 802.5638973448173
-
-#         laser_cal = self.calibrations['laser']
-#         laser_cal[1] = laser_cal[1] + diff_l2
-#         # self.calibrations['laser'] = laser_cal
-
-
-#         wl_grating = self.calibrations['wavelength_grating']
-#         wl_grating[1] = wl_grating[1] + diff_g1
-#         self.calibrations['wavelength_grating'] = wl_grating
-
-
-#         grating_cal = self.calibrations['grating']
-#         grating_cal[1] = grating_cal[1] + diff_g2
-#         self.calibrations['grating'] = grating_cal
-
-#         # self.
-
-#         breakpoint()
-
-    def simple_calibration_shift(self):
+        # breakpoint()
+        
         current_laser_pos = self.get_laser_motor_positions()
-        current_wavelength = self.calculate_laser_position(current_laser_pos)
+        current_laser_wavelength = self.calculate_laser_position(current_laser_pos)
+        current_grating_pos = self.get_grating_motor_positions()
+        current_grating_wavenumber = self.current_raman_wavenumber
+        current_detector_wavelength = self.wavenumber_to_wavelength(current_grating_wavenumber)
+        print(current_detector_wavelength)
+# Write function to store Raman shift on microcontrollers and get it back.
 
-        pass
+
+# Current laser pos: [175.0, -58.0, 0.0, 0.0]
+# entered turning dict
+# UI>UNO:oBposo
+# UNO>B:pos
+# <PX125,Y87,Z0,A0P>
+# UI<UNO<B:<PX125,Y87,Z0,A0P>
+# Current grating pos: [125.0, 87.0, 0.0, 0.0]
+# Current laser wavelength: 799.9799025452799
+# Current grating wavelength: 818.7323333302236
+# Enter command:
+        l1_target = round(self.calibrations.wl_to_l1(current_laser_wavelength))
+        l2_target = round(self.calibrations.wl_to_l2(current_laser_wavelength))
+        g1_target = round(self.calibrations.wl_to_g1(current_detector_wavelength))
+        g2_target = round(self.calibrations.wl_to_g2(current_detector_wavelength))
+
+        print('Current Positions:\n Laser: {}\n Grating: {}'.format(current_laser_pos, current_grating_pos))
+        print('Target Positions:\n Laser: {}\n Grating: {}'.format([l1_target, l2_target], [g1_target, g2_target]))
+
+        self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
+        
+        new_laser_pos = self.get_laser_motor_positions()
+        new_laser_wavelength = self.calculate_laser_position(new_laser_pos)
+        new_grating_pos = self.get_grating_motor_positions()
+        new_grating_wavelength = self.calculate_grating_position(new_grating_pos)
+        
+        if new_grating_pos[0] == g1_target and new_grating_pos[1] == g2_target and new_laser_pos[0] == l1_target and new_laser_pos[1] == l2_target:
+            print('Calibration shift successful')
+            print('New Positions:\n Laser: {}\n Grating: {}'.format(new_laser_wavelength, new_grating_wavelength))
+        else:
+            print('Calibration shift failed')
+            print('New Positions:\n Laser: {}\n Grating: {}'.format(new_laser_wavelength, new_grating_wavelength))
+
 
 #     Current laser pos: [1.0, 13.0, 0.0, 0.0]
 # entered turning dict
@@ -624,7 +701,7 @@ class Microscope:
                 response = self.process_coms('Aisrun')
                 # res = response[0].split(':')[0]
                 res1 = self.extract_coms_message(response)
-                # breakpoint()
+                # 
                 if res1 == 'S0':
                     running_A = False
                 # elif res1 == 'R1':
@@ -644,7 +721,7 @@ class Microscope:
                 
             if count > 0:
                 print("Loop broke")
-                breakpoint()
+                
             count += 1
 
             # print()
@@ -671,14 +748,24 @@ class Microscope:
 
         print('Motors at target positions')
     
-        # breakpoint()
+        # 
 
     def get_all_current_positions(self):
-        self.current_wavelength = self.calculate_laser_position()
-        self.current_grating_wavelength = self.calculate_grating_position()
+        current_wavelength = self.calculate_laser_position()
+        current_grating_wavelength = self.calculate_grating_position()
 
-        print('Current laser wavelength: {}'.format(self.current_wavelength))
-        print('Current grating wavelength: {}'.format(self.current_grating_wavelength))
+        self.current_wavelength = current_wavelength
+
+        print('Current laser wavelength: {}'.format(current_wavelength))
+        print('Current grating wavelength: {}'.format(current_grating_wavelength))
+
+        # TODO: Change to @property
+        # self.current_grating_wavelength = self.calculate_grating_position()
+
+        # print('Current laser wavelength: {}'.format(self.current_wavelength))
+        # print('Current grating wavelength: {}'.format(self.current_grating_wavelength))
+
+        return 
         
     def get_laser_motor_positions(self):
         print('entered get laser')
@@ -690,6 +777,7 @@ class Microscope:
             positions = positions.split(',')
             laser_pos = [float(x[1:]) for x in positions]
         except Exception as e:
+            traceback.print_exc()
             print('Error getting laser position')
             print(e)
             return
@@ -705,6 +793,7 @@ class Microscope:
             positions = positions.split(',')
             grating_pos = [float(x[1:]) for x in positions]
         except Exception as e:
+            traceback.print_exc()
             print('Error getting grating position')
             print(e)
             return
@@ -713,20 +802,33 @@ class Microscope:
         return grating_pos
     
     def calculate_laser_position(self, current_pos=None):
-        current_laser_pos = self.get_laser_motor_positions()
+        if current_pos is None:
+            current_laser_pos = self.get_laser_motor_positions()
+        else:
+            current_laser_pos = current_pos
+
         l1_pos = current_laser_pos[0]
         # l2_pos = current_laser_pos[1]
 
-        l1_wavelength = self.cal_laser_steps_to_wavelength(l1_pos)
+        l1_wavelength = self.calibrations.l1_to_wl(l1_pos)
+        
         # print('Current laser wavelength: {}'.format(l1_wavelength))
         return l1_wavelength
 
 
-    def calculate_grating_position(self):
-        current_grating_pos = self.get_grating_motor_positions()
+    def calculate_grating_position(self, current_pos=None):
+        if current_pos is None:
+            current_grating_pos = self.get_grating_motor_positions()
+        else:
+            current_grating_pos = current_pos
+
         g1_pos = current_grating_pos[0]
         g2_pos = current_grating_pos[1]
-        g1_wavelength = self.cal_grating_steps_to_wavelength(g1_pos)
+
+        # if self.monochromator_mode == 'additive':
+        #     g2_pos = g2_pos - self.to_addivite
+
+        g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
 
         return g1_wavelength
 
@@ -739,9 +841,9 @@ class Microscope:
         if self.current_wavelength is None:
             self.get_all_current_positions()
         
-        # breakpoint();
+        # ;
         laser_wavenumber = 10_000_000/self.current_wavelength
-        # breakpoint()
+        # 
         wave = laser_wavenumber - wavenumber
         new_wavelength = 10_000_000/wave
         self.go_to_grating_wavelength(new_wavelength)
@@ -751,11 +853,8 @@ class Microscope:
     def go_to_laser_wavelength(self, wavelength):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.
         Uses the calibrations to move the laser motors into position for a specified wavelength.'''
-        # breakpoint()
-        # if self.current_mode == 'additive':
-        #     target_pos = self.cal_wavelength_to_laser_steps(wavelength)
-        # elif self.current_mode == 'subtractive':
-        #     target_pos = self.cal_wavelength_to_grating_steps(wavelength)
+        # 
+
         try:
             wavelength = float(wavelength)
         except ValueError:
@@ -770,10 +869,10 @@ class Microscope:
         if current_pos is None:
             return 
 
-        l1_target = round(self.cal_wavelength_to_laser_steps(wavelength))
+        l1_target = round(self.calibrations.wl_to_l1(wavelength))
         # print("l1 target: {}".format(l1_target))
 
-        l2_target = round(self.cal_laser1_to_laser2(l1_target))
+        l2_target = round(self.calibrations.wl_to_l2(wavelength))
         # print("l2 target: {}".format(l2_target))
         print('Current laser position: {}'.format(current_pos))
         print('Target laser position: {}'.format([l1_target, l2_target]))
@@ -781,6 +880,7 @@ class Microscope:
         move_l2 = l2_target - current_pos[1]
         print("moving l1 by {}".format(move_l1))
 
+        backlash = False
         # self.move_to(target_pos)
         if move_l1 != 0:
             if move_l1 < 0:
@@ -821,13 +921,18 @@ class Microscope:
         if current_pos is None:
             return 
 
-        g1_target = round(self.cal_wavelength_to_grating_steps(wavelength))
+        g1_target = round(self.calibrations.wl_to_g1(wavelength))
         # print("l1 target: {}".format(g1_target))
 
-        g2_target = round(self.cal_grating1_to_grating2(g1_target))
+        g2_target = round(self.calibrations.wl_to_g2(wavelength))
         # print("l2 target: {}".format(g2_target))
         move_g1 = g1_target - current_pos[0]
         move_g2 = g2_target - current_pos[1] # 1, 13, 0, 0/ -21, -11, 0, 0
+
+        
+        # if self.monochromator_mode == 'additive':
+        #     move_g2 = g2_pos - self.to_addivite
+
 
         # self.move_to(target_pos)
         backlash = False
@@ -858,14 +963,14 @@ class Microscope:
         '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
         # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
         # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
-        true_wavelength = self.cal_triax_steps_to_wavelength(float(steps))
+        true_wavelength = self.calibrations.triax_steps_to_wl(float(steps))
         print('True wavelength: {}. Moving motors to true wavelength'.format(true_wavelength))
         
-        # Set 
-        l1_target = round(self.cal_wavelength_to_laser_steps(true_wavelength))
-        l2_target = round(self.cal_laser1_to_laser2(l1_target))
-        g1_target = round(self.cal_wavelength_to_grating_steps(true_wavelength))
-        g2_target = round(self.cal_grating1_to_grating2(g1_target))
+        
+        l1_target = round(self.calibrations.wl_to_l1(true_wavelength))
+        l2_target = round(self.calibrations.wl_to_l2(true_wavelength))
+        g1_target = round(self.calibrations.wl_to_g1(true_wavelength))
+        g2_target = round(self.calibrations.wl_to_g2(true_wavelength))
 
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
         self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
@@ -920,10 +1025,10 @@ class Microscope:
             # print('UI>UNO:{}'.format(command))
             self.send_command_to_UNO(command)
             time.sleep(0.1)
-            # breakpoint()
+            # 
             response = self.read_from_serial_until()
             # print(response)
-            # breakpoint()
+            # 
             gpa = response[1].split('<P')[1]
             gpa = gpa.split('P>')[0]
             gpa = gpa.split(',')
@@ -932,7 +1037,7 @@ class Microscope:
             # print('UI>UNO:{}'.format(command))
             self.send_command_to_UNO(command)
             time.sleep(0.1)
-            # breakpoint()
+            # 
             response = self.read_from_serial_until()
             # print(response)
             gpb = response[1].split('<P')[1]
@@ -945,6 +1050,8 @@ class Microscope:
             print(f'exporting {gpa}:{gpb}:{extra}')
             return (f'exporting {gpa}:{gpb}')
             
+            # sulfur REF: 210 sd (220 peak)
+
 
         if com[0] in self.general_dict.keys():
             self.general_dict[com[0]]()
@@ -971,11 +1078,11 @@ class Microscope:
             print('UI>UNO:{}'.format(command))
             self.send_command_to_UNO(command)
             time.sleep(0.1)
-            # breakpoint()
+            # 
             response = self.read_from_serial_until()
             # print(response)
             return response
-            # breakpoint()
+            # 
         
         elif com[0] in self.laser_dict.keys():
 
@@ -986,7 +1093,7 @@ class Microscope:
             response = self.read_from_laser()
             print(response)
             return response
-            # breakpoint()
+            # 
 
         elif com[0] in self.microscope_functions.keys():
             if len(com) > 1:
@@ -1048,7 +1155,7 @@ class Microscope:
         # print('Finihsed reading command from uno: {}'.format(response))
         return response
         # print(response)
-        # breakpoint()
+        # 
 
     def connect_to_UNO(self, unoCOM='COM8'):
         UNO_serial = serial.Serial(unoCOM, 9600, timeout=1)
@@ -1129,6 +1236,8 @@ class Microscope:
     #     return new_data
     
     def extract_data(self, response):
+        if type(response) == float: # TODO: change this to detect data type better
+            return
         new_data = []
         for item in response:
             if item.startswith("COUNTS:"):
@@ -1137,6 +1246,7 @@ class Microscope:
                     timestamp = item[item.index('/')+1:]
                     new_data = [float(value), float(timestamp)]
                 except Exception as e:
+                    traceback.print_exc()
                     print('Error processing data')
                     print(e)
         return new_data
@@ -1353,7 +1463,7 @@ class Microscope:
     #     print('Initial pos: {}'.format(initial_pos))
     #     print('Current pos: {}'.format(current_pos))
     #     print('Difference: {}'.format(current_pos-initial_pos))
-    #     # breakpoint()
+    #     # 
     #     filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
     #     np.savetxt(filename, self.results)
     #     if plot:
@@ -1376,10 +1486,13 @@ class Microscope:
                 response = self.process_coms(coms)
                 if response is None:
                     continue
+                
                 data = self.extract_data(response)
                 if len(data) > 0:
                     self.data.append(data)
             except Exception as e:
+                # print('Error processing command', sys.exc_info()) 
+                traceback.print_exc()
                 print(e)
                 continue
 
@@ -1395,7 +1508,7 @@ class Microscope:
     #     time.sleep(0.01)
     #     # response = self.apd_serial.read(self.apd_serial.inWaiting())
     #     # print(response)
-    #     # breakpoint()
+    #     # 
 
     # def set_acquisition_time(self, acq_time):
     #     self.send_command_to_apd('t{}\r'.format(acq_time))
@@ -1406,7 +1519,7 @@ class Microscope:
     #     if code.startswith('aa'):
     #         acq_time = float(code[2:])
     #         print('Master Receive - Acquisition time set to: {}'.format(acq_time))
-    #     # breakpoint()
+    #     # 
     #     time.sleep(1)
     #     print(self.apd_serial.read(self.apd_serial.inWaiting()))
 
@@ -1530,7 +1643,7 @@ class Microscope:
         time.sleep(0.0001)
         self.state = self.spectrometer.read()
         print(self.state)
-        # breakpoint()
+        # 
         return self.spectrometer, self.state
 
 
@@ -1608,9 +1721,12 @@ def discon():
 
 def cli():
     microscope = Microscope(debug_skip=['laser', 'TRIAX'], unoCOM='COM10')
+    # microscope.cli_commands()
     try:
         microscope.cli_commands()
     except Exception as e:
+        # print("failed at line ", sys.exc_info())
+        traceback.print_exc()
         print(e)
 
 if __name__ == '__main__':
@@ -1641,7 +1757,7 @@ if __name__ == '__main__':
         time.sleep(0.0001)
         state = spectrometer.read()
         print(state)
-        # breakpoint()
+        # 
         return spectrometer, state
 
 
@@ -1703,7 +1819,7 @@ if __name__ == '__main__':
                 print(e) 
                 
 
-        # breakpoint()
+        # 
         # Read the response from the spectrometer
 
         try:

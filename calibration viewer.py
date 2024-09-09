@@ -502,10 +502,10 @@ class Calibration:
 
             return fit_coeff_g1_to_wavelength, fit_metrics
         
-        def wavelength_to_g2(new_data_array, show=False):
+        def wavelength_to_g2(new_data_array, show=False, offset=0):
             '''Calibration for using laser wavelength to calculate G2 steps.'''
 
-            g2_steps = new_data_array[:, 4]
+            g2_steps = new_data_array[:, 4]+offset
             fit_coeff_wavelength_to_g2 = np.polyfit(self.wavelength_axis, g2_steps, 1)
             p_wavelength_to_g2 = np.poly1d(fit_coeff_wavelength_to_g2)
 
@@ -521,17 +521,17 @@ class Calibration:
                 ax[0].plot(self.wavelength_axis, p_wavelength_to_g2(self.wavelength_axis), label='G2 Steps fit', color='tab:purple')
                 residuals = g2_steps - p_wavelength_to_g2(self.wavelength_axis)
                 ax[1].plot(self.wavelength_axis, residuals, label='G2 Steps residuals', marker='o')
-                ax[0].set_title('Wavelength to G2 Steps')
+                ax[0].set_title('Wavelength to G2 Steps (+{})'.format(offset))
                 ax[0].legend()
                 ax[1].legend()
                 plt.show()
 
             return fit_coeff_wavelength_to_g2, fit_metrics
         
-        def g2_to_wavelength(new_data_array, show=False):
+        def g2_to_wavelength(new_data_array, show=False, offset=0):
             '''Reverse calibration for calculating laser wavelength from G2 steps.'''
 
-            g2_steps = new_data_array[:, 4]
+            g2_steps = new_data_array[:, 4]+offset
             fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, self.wavelength_axis, 1)
             p_g2_to_wavelength = np.poly1d(fit_coeff_g2_to_wavelength)
 
@@ -547,7 +547,7 @@ class Calibration:
                 ax[0].plot(g2_steps, p_g2_to_wavelength(g2_steps), label='Wavelength fit', color='tab:purple')
                 residuals = self.wavelength_axis - p_g2_to_wavelength(g2_steps)
                 ax[1].plot(g2_steps, residuals, label='Wavelength residuals', marker='o')
-                ax[0].set_title('G2 Steps to Wavelength')
+                ax[0].set_title('G2 Steps (+{}) to Wavelength'.format(offset))
                 ax[0].legend()
                 ax[1].legend()
                 plt.show()
@@ -622,6 +622,15 @@ class Calibration:
         fit_coeff_g2_to_wavelength, fm10 = g2_to_wavelength(new_data_array)
         self.calibration_metrics['g2_to_wl'] = fm10
         self.calibrations['g2_to_wl'] = fit_coeff_g2_to_wavelength.tolist()
+
+        fit_coeff_wavelength_to_g2_add, fm11 = wavelength_to_g2(new_data_array, offset=-13069)
+        self.calibration_metrics['wl_to_g2_add'] = fm11
+        self.calibrations['wl_to_g2_add'] = fit_coeff_wavelength_to_g2_add.tolist()
+
+        fit_coeff_g2_to_wavelength_add, fm12 = g2_to_wavelength(new_data_array, offset=-13069)
+        self.calibration_metrics['g2_to_wl_add'] = fm12
+        self.calibrations['g2_to_wl_add'] = fit_coeff_g2_to_wavelength_add.tolist()
+
 
         return self.calibrations
 

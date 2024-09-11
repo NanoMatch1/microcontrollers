@@ -402,9 +402,13 @@ class Microscope:
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
+            # additive reference at 220: [83, -13108...]
+
         }
         
-        
+        # -12858 (0 optically)
+        # -12973 (220 optically and 220 mechanically)
+
 
         # commands for controlling TRIAX spectrometer
         self.spectrometer_dict = {
@@ -1051,6 +1055,63 @@ class Microscope:
             return (f'exporting {gpa}:{gpb}')
             
             # sulfur REF: 210 sd (220 peak)
+        
+        if com[0] == 'aapt':
+            command = 'o{}o'.format(self.tuning_motor_dict['gpa'])
+            if len(com) > 1:
+                extra = ','.join(com[1:])
+            else:
+                extra = ''
+            # print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # 
+            response = self.read_from_serial_until()
+            # print(response)
+            # 
+            gpa = response[1].split('<P')[1]
+            gpa = gpa.split('P>')[0]
+            gpa = gpa.split(',')
+
+            command = 'o{}o'.format(self.tuning_motor_dict['gpb'])
+            # print('UI>UNO:{}'.format(command))
+            self.send_command_to_UNO(command)
+            time.sleep(0.1)
+            # 
+            response = self.read_from_serial_until()
+            # print(response)
+            gpb = response[1].split('<P')[1]
+            gpb = gpb.split('P>')[0]
+            gpb = gpb.split(',')
+
+            
+            with open(os.path.join(self.scriptDir, 'aapt.txt'), 'a') as f:
+                f.write('{}:{}:{}\n'.format(gpa, gpb, extra))
+            print(f'exporting {gpa}:{gpb}:{extra}')
+            return (f'exporting {gpa}:{gpb}')
+            
+            # sulfur REF: 210 sd (220 peak)
+            # init got response
+# Current laser pos: [192.0, -65.0, 0.0, 0.0]
+# entered turning dict
+# UI>UNO:oBposo
+# UNO>B:pos
+# <PX-49,Y-13108,Z0,A0P>
+# UI<UNO<B:<PX-49,Y-13108,Z0,A0P>
+# Current grating pos: [-49.0, -13108.0, 0.0, 0.0]
+# Current laser wavelength: 799.7091464278527
+# Current grating wavelength: 799.7234964284621
+
+# aligned manually to 0 shift:
+# Current laser pos: [192.0, -65.0, 0.0, 0.0]
+# entered turning dict
+# UI>UNO:oBposo
+# UNO>B:pos
+# <PX-49,Y-12865,Z0,A0P>
+# UI<UNO<B:<PX-49,Y-12865,Z0,A0P>
+# Current grating pos: [-49.0, -12865.0, 0.0, 0.0]
+# Current laser wavelength: 799.7091464278527
+# Current grating wavelength: 799.7234964284621
 
 
         if com[0] in self.general_dict.keys():

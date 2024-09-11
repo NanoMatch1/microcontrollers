@@ -2,12 +2,17 @@
 #include <AccelStepper.h>
 
 // TODO: Add case separators for relative and asbolute positioning
+//COM9
 
 // Define stepper motor connections (adjust pin numbers based on CNC Shield wiring)
 AccelStepper stepperX(AccelStepper::DRIVER, 2, 5);  // Pin 2 = step, Pin 5 = direction for X Axis
 AccelStepper stepperY(AccelStepper::DRIVER, 3, 6);  // Pin 3 = step, Pin 6 = direction for Y Axis
 AccelStepper stepperZ(AccelStepper::DRIVER, 4, 7);  // Pin 4 = step, Pin 7 = direction for Z Axis
 AccelStepper stepperA(AccelStepper::DRIVER, 12, 13); // Pin 10 = step, Pin 11 = direction for A Axis
+
+const int limitSwitchX = 8; // Pin number for X-axis limit switch
+const int limitSwitchY = 9; // Pin number for Y-axis limit switch
+
 
 // const int stepPin = 3;
 // const int enablePinA = 8;  // Enable pin for Stepper A

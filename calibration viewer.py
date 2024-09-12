@@ -133,8 +133,6 @@ class Calibration:
         self.calibration_metrics = {}
         self.calibrations = {}
 
-
-
     def load_calibration_file(self):
         file = self.files[0]
 
@@ -149,7 +147,6 @@ class Calibration:
                 data_set_1.append([cols[0], cols[3]])
                 # data_set_2.append([float(cols[3]), float(cols[0])])
 
-        # wavelength_data = (np.array(data_set_1).astype(float), np.array(data_set_2).astype(float))
         wavelength_data = np.array(data_set_1).astype(float)
         return wavelength_data
     
@@ -190,13 +187,10 @@ class Calibration:
         headers = cal_data.T[0, :]
         cal_data_array = cal_data.T[1:, :].astype(float)
 
-        # sort the data by the first column (steps on l1)
+        # sort the data by steps on l1 (/propto wavelength)
         sorted_data = cal_data_array[np.argsort(cal_data_array[:, 0])]
 
         cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
-
-        # sort the data by steps on l1 (/propto wavelength)
-
 
         return cal_data, cal_data_array
     
@@ -232,8 +226,7 @@ class Calibration:
                     value = float(x.strip("' XYZA"))
                     new_data.append(value)
 
-                # breakpoint()
-                # breakpoint()
+
                 cal_data = np.column_stack((cal_data, new_data))
 
         headers = cal_data.T[0, :]
@@ -271,7 +264,6 @@ class Calibration:
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
 
-
         coeff_l1_to_wl = np.polyfit(l1_steps, wavelength, 2)
         p_wavelength = np.poly1d(coeff_l1_to_wl)
 
@@ -303,9 +295,6 @@ class Calibration:
 
 
             plt.show()
-
-        # self.calibration_metrics['wl_to_l1'] = fit_metrics
-        # self.calibrations['wl_to_l1'] = coeff_wl_to_l1.tolist()
 
         return {'wl_to_l1': (coeff_wl_to_l1, fit_metrics), 'l1_to_wl': (coeff_l1_to_wl, fit_metrics2)}
     
@@ -344,8 +333,6 @@ class Calibration:
         spectrometer_position = []
 
         spectrometer_steps, pixel_number = steps_and_pixels
-        # spectrometer_steps = sorted_data[:, 8]
-        # pixel_number = sorted_data[:, 9]
 
         for idx, steps in enumerate(spectrometer_steps):
             wavelength = wavelength_axis[idx]
@@ -662,168 +649,6 @@ class Calibration:
         self.calibrations['g2_to_wl'] = fit_coeff_g2_to_wavelength.tolist()
 
         return fit_coeff_g2_to_wavelength, fit_metrics
-        
-
-
-        # recalculates wavelength to l1 calibration to trim the data to the appropriate size for the other calibrations
-        # calculate new wavelength axis with data_l1
-
-        p_l1_to_wl = np.poly1d(self.initial_wavelength_cal['l1_to_wl'][0])
-        self.wavelength_axis = p_l1_to_wl(data_l1)
-        print('New wavelength axis calculated: \n', self.wavelength_axis)
-        # breakpoint()
-
-
-
-
-        spectrometer_position = calculate_triax_steps(sorted_data, self.wavelength_axis, Calibration.calib_dict)
-        # breakpoint()
-        new_data_array = np.column_stack((self.wavelength_axis, data_l1, data_l2, data_g1, data_g2))
-
-        triax_steps, fm1 = wavelength_to_triax(spectrometer_position, self.wavelength_axis, show=True)
-        self.calibration_metrics['wl_to_triax_steps'] = fm1
-        self.calibrations['wl_to_triax_steps'] = triax_steps.tolist()
-
-        triax_steps, fm2 = triax_steps_to_wavelength(spectrometer_position, self.wavelength_axis, show=True)
-        self.calibration_metrics['triax_steps_to_wl'] = fm2
-        self.calibrations['triax_steps_to_wl'] = triax_steps.tolist()
-            
-        fit_coeff_wavelength_to_l1, fm3 = wavelength_to_l1(new_data_array)
-        self.calibration_metrics['wl_to_l1'] = fm3
-        self.calibrations['wl_to_l1'] = fit_coeff_wavelength_to_l1.tolist()
-
-        fit_coeff_l1_to_wavelength, fm4 = l1_to_wavelength(new_data_array)
-        self.calibration_metrics['l1_to_wl'] = fm4
-        self.calibrations['l1_to_wl'] = fit_coeff_l1_to_wavelength.tolist()
-
-        fit_coeff_wavelength_to_l2, fm5 = wavelength_to_l2(new_data_array)
-        self.calibration_metrics['wl_to_l2'] = fm5
-        self.calibrations['wl_to_l2'] = fit_coeff_wavelength_to_l2.tolist()
-
-        fit_coeff_l2_to_wavelength, fm6 = l2_to_wavelength(new_data_array)
-        self.calibration_metrics['l2_to_wl'] = fm6
-        self.calibrations['l2_to_wl'] = fit_coeff_l2_to_wavelength.tolist()
-
-        fit_coeff_wavelength_to_g1, fm7 = wavelength_to_g1(new_data_array)
-        self.calibration_metrics['wl_to_g1'] = fm7
-        self.calibrations['wl_to_g1'] = fit_coeff_wavelength_to_g1.tolist()
-
-        fit_coeff_g1_to_wavelength, fm8 = g1_to_wavelength(new_data_array)
-        self.calibration_metrics['g1_to_wl'] = fm8
-        self.calibrations['g1_to_wl'] = fit_coeff_g1_to_wavelength.tolist()
-
-        fit_coeff_wavelength_to_g2, fm9 = wavelength_to_g2(new_data_array)
-        self.calibration_metrics['wl_to_g2'] = fm9
-        self.calibrations['wl_to_g2'] = fit_coeff_wavelength_to_g2.tolist()
-
-        fit_coeff_g2_to_wavelength, fm10 = g2_to_wavelength(new_data_array)
-        self.calibration_metrics['g2_to_wl'] = fm10
-        self.calibrations['g2_to_wl'] = fit_coeff_g2_to_wavelength.tolist()
-
-        fit_coeff_wavelength_to_g2_add, fm11 = wavelength_to_g2(new_data_array, offset=-13069)
-        self.calibration_metrics['wl_to_g2_add'] = fm11
-        self.calibrations['wl_to_g2_add'] = fit_coeff_wavelength_to_g2_add.tolist()
-
-        fit_coeff_g2_to_wavelength_add, fm12 = g2_to_wavelength(new_data_array, offset=-13069)
-        self.calibration_metrics['g2_to_wl_add'] = fm12
-        self.calibrations['g2_to_wl_add'] = fit_coeff_g2_to_wavelength_add.tolist()
-
-
-        return self.calibrations
-
-        # fit_coeff_laser = np.polyfit(data_l1, data_l2, 1)
-        # fit_coeff_grating = np.polyfit(data_g1, data_g2, 1)
-        # ax[0].scatter(data_l1, data_l2, label='L1 vs L2')
-        # ax[1].scatter(data_g1, data_g2, label='G1 vs G2')
-
-    
-        # # fit a line to the data
-
-        # # get fit parameters
-        # p_laser = np.poly1d(fit_coeff_laser)
-        # p_grating = np.poly1d(fit_coeff_grating)
-
-        # ax[0].plot(data_l1, p_laser(data_l1), label='L1 vs L2 fit', color='tab:purple')
-        # ax[1].plot(data_g1, p_grating(data_g1), label='G1 vs G2 fit', color='tab:purple')
-
-        # # plot residuals
-        # residuals_l = data_l2 - p_laser(data_l1)
-        # residuals_g = data_g2 - p_grating(data_g1)
-        # ax[2].plot(data_l1, residuals_l, label='L1 vs L2 residuals', marker='o')
-        # ax[2].plot(data_l1, residuals_g, label='G1 vs G2 residuals', marker='o')
-
-        # ax[0].legend()
-        # ax[1].legend()
-        # ax[2].legend()
-        
-        # if show is True:
-        #     plt.show()
-
-        
-
-        # print(f'l1xl2 fit: {fit_coeff_laser}')
-        # print(f'g1xg2 fit: {fit_coeff_grating}')
-        
-        # calibrations['laser'] = fit_coeff_laser.tolist()
-        # calibrations['grating'] = fit_coeff_grating.tolist()
-
-        # fig, ax = plt.subplots(3,1)
-        # wavelength_cal_laser = np.polyfit(wavelength_axis, data_l1, 2)
-        # wavelength_cal_grating = np.polyfit(wavelength_axis, data_g1, 1)
-        # p_wavelength_laser = np.poly1d(wavelength_cal_laser)
-        # p_wavelength_grating = np.poly1d(wavelength_cal_grating)
-        # ax[0].scatter(wavelength_axis, data_l1, label='Lambda L1')
-        # ax[0].plot(wavelength_axis, p_wavelength_laser(wavelength_axis), label='Lambda L1 fit', color='tab:purple')
-        # ax[1].scatter(wavelength_axis, data_g1, label='Lambda G1')
-        # ax[1].plot(wavelength_axis, p_wavelength_grating(wavelength_axis), label='Lambda G1 fit', color='tab:purple')
-        
-        # res_1 = data_l1 - p_wavelength_laser(wavelength_axis)
-        # res_2 = data_g1 - p_wavelength_grating(wavelength_axis)
-        # ax[2].plot(wavelength_axis, res_1, label='Lambda L1 residuals', marker='o')
-        # ax[2].plot(wavelength_axis, res_2, label='Lambda G1 residuals', marker='o')
-
-        # ax[0].legend()
-        # ax[1].legend()
-        # ax[2].legend()
-
-        # if show is True:
-        #     plt.show()
-        
-        # calibrations['wavelength_laser'] = wavelength_cal_laser.tolist()
-        # calibrations['wavelength_grating'] = wavelength_cal_grating.tolist()
-
-        # steps_cal_laser = np.polyfit(data_l1, wavelength_axis, 2)
-        # steps_cal_grating = np.polyfit(data_g1, wavelength_axis, 1)
-        # p_steps_laser = np.poly1d(steps_cal_laser)
-        # p_steps_grating = np.poly1d(steps_cal_grating)
-
-        # fig, ax = plt.subplots(4,1)
-        # ax[0].scatter(data_l1, wavelength_axis, label='Lambda L1')
-        # ax[1].scatter(data_g1, wavelength_axis, label='Lambda G1')
-        # ax[0].plot(data_l1, p_steps_laser(data_l1), label='Lambda L1 fit', color='tab:purple')
-        # ax[1].plot(data_g1, p_steps_grating(data_g1), label='Lambda G1 fit', color='tab:purple')
-        # ax[0].set_title('back calibrate stepts to wavelength')
-        # residual_laser = wavelength_axis - p_steps_laser(data_l1)
-        # residual_grating = wavelength_axis - p_steps_grating(data_g1)
-        # ax[2].plot(data_l1, residual_laser, label='Lambda L1 residuals', marker='o')
-        # ax[3].plot(data_g1, residual_grating, label='Lambda G1 residuals', marker='o')
-        # # ax[0].set_title()
-        # ax[0].legend()
-        # ax[1].legend()
-        # ax[2].legend()
-        # ax[3].legend()
-        # plt.show()
-
-        # calibrations['steps_laser'] = steps_cal_laser.tolist()
-        # calibrations['steps_grating'] = steps_cal_grating.tolist()
-
-        # print(f'steps_laser fit: {steps_cal_laser}')
-        # print(f'steps_grating fit: {steps_cal_grating}')
-        # print(f'wavelength_laser fit: {wavelength_cal_laser}')
-        # print(f'wavelength_grating fit: {wavelength_cal_grating}')
-
-        # residuals
-
         
 if __name__ == '__main__':
     def initialise(**kwargs):

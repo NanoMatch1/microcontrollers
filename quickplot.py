@@ -9,7 +9,11 @@ import numpy as np
 
 dataDir = os.path.join(os.path.dirname(__file__), 'data')
 files = [f for f in os.listdir(dataDir) if f.endswith('.txt')]
-breakpoint()
+files = [f for f in files if 'motor' in f][5:]
+
+print(files)
+
+# breakpoint()
 
 for file in files:
     with open(os.path.join(dataDir, file), 'r') as f:
@@ -18,7 +22,7 @@ for file in files:
             print(file)
             x = [float(line.split(',')[0]) for line in lines]
             x = range(len(x))
-            x = np.array(x).astype(float)/max(x)
+            # x = np.array(x).astype(float)/max(x)
 
             y = [float(line.split(',')[1]) for line in lines]
             plt.plot(x, y, label=file)
@@ -26,7 +30,7 @@ for file in files:
         except:
             x = [float(line.split()[0]) for line in lines]
             x = range(len(x))
-            x = np.array(x).astype(float)/max(x)
+            # x = np.array(x).astype(float)/max(x)
             y = [float(line.split()[1]) for line in lines]
             plt.plot(x, y, label=file)
         # plt.plot(x, y, label=file)

@@ -361,9 +361,9 @@ class Microscope:
         self.calibrations = SimpleNamespace(**{calib: np.poly1d(calibrations[calib]) for calib in calibrations})
         self.all_calibrations = calibrations
 
-        self.scan_min = -1000
-        self.scan_max = 1000
-        self.scan_resolution = 50
+        self.scan_min = 800
+        self.scan_max = 835
+        self.scan_resolution = 0.5
 
         # self.grating_calib = calibrations['']
 
@@ -381,7 +381,7 @@ class Microscope:
         self.data = []
 
         self.microscope_functions = {
-            'scan': self.run_scan_custom,
+            'scan': self.run_scan_spectrum,
             'get_grating_position': self.get_grating_position,
             'scan_min': self.set_scan_min,
             'scan_max': self.set_scan_max,
@@ -399,6 +399,8 @@ class Microscope:
             'setmode': self.change_monochromator_mode,
             'writemotora': self.set_absolute_positions_A,
             'writemotorb': self.set_absolute_positions_B,
+            'help': self.show_help,
+            'motorscan': self.motor_scan,
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
@@ -540,6 +542,11 @@ class Microscope:
 
         self.report_status()
 
+    def show_help(self):
+        print('Available commands:')
+        for key in self.microscope_functions:
+            print(key)
+
     def guess_mode(self):
         current_grating_pos = self.get_grating_motor_positions()
         if current_grating_pos[1] < -3000:
@@ -557,8 +564,8 @@ class Microscope:
             self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_add'])
         elif mode == 'subtractive':
             # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
-            self.calibrations.wl_to_g2 = np.poly1d(self.calibration_backup['wl_to_g2'])
-            self.calibrations.g2_to_wl = np.poly1d(self.calibration_backup['g2_to_wl'])
+            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2'])
+            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl'])
 
     #g2 start -39
     def change_monochromator_mode(self, mode):
@@ -1084,11 +1091,13 @@ class Microscope:
             gpb = gpb.split('P>')[0]
             gpb = gpb.split(',')
 
+            current_wavelength = self.calculate_laser_position()
+
             
             with open(os.path.join(self.scriptDir, 'aapt.txt'), 'a') as f:
-                f.write('{}:{}:{}\n'.format(gpa, gpb, extra))
-            print(f'exporting {gpa}:{gpb}:{extra}')
-            return (f'exporting {gpa}:{gpb}')
+                f.write('{}:{}:{}:{}\n'.format(current_wavelength, gpa, gpb, extra))
+            print(f'exporting {current_wavelength}:{gpa}:{gpb}:{extra}')
+            return (f'exporting {current_wavelength}:{gpa}:{gpb}')
             
             # sulfur REF: 210 sd (220 peak)
             # init got response
@@ -1412,7 +1421,7 @@ class Microscope:
     #     scan_thread = threading.Thread(target=scan)
     #     scan_thread.start()
 
-    def run_scan_custom(self, plot=True):
+    def motor_scan(self, motor = 'g2'):
         # Create figure for plotting
         fig, ax = plt.subplots()
         xs = []  # List to store x-axis values (time steps)
@@ -1448,43 +1457,207 @@ class Microscope:
 
         print("custom scan")
         scan_results = np.empty((0, 3)).astype(float)
-        response_list = self.process_coms('getpos')
+        grating_pos = self.get_grating_motor_positions()
+        grating_wavelength = self.calculate_grating_position(grating_pos)
+        scan_min = -100
+        scan_max = 100
+        scan_resolution = 5
+        acq_time = 0.2
 
-        stepper_pos = {}
-        for item in response_list:
-            if '<P' in item:
-                positions = item.split('P')[1]
-                positions = positions.split(',')
-                for pos in positions:
-                    stepper_pos[pos[0]] = int(pos[1:]) # position in steps -> refer to calibration dataset for conversion
-        print("Established current motor positions:", stepper_pos)
-        self.grating_pos = stepper_pos['Y']
-        scan_pos = self.grating_pos
-        scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_resolution)
-        print(scan_dims)
-        input('\nScan to commence:')
-        self.process_coms('A {}'.format(self.scan_min))
-        scan_pos += self.scan_min
+
+        while True:
+            print('-'*50)
+            print('Perparing wavelength scan. Current Parameters:')
+            print('0 : Scan Min: {}'.format(scan_min))
+            print('1 : Scan Max: {}'.format(scan_max))
+            print('2 : Scan Resolution: {}'.format(scan_resolution))
+            print('3 : Acquisition Time: {}'.format(acq_time))
+            print('-'*50)
+            # build_scan = np.arange(scan_min, self.scan_max, self.scan_resolution)
+            # print('Estimated time for scan: {} minutes'.format(round((len(build_scan)*(self.acq_time+0.2))/60), 2))
+            response = input('\nScan to commence (y/n). Enter integer values to change paramter:')
+
+            if response == 'y':
+                break
+            elif response == 'n':
+                return
+            else:
+                try:
+                    response = int(response)
+                    if response == 0:
+                        scan_min = float(input('Enter new scan min:'))
+                    elif response == 1:
+                        scan_max = float(input('Enter new scan max:'))
+                    elif response == 2:
+                        scan_resolution = float(input('Enter new scan resolution:'))
+                    elif response == 3:
+                        acq_time = float(input('Enter new acquisition time:'))
+                except ValueError:
+                    print('Invalid input. Please enter an integer value')
+                    continue
+            
         print("Beginning scan...")
-        time.sleep(0.5)
-        for idx, val in enumerate(scan_dims):
+        print("Moving to initial grating position: {}".format(grating_wavelength))
+
+        build_scan = np.arange(scan_min, scan_max, scan_resolution)
+        self.process_coms('{} {}'.format(motor, scan_min))
+
+        for idx, steps in enumerate(build_scan):
+
             if idx != 0:
-                self.process_coms('A {}'.format(self.scan_resolution))
-                scan_pos += self.scan_resolution
+                self.process_coms('{} {}'.format(motor, scan_resolution))
+            time.sleep(0.1)
+            response = self.process_coms('acq {}'.format(acq_time))
+            time.sleep(0.1)
+            data = self.extract_data(response)
+            intensity = float(data[0])
+            # print('{}:{}'.format(scan_pos, intensity))
+            add_data_point([steps, intensity])
+            # breakpoint()
+            scan_results = np.vstack((scan_results, [steps, data[0], data[1]]))
+
+        self.results = np.array(scan_results).astype(float)
+        print(self.results)
+        print('Returning to initial grating position: {}'.format(grating_wavelength))
+        self.process_coms('{} {}'.format(motor, -(scan_max-scan_resolution)))
+        filename = os.path.join(self.dataDir, '{}_motor_scan_results_{}.txt'.format(motor, len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
+        np.savetxt(filename, self.results)
+
+
+
+    def run_scan_spectrum(self, plot=True):
+        # Create figure for plotting
+        fig, ax = plt.subplots()
+        xs = []  # List to store x-axis values (time steps)
+        ys = []  # List to store y-axis values (data points)
+
+        # Initialize plot
+        line, = ax.plot(xs, ys, 'r-')  # 'r-' means red line
+        ax.set_xlim(0, 10)  # Set initial x-axis limits
+        ax.set_ylim(0, 1)  # Set initial y-axis limits
+
+        # Display the plot
+        plt.ion()
+        plt.show()
+
+        def add_data_point(newData):
+            # Append new data points to the lists
+            xs.append(float(newData[0]))
+            ys.append(float(newData[1]))
+            
+            # Update line data
+            line.set_data(xs, ys)
+            
+            # Adjust x-axis and y-axis limits dynamically
+            ax.set_xlim(min(xs), max(xs))
+            ax.set_ylim(min(ys) - 0.1, max(ys) + 0.1)
+            
+            # Redraw the plot
+            plt.draw()
+            plt.pause(0.01)
+
+        # TODO: Eventually replace code to skip process_coms and call send_to_UNO
+
+
+        print("custom scan")
+        scan_results = np.empty((0, 3)).astype(float)
+        grating_pos = self.get_grating_motor_positions()
+        grating_wavelength = self.calculate_grating_position(grating_pos)
+
+
+        while True:
+            print('-'*50)
+            print('Perparing wavelength scan. Current Parameters:')
+            print('0 : Scan Min: {}'.format(self.scan_min))
+            print('1 : Scan Max: {}'.format(self.scan_max))
+            print('2 : Scan Resolution: {}'.format(self.scan_resolution))
+            print('3 : Acquisition Time: {}'.format(self.acq_time))
+            print('-'*50)
+            build_scan = np.arange(self.scan_min, self.scan_max, self.scan_resolution)
+            print('Estimated time for scan: {} minutes'.format(round((len(build_scan)*(self.acq_time+0.2))/60), 2))
+            response = input('\nScan to commence (y/n). Enter integer values to change paramter:')
+
+            if response == 'y':
+                break
+            elif response == 'n':
+                return
+            else:
+                try:
+                    response = int(response)
+                    if response == 0:
+                        self.scan_min = float(input('Enter new scan min:'))
+                    elif response == 1:
+                        self.scan_max = float(input('Enter new scan max:'))
+                    elif response == 2:
+                        self.scan_resolution = float(input('Enter new scan resolution:'))
+                    elif response == 3:
+                        self.acq_time = float(input('Enter new acquisition time:'))
+                except ValueError:
+                    print('Invalid input. Please enter an integer value')
+                    continue
+            
+        print("Beginning scan...")
+        print("Moving to initial grating position: {}".format(grating_wavelength))
+
+        # calshift 0
+#         Current laser pos: [193.0, -66.0, 0.0, 0.0]
+# entered turning dict
+# UI>UNO:oBposo
+# UNO>B:pos
+# <PX-49,Y-13070,Z0,A0P>
+# UI<UNO<B:<PX-49,Y-13070,Z0,A0P>
+# Current grating pos: [-49.0, -13070.0, 0.0, 0.0]
+# Current laser wavelength: 799.6932186804214
+# Current grating wavelength: 799.7234964284621
+
+
+        for idx, target in enumerate(build_scan):
+
+            self.go_to_grating_wavelength(target)
             time.sleep(0.1)
             response = self.process_coms('acq {}'.format(self.acq_time))
             time.sleep(0.1)
             data = self.extract_data(response)
             intensity = float(data[0])
-            print('{}:{}'.format(scan_pos, intensity))
-            add_data_point([scan_pos, intensity])
-            scan_results = np.vstack((scan_results, [scan_pos, data[0], data[1]]))
+            # print('{}:{}'.format(scan_pos, intensity))
+            add_data_point([target, intensity])
+            # breakpoint()
+            scan_results = np.vstack((scan_results, [target, data[0], data[1]]))
 
         self.results = np.array(scan_results).astype(float)
         print(self.results)
-        self.process_coms('A {}'.format(self.grating_pos-scan_pos))
-        filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
+        print('Returning to initial grating position: {}'.format(grating_wavelength))
+        self.go_to_grating_wavelength(grating_wavelength)
+        filename = os.path.join(self.dataDir, 'spectrum_scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
         np.savetxt(filename, self.results)
+
+
+        # current values:
+#         Current laser pos: [192.0, -65.0, 0.0, 0.0]
+# entered turning dict
+# UI>UNO:oBposo
+# UNO>B:pos
+# <PX82,Y-12973,Z0,A0P>
+# UI<UNO<B:<PX82,Y-12973,Z0,A0P>
+# Current grating pos: [82.0, -12973.0, 0.0, 0.0]
+# Current laser wavelength: 799.7091464278527
+# Current grating wavelength: 814.0347471993285
+
+#Calshift
+
+# Current laser pos: [193.0, -66.0, 0.0, 0.0]
+# entered turning dict
+# UI>UNO:oBposo
+# UNO>B:pos
+# <PX82,Y-13165,Z0,A0P>
+# UI<UNO<B:<PX82,Y-13165,Z0,A0P>
+# Current grating pos: [82.0, -13165.0, 0.0, 0.0]
+# Calibration shift successful
+# New Positions:
+#  Laser: 799.6932186804214
+#  Grating: 814.0347471993285
+# Enter command:
+
 
     # def run_scan_TRIAX(self, plot=True):
     #     scan_results = np.empty((0, 2)).astype(float)

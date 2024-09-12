@@ -110,7 +110,6 @@ class FitMetrics:
     mae: int
     res_std: int
 
-
 class Calibration:
 
     calib_dict = {
@@ -129,6 +128,7 @@ class Calibration:
         self.dataDir = os.path.join(os.path.dirname(__file__), 'laser_calibration')
         self.files = [f for f in os.listdir(self.dataDir) if f.endswith('.txt')]
         self.eept_file = os.path.join(os.path.dirname(__file__), 'eept.txt')
+        self.aapt_file = os.path.join(os.path.dirname(__file__), 'aapt.txt')
         self.showplots = showplots
         self.calibration_metrics = {}
         self.calibrations = {}
@@ -188,9 +188,55 @@ class Calibration:
                 cal_data = np.column_stack((cal_data, new_data))
 
         headers = cal_data.T[0, :]
-        cal_data = cal_data.T[1:, :].astype(float)
+        cal_data_array = cal_data.T[1:, :].astype(float)
 
-        return headers, cal_data
+        cal_data = {header: cal_data_array[:, idx] for idx, header in enumerate(headers)}
+
+        return cal_data
+    
+    def load_aapt_file(self):
+        cal_data = np.array(["wavelength", "L1", "L2", "NIU", "NIU", "G1", "G2", "NIU", "NIU"])
+        with open(self.aapt_file, 'r') as f:
+            lines = f.readlines()
+
+            for line in lines:
+                data = []
+                if line.startswith('#'):
+                    continue
+                line = line.strip('\n')
+                if len(line) == 0:
+                    continue
+                try:
+                    wavelength, set_avo, set_gary, set_triax = line.split(':')
+                except Exception as e:
+                    print(e)
+                    print("check data file aapt.txt")
+                    continue
+        
+                set_avo = set_avo.strip('[]')
+                set_gary = set_gary.strip('[]')
+
+                set_avo = set_avo.split(',')
+                set_gary = set_gary.split(',')
+                set_triax = set_triax.split(',')
+
+                data.extend([wavelength, *set_avo, *set_gary])
+                new_data = []
+                for x in data:
+                    value = float(x.strip("' XYZA"))
+                    new_data.append(value)
+
+                # breakpoint()
+                # breakpoint()
+                cal_data = np.column_stack((cal_data, new_data))
+
+        headers = cal_data.T[0, :]
+        cal_data_array = cal_data.T[1:, :].astype(float)
+
+        cal_data = {header: cal_data_array[:, idx] for idx, header in enumerate(headers)}
+
+        return cal_data
+
 
     def calculate_fit_metrics(self, actual, model):
         # Fit quality metrics
@@ -257,25 +303,28 @@ class Calibration:
 
         return {'wl_to_l1': (coeff_wl_to_l1, fit_metrics), 'l1_to_wl': (coeff_l1_to_wl, fit_metrics2)}
 
-    def run_motor_calibration(self, calib_dict, show=False, recalculate_l1=False):
-        def calculate_triax_steps(sorted_data, wavelength_axis, calib_dict):
-            '''Perparatory calculation. Calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
+    def run_motor_calibration(self, cal_data, calib_dict, show=False, recalculate_l1=False):
+        pass
 
-            spectrometer_position = []
+    def calculate_triax_steps(steps_and_pixels: tuple, wavelength_axis, calib_dict):
+        '''Perparatory calculation. Calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
 
-            spectrometer_steps = sorted_data[:, 8]
-            pixel_number = sorted_data[:, 9]
+        spectrometer_position = []
 
-            for idx, steps in enumerate(spectrometer_steps):
-                wavelength = wavelength_axis[idx]
-                pixel = pixel_number[idx]
-                wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel)
-                triax_steps_to_shift = wavelength_from_50/calib_dict['nm_per_triax_step']
-                print(pixel, triax_steps_to_shift, steps, wavelength)
-                triax_actual_steps = steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
-                spectrometer_position.append(triax_actual_steps)
+        spectrometer_steps, pixel_number = steps_and_pixels
+        # spectrometer_steps = sorted_data[:, 8]
+        # pixel_number = sorted_data[:, 9]
 
-            return spectrometer_position
+        for idx, steps in enumerate(spectrometer_steps):
+            wavelength = wavelength_axis[idx]
+            pixel = pixel_number[idx]
+            wavelength_from_50 = calib_dict['nm_per_pixel']*(50-pixel)
+            triax_steps_to_shift = wavelength_from_50/calib_dict['nm_per_triax_step']
+            print(pixel, triax_steps_to_shift, steps, wavelength)
+            triax_actual_steps = steps + (wavelength_from_50/calib_dict['nm_per_triax_step'])
+            spectrometer_position.append(triax_actual_steps)
+
+        return spectrometer_position
 
 
 
@@ -502,10 +551,10 @@ class Calibration:
 
             return fit_coeff_g1_to_wavelength, fit_metrics
         
-        def wavelength_to_g2(new_data_array, show=False, offset=0):
+        def wavelength_to_g2(new_data_array, show=False, offset=0, flipdir=True):
             '''Calibration for using laser wavelength to calculate G2 steps.'''
 
-            g2_steps = new_data_array[:, 4]+offset
+            g2_steps = (new_data_array[:, 4]*-1)+offset
             fit_coeff_wavelength_to_g2 = np.polyfit(self.wavelength_axis, g2_steps, 1)
             p_wavelength_to_g2 = np.poly1d(fit_coeff_wavelength_to_g2)
 
@@ -531,7 +580,7 @@ class Calibration:
         def g2_to_wavelength(new_data_array, show=False, offset=0):
             '''Reverse calibration for calculating laser wavelength from G2 steps.'''
 
-            g2_steps = new_data_array[:, 4]+offset
+            g2_steps = (new_data_array[:, 4]*-1)+offset
             fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, self.wavelength_axis, 1)
             p_g2_to_wavelength = np.poly1d(fit_coeff_g2_to_wavelength)
 
@@ -557,7 +606,7 @@ class Calibration:
         calibrations = {}
         report_dict = {}
 
-        headers, cal_data = self.load_eept_file()
+        
 
         # fig, ax = plt.subplots(3,1)
 
@@ -730,8 +779,14 @@ class Calibration:
 if __name__ == '__main__':
     # wavelength_cal = wavelength_calibration(laser_calibration, show=False)
 
-    calibration = Calibration(showplots=True)
-    calibration.run_motor_calibration(Calibration.calib_dict, show=False, recalculate_l1=False)
+    calibration = Calibration(showplots=False)
+    # calibration.load_aapt_file()
+    # breakpoint()
+    cal_data = calibration.load_eept_file()
+    breakpoint()
+    calibration.calculate_triax_steps()
+    breakpoint()
+    calibration.run_motor_calibration(Calibration.calib_dict, cal_data, show=False, recalculate_l1=False)
     
     # return a solution for a given value of x, fed to the calibration function
     # x = 0.5

@@ -370,7 +370,6 @@ class Microscope:
 
 
         self.current_wavelength = None
-        self.current_wavenumber = None
         self.current_shift = 0
         self.monochromator_mode = 'subtractive'
         # self.to_addivite = -12990 -13108+39 
@@ -560,12 +559,12 @@ class Microscope:
     def _switch_calibrations(self, mode, overwrite=False):
         if mode == 'additive':
             # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
-            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2_add'])
-            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_add'])
+            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2_additive'])
+            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_additive'])
         elif mode == 'subtractive':
             # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
-            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2'])
-            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl'])
+            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2_subtractive'])
+            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_subtractive'])
 
     #g2 start -39
     def change_monochromator_mode(self, mode):
@@ -592,16 +591,17 @@ class Microscope:
     def report_status(self):
         report = {
             'monochromator mode': self.monochromator_mode,
-            'laser lambda': self.current_laser_wavelength,
+            'laser l1, l2 lambda': self.current_laser_wavelength,
             'g1 lambda': self.current_grating_wavelength,
             'laser motor positions': self.get_laser_motor_positions(),
             'grating motor positions': self.get_grating_motor_positions(),
             'laser wavenumber': self.current_laser_wavenumber,
             'grating wavenumber': self.current_raman_wavenumber,
+            'Raman wavelength': self.current_raman_wavelength,
             'Raman shift': self.current_shift
         }
 
-        if  report['g1 lambda'] < 500 or report['g1 lambda'] > 2000:
+        if  report['g1 lambda'][0] < 500 or report['g1 lambda'][0] > 2000:
             print('Grating wavelength out of range - please check monochromator mode')
 
 
@@ -621,8 +621,13 @@ class Microscope:
     @property
     def current_laser_wavenumber(self):
         '''Takes the current raman shift and calculates the corresponding wavelength (i.e. for the detector calibration).'''
-        return 10_000_000/self.current_laser_wavelength
+        return 10_000_000/self.current_laser_wavelength[0]
          
+    @property
+    def current_raman_wavelength(self):
+        '''Calculates the current wavelength that corresponds to the current Raman shift at this excitation wavelength.'''
+        return 10_000_000/self.current_raman_wavenumber
+
     
     @property
     def current_raman_wavenumber(self):
@@ -644,9 +649,10 @@ class Microscope:
         # breakpoint()
         
         current_laser_pos = self.get_laser_motor_positions()
-        current_laser_wavelength = self.calculate_laser_position(current_laser_pos)
+        current_laser_wavelength, l2_wavelength = self.calculate_laser_position(current_laser_pos)
         current_grating_pos = self.get_grating_motor_positions()
         current_grating_wavenumber = self.current_raman_wavenumber
+        # What the current wavelength should be at the detector
         current_detector_wavelength = self.wavenumber_to_wavelength(current_grating_wavenumber)
         print(current_detector_wavelength)
 # Write function to store Raman shift on microcontrollers and get it back.
@@ -662,6 +668,8 @@ class Microscope:
 # Current laser wavelength: 799.9799025452799
 # Current grating wavelength: 818.7323333302236
 # Enter command:
+
+        # calculate the motor positions which correspond to the current wavelength
         l1_target = round(self.calibrations.wl_to_l1(current_laser_wavelength))
         l2_target = round(self.calibrations.wl_to_l2(current_laser_wavelength))
         g1_target = round(self.calibrations.wl_to_g1(current_detector_wavelength))
@@ -670,13 +678,14 @@ class Microscope:
         print('Current Positions:\n Laser: {}\n Grating: {}'.format(current_laser_pos, current_grating_pos))
         print('Target Positions:\n Laser: {}\n Grating: {}'.format([l1_target, l2_target], [g1_target, g2_target]))
 
+        # set the motor positions to the calculated positions, shifting the calibration to the current wavelength
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
         self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
         
         new_laser_pos = self.get_laser_motor_positions()
-        new_laser_wavelength = self.calculate_laser_position(new_laser_pos)
+        new_laser_wavelength, l2_wavelength = self.calculate_laser_position(new_laser_pos)
         new_grating_pos = self.get_grating_motor_positions()
-        new_grating_wavelength = self.calculate_grating_position(new_grating_pos)
+        new_grating_wavelength, g2_wavelength = self.calculate_grating_position(new_grating_pos)
         
         if new_grating_pos[0] == g1_target and new_grating_pos[1] == g2_target and new_laser_pos[0] == l1_target and new_laser_pos[1] == l2_target:
             print('Calibration shift successful')
@@ -762,13 +771,20 @@ class Microscope:
         # 
 
     def get_all_current_positions(self):
-        current_wavelength = self.calculate_laser_position()
-        current_grating_wavelength = self.calculate_grating_position()
+        l1_wavelength, l2_wavelength = self.calculate_laser_position()
+        g1_wavelength, g2_wavelength = self.calculate_grating_position()
+        g2_pos = self.get_grating_motor_positions()
+        l1_pos = self.get_laser_motor_positions()
 
-        self.current_wavelength = current_wavelength
+        
+        print('Current laser pos: {}'.format(l1_pos))
+        print('Current grating pos: {}'.format(g2_pos))
+        self.current_wavelength = l1_wavelength
 
-        print('Current laser wavelength: {}'.format(current_wavelength))
-        print('Current grating wavelength: {}'.format(current_grating_wavelength))
+        print('Current l1 wavelength: {}'.format(l1_wavelength))
+        print('Current l2 wavelength: {}'.format(l2_wavelength))
+        print('Current g1 wavelength: {}'.format(g1_wavelength))
+        print('Current g2 wavelength: {}'.format(g2_wavelength))
 
         # TODO: Change to @property
         # self.current_grating_wavelength = self.calculate_grating_position()
@@ -819,12 +835,25 @@ class Microscope:
             current_laser_pos = current_pos
 
         l1_pos = current_laser_pos[0]
-        # l2_pos = current_laser_pos[1]
+        l2_pos = current_laser_pos[1]
 
         l1_wavelength = self.calibrations.l1_to_wl(l1_pos)
+        l2_wavelength = self.calibrations.l2_to_wl(l2_pos)
         
         # print('Current laser wavelength: {}'.format(l1_wavelength))
-        return l1_wavelength
+        return l1_wavelength, l2_wavelength
+    
+# monochromator mode: additive
+# laser lambda: 747.9912874168725
+# g1 lambda: 760.3230930312565
+# laser motor positions: [3406.0, -1425.0, 0.0, 0.0]
+# grating motor positions: [-413.0, -12667.0, 0.0, 0.0]
+# laser wavenumber: 13369.139678797854
+# grating wavenumber: 13151.139678797854
+# Raman wavelength: 760.3903725638248
+# Raman shift: 218.0
+# --------------------
+# Enter command:
 
 
     def calculate_grating_position(self, current_pos=None):
@@ -840,8 +869,9 @@ class Microscope:
         #     g2_pos = g2_pos - self.to_addivite
 
         g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
+        g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
 
-        return g1_wavelength
+        return g1_wavelength, g2_wavelength
 
     def go_to_wavenumber(self, wavenumber):
         try:
@@ -853,12 +883,13 @@ class Microscope:
             self.get_all_current_positions()
         
         # ;
-        laser_wavenumber = 10_000_000/self.current_wavelength
+        # laser_wavenumber = 10_000_000/self.current_wavelength
+        laser_wavenumber = self.current_laser_wavenumber
         # 
         wave = laser_wavenumber - wavenumber
         new_wavelength = 10_000_000/wave
         self.go_to_grating_wavelength(new_wavelength)
-        self.current_wavenumber = wavenumber
+        self.current_shift = wavenumber
         print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.current_wavelength))
 
     def go_to_laser_wavelength(self, wavelength):
@@ -1063,7 +1094,9 @@ class Microscope:
             
             # sulfur REF: 210 sd (220 peak)
         
-        if com[0] == 'aapt':
+        # REF: 900 pixels (~ 1 window) ~= 250 cm-1 ~= 13 nm
+
+        if com[0] == 'aapt': # puts the current positions of the motors into a file. Uses laser l1 calibration for the wavelength axis, and uses the raman shift applied to the (l1) calculated laser energy to provide a reference for the grating calibrations.
             command = 'o{}o'.format(self.tuning_motor_dict['gpa'])
             if len(com) > 1:
                 extra = ','.join(com[1:])
@@ -1091,16 +1124,21 @@ class Microscope:
             gpb = gpb.split('P>')[0]
             gpb = gpb.split(',')
 
-            current_wavelength = self.calculate_laser_position()
+            laser_wavelength, l2_wavelength = self.calculate_laser_position()
+            grating_wavelength = self.current_raman_wavelength
 
             
             with open(os.path.join(self.scriptDir, 'aapt.txt'), 'a') as f:
-                f.write('{}:{}:{}:{}\n'.format(current_wavelength, gpa, gpb, extra))
-            print(f'exporting {current_wavelength}:{gpa}:{gpb}:{extra}')
-            return (f'exporting {current_wavelength}:{gpa}:{gpb}')
+                f.write('{}:{}:{}:{}\n'.format(laser_wavelength, gpa, gpb, grating_wavelength))
+            print(f'exporting {laser_wavelength}:{gpa}:{gpb}:{grating_wavelength}')
+            return (f'exporting {laser_wavelength}:{gpa}:{gpb}:{grating_wavelength}')
             
             # sulfur REF: 210 sd (220 peak)
             # init got response
+
+            # (785, 500), (800, 500)
+            # 750 at 4543
+            
 # Current laser pos: [192.0, -65.0, 0.0, 0.0]
 # entered turning dict
 # UI>UNO:oBposo
@@ -1458,7 +1496,7 @@ class Microscope:
         print("custom scan")
         scan_results = np.empty((0, 3)).astype(float)
         grating_pos = self.get_grating_motor_positions()
-        grating_wavelength = self.calculate_grating_position(grating_pos)
+        grating_wavelength, g2_wavelength = self.calculate_grating_position(grating_pos)
         scan_min = -100
         scan_max = 100
         scan_resolution = 5
@@ -1562,7 +1600,7 @@ class Microscope:
         print("custom scan")
         scan_results = np.empty((0, 3)).astype(float)
         grating_pos = self.get_grating_motor_positions()
-        grating_wavelength = self.calculate_grating_position(grating_pos)
+        grating_wavelength, g2_wavelength = self.calculate_grating_position(grating_pos)
 
 
         while True:

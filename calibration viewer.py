@@ -80,24 +80,38 @@ calibration_records = {
 
 
 
-
 laser_calibration = {}
 
+def review_report():
+    with open(os.path.join(os.path.dirname(__file__), 'calibration_report.json'), 'r') as f:
+        data = json.load(f)
+        for key, value in data.items():
+            print(key)
+            for k, v in value.items():
+                print(k)
+                print(v)
+                # print('\n')
+
 def r_squared(y_true, y_pred):
+    '''Calculate R^2 (coefficient of determination) for a regression model.'''
     ss_res = np.sum((y_true - y_pred) ** 2)  # Residual sum of squares
     ss_tot = np.sum((y_true - np.mean(y_true)) ** 2)  # Total sum of squares
     return 1 - (ss_res / ss_tot)
 
 def rmse(y_true, y_pred):
+    '''Calculate the root mean squared error for a regression model.'''
     return np.sqrt(np.mean((y_true - y_pred) ** 2))
 
 def mae(y_true, y_pred):
+    '''Calculate the mean absolute error for a regression model.'''
     return np.mean(np.abs(y_true - y_pred))
 
 def residual_std(residuals):
+    '''Calculate the standard deviation of residuals for a regression model.'''
     return np.std(residuals)
 
 def adjusted_r_squared(y_true, y_pred, p):
+    '''Calculate the adjusted R^2 (coefficient of determination) for a regression model.'''
     n = len(y_true)
     r2 = r_squared(y_true, y_pred)
     return 1 - (1 - r2) * (n - 1) / (n - p - 1)
@@ -132,6 +146,7 @@ class Calibration:
         self.showplots = showplots
         self.calibration_metrics = {}
         self.calibrations = {}
+        self.report_dict = {'initial': {}, 'subtractive': {}, 'additive': {}}
 
     def load_calibration_file(self):
         file = self.files[0]
@@ -192,7 +207,7 @@ class Calibration:
 
         cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
 
-        return cal_data, cal_data_array
+        return cal_data, sorted_data
     
     def load_aapt_file(self):
         cal_data = np.array(["wavelength", "l1", "l2", "NIU", "NIU", "g1", "g2", "NIU", "NIU"])
@@ -232,9 +247,13 @@ class Calibration:
         headers = cal_data.T[0, :]
         cal_data_array = cal_data.T[1:, :].astype(float)
 
-        cal_data = {header: cal_data_array[:, idx] for idx, header in enumerate(headers)}
+        sorted_data = cal_data_array[np.argsort(cal_data_array[:, 0])]
 
-        return cal_data
+        cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
+
+        self.wavelength_axis = cal_data['wavelength']
+
+        return cal_data, sorted_data
 
 
     def calculate_fit_metrics(self, actual, model):
@@ -263,6 +282,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
+        self.report_dict['initial']['wl_to_l1'] = (fit_metrics, coeff_wl_to_l1.tolist())
 
         coeff_l1_to_wl = np.polyfit(l1_steps, wavelength, 2)
         p_wavelength = np.poly1d(coeff_l1_to_wl)
@@ -273,6 +293,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics2 = self.calculate_fit_metrics(wavelength, y_pred2)
+        self.report_dict['initial']['l1_to_wl'] = (fit_metrics2, coeff_l1_to_wl.tolist())
 
         if show is True or self.showplots is True:
             ax[0, 0].scatter(wavelength, l1_steps, label='l1 steps')
@@ -298,14 +319,21 @@ class Calibration:
 
         return {'wl_to_l1': (coeff_wl_to_l1, fit_metrics), 'l1_to_wl': (coeff_l1_to_wl, fit_metrics2)}
     
+    def save_report(self):
+        # unpack report_dict into dict for json serialization
+        newDict = {x: y for x, y in self.report_dict.items()}
+        for mode, data in self.report_dict.items():
+            for key, value in data.items():
+                newDict[mode][key] = (value[0].__dict__, value[1])
+
+        with open(os.path.join(os.path.dirname(__file__), 'calibration_report.json'), 'w') as f:
+            json.dump(newDict, f)
+    
     def build_wavelength_axis(self, initial_wavelength_cal, l1_data):
         p_l1_to_wl = np.poly1d(initial_wavelength_cal['l1_to_wl'][0])
         self.wavelength_axis = p_l1_to_wl(l1_data)
         print('New wavelength axis calculated: \n', self.wavelength_axis)
         return self.wavelength_axis
-
-    def run_motor_calibration(self, cal_data, calib_dict, show=False, recalculate_l1=False):
-        pass
 
     def save_triax_calibrations(self):
         triax_cals = {key: value for key, value in self.calibrations.items() if 'triax' in key}
@@ -366,6 +394,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(spectrometer_position, y_pred)
+        self.report_dict['initial']['wl_to_triax_steps'] = (fit_metrics, triax_steps.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -403,6 +432,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
+        self.report_dict['initial']['triax_steps_to_wl'] = (fit_metrics, steps_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -422,10 +452,13 @@ class Calibration:
         
 
         
-    def wavelength_to_l1(self, l1_steps, show=False):
+    def wavelength_to_l1(self, l1_steps, poly_order=2, mode=None, show=False):
         '''Calibration for using laser wavelength to calculate L1 steps.'''
 
-        fit_coeff_wavelength_to_l1 = np.polyfit(self.wavelength_axis, l1_steps, 2)
+        if mode is None:
+            assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_wavelength_to_l1 = np.polyfit(self.wavelength_axis, l1_steps, poly_order)
         p_wavelength_to_l1 = np.poly1d(fit_coeff_wavelength_to_l1)
 
         y_pred = p_wavelength_to_l1(self.wavelength_axis)
@@ -433,6 +466,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(l1_steps, y_pred)
+        self.report_dict[mode]['wl_to_l1'] = (fit_metrics, fit_coeff_wavelength_to_l1.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -452,10 +486,13 @@ class Calibration:
         
 
 
-    def l1_to_wavelength(self, l1_steps, show=False):
+    def l1_to_wavelength(self, l1_steps, poly_order=2, mode=None, show=False):
         '''Reverse calibration for calculating laser wavelength from L1 steps.'''
 
-        fit_coeff_l1_to_wavelength = np.polyfit(l1_steps, self.wavelength_axis, 2)
+        if mode is None:
+            assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_l1_to_wavelength = np.polyfit(l1_steps, self.wavelength_axis, poly_order)
         p_l1_to_wavelength = np.poly1d(fit_coeff_l1_to_wavelength)
 
         y_pred = p_l1_to_wavelength(l1_steps)
@@ -463,6 +500,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        self.report_dict[mode]['l1_to_wl'] = (fit_metrics, fit_coeff_l1_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -482,10 +520,12 @@ class Calibration:
 
 
 
-    def wavelength_to_l2(self, l2_steps, show=False):
+    def wavelength_to_l2(self, l2_steps, poly_order=2, mode=None, show=False):
         '''Calibration for using laser wavelength to calculate L2 steps.'''
 
-        fit_coeff_wavelength_to_l2 = np.polyfit(self.wavelength_axis, l2_steps, 2)
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_wavelength_to_l2 = np.polyfit(self.wavelength_axis, l2_steps, poly_order)
         p_wavelength_to_l2 = np.poly1d(fit_coeff_wavelength_to_l2)
 
         y_pred = p_wavelength_to_l2(self.wavelength_axis)
@@ -493,6 +533,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(l2_steps, y_pred)
+        self.report_dict[mode]['wl_to_l2'] = (fit_metrics, fit_coeff_wavelength_to_l2.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -510,10 +551,12 @@ class Calibration:
 
         return fit_coeff_wavelength_to_l2, fit_metrics
         
-    def l2_to_wavelength(self, l2_steps, show=False):
+    def l2_to_wavelength(self, l2_steps, poly_order=2, mode=None, show=False):
         '''Reverse calibration for calculating laser wavelength from L2 steps.'''
 
-        fit_coeff_l2_to_wavelength = np.polyfit(l2_steps, self.wavelength_axis, 2)
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_l2_to_wavelength = np.polyfit(l2_steps, self.wavelength_axis, poly_order)
         p_l2_to_wavelength = np.poly1d(fit_coeff_l2_to_wavelength)
 
         y_pred = p_l2_to_wavelength(l2_steps)
@@ -521,6 +564,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        self.report_dict[mode]['l2_to_wl'] = (fit_metrics, fit_coeff_l2_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -538,10 +582,12 @@ class Calibration:
 
         return fit_coeff_l2_to_wavelength, fit_metrics
 
-    def wavelength_to_g1(self, g1_steps, show=False):
+    def wavelength_to_g1(self, g1_steps, poly_order=2, mode=None, show=False):
         '''Calibration for using laser wavelength to calculate G1 steps.'''
 
-        fit_coeff_wavelength_to_g1 = np.polyfit(self.wavelength_axis, g1_steps, 1)
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_wavelength_to_g1 = np.polyfit(self.wavelength_axis, g1_steps, poly_order)
         p_wavelength_to_g1 = np.poly1d(fit_coeff_wavelength_to_g1)
 
         y_pred = p_wavelength_to_g1(self.wavelength_axis)
@@ -549,6 +595,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(g1_steps, y_pred)
+        self.report_dict[mode]['wl_to_g1'] = (fit_metrics, fit_coeff_wavelength_to_g1.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -566,10 +613,12 @@ class Calibration:
 
         return fit_coeff_wavelength_to_g1, fit_metrics
         
-    def g1_to_wavelength(self, g1_steps, show=False):
+    def g1_to_wavelength(self, g1_steps, poly_order=2, mode=None, show=False):
         '''Reverse calibration for calculating laser wavelength from G1 steps.'''
 
-        fit_coeff_g1_to_wavelength = np.polyfit(g1_steps, self.wavelength_axis, 1)
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_g1_to_wavelength = np.polyfit(g1_steps, self.wavelength_axis, poly_order)
         p_g1_to_wavelength = np.poly1d(fit_coeff_g1_to_wavelength)
 
         y_pred = p_g1_to_wavelength(g1_steps)
@@ -577,6 +626,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        self.report_dict[mode]['g1_to_wl'] = (fit_metrics, fit_coeff_g1_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -594,10 +644,12 @@ class Calibration:
         
         return fit_coeff_g1_to_wavelength, fit_metrics
         
-    def wavelength_to_g2(self, g2_steps, show=False):
+    def wavelength_to_g2(self, g2_steps, poly_order=2, mode=None, show=False):
         '''Calibration for using laser wavelength to calculate G2 steps.'''
 
-        fit_coeff_wavelength_to_g2 = np.polyfit(self.wavelength_axis, g2_steps, 1)
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+        
+        fit_coeff_wavelength_to_g2 = np.polyfit(self.wavelength_axis, g2_steps, poly_order)
         p_wavelength_to_g2 = np.poly1d(fit_coeff_wavelength_to_g2)
 
         y_pred = p_wavelength_to_g2(self.wavelength_axis)
@@ -605,6 +657,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(g2_steps, y_pred)
+        self.report_dict[mode]['wl_to_g2'] = (fit_metrics, fit_coeff_wavelength_to_g2.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -612,20 +665,22 @@ class Calibration:
             ax[0].plot(self.wavelength_axis, p_wavelength_to_g2(self.wavelength_axis), label='G2 Steps fit', color='tab:purple')
             residuals = g2_steps - p_wavelength_to_g2(self.wavelength_axis)
             ax[1].plot(self.wavelength_axis, residuals, label='G2 Steps residuals', marker='o')
-            ax[0].set_title('Wavelength to G2 Steps')
+            ax[0].set_title('Wavelength to G2 Steps {}'.format(mode))
             ax[0].legend()
             ax[1].legend()
             plt.show()
 
-        self.calibration_metrics['wl_to_g2'] = fit_metrics
-        self.calibrations['wl_to_g2'] = fit_coeff_wavelength_to_g2.tolist()
+        self.calibration_metrics['wl_to_g2_{}'.format(mode)] = fit_metrics
+        self.calibrations['wl_to_g2_{}'.format(mode)] = fit_coeff_wavelength_to_g2.tolist()
 
         return fit_coeff_wavelength_to_g2, fit_metrics
     
-    def g2_to_wavelength(self, g2_steps, show=False):
+    def g2_to_wavelength(self, g2_steps, poly_order=2, mode=None, show=False):
         '''Reverse calibration for calculating laser wavelength from G2 steps.'''
 
-        fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, self.wavelength_axis, 1)
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, self.wavelength_axis, poly_order)
         p_g2_to_wavelength = np.poly1d(fit_coeff_g2_to_wavelength)
 
         y_pred = p_g2_to_wavelength(g2_steps)
@@ -633,6 +688,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        self.report_dict[mode]['g2_to_wl'] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -640,13 +696,13 @@ class Calibration:
             ax[0].plot(g2_steps, p_g2_to_wavelength(g2_steps), label='Wavelength fit', color='tab:purple')
             residuals = self.wavelength_axis - p_g2_to_wavelength(g2_steps)
             ax[1].plot(g2_steps, residuals, label='Wavelength residuals', marker='o')
-            ax[0].set_title('G2 Steps to Wavelength')
+            ax[0].set_title('G2 Steps to Wavelength {}'.format(mode))
             ax[0].legend()
             ax[1].legend()
             plt.show()
 
-        self.calibration_metrics['g2_to_wl'] = fit_metrics
-        self.calibrations['g2_to_wl'] = fit_coeff_g2_to_wavelength.tolist()
+        self.calibration_metrics['g2_to_wl_{}'.format(mode)] = fit_metrics
+        self.calibrations['g2_to_wl_{}'.format(mode)] = fit_coeff_g2_to_wavelength.tolist()
 
         return fit_coeff_g2_to_wavelength, fit_metrics
         
@@ -674,21 +730,58 @@ if __name__ == '__main__':
         return calibration, cal_data
 
 
-    calibration, cal_data = initialise(showplots=True)
 
-    calibration.wavelength_to_triax()
-    calibration.triax_steps_to_wavelength(cal_data['l1'])
-    calibration.wavelength_to_l1(cal_data['l1'])
-    calibration.l1_to_wavelength(cal_data['l1'])
-    calibration.wavelength_to_l2(cal_data['l2'])
-    calibration.l2_to_wavelength(cal_data['l2'])
-    calibration.wavelength_to_g1(cal_data['g1'])
-    calibration.g1_to_wavelength(cal_data['g1'])
-    calibration.wavelength_to_g2(cal_data['g2'])
-    calibration.g2_to_wavelength(cal_data['g2'])
 
+    def triax_calibrations(calibration, cal_data):
+        calibration.wavelength_to_triax()
+        calibration.triax_steps_to_wavelength(cal_data['l1'])
+    
+    def subtractive_calibrations(calibration, cal_data):
+        # cal_data, cal_data_array = calibration.load_eept_file()
+        calibration.wavelength_to_l1(cal_data['l1'], mode='subtractive')
+        calibration.l1_to_wavelength(cal_data['l1'], mode='subtractive')
+        calibration.wavelength_to_l2(cal_data['l2'], mode='subtractive')
+        calibration.l2_to_wavelength(cal_data['l2'], mode='subtractive')
+        calibration.wavelength_to_g1(cal_data['g1'], mode='subtractive')
+        calibration.g1_to_wavelength(cal_data['g1'], mode='subtractive')
+        calibration.wavelength_to_g2(cal_data['g2'], mode='subtractive')
+        calibration.g2_to_wavelength(cal_data['g2'], mode='subtractive')
+
+    # FEAT Make additive calibrations
+
+    def additive_calibrations(calibration, cal_data, repeat=True):
+        cal_data, cal_data_array = calibration.load_aapt_file()
+        
+        if repeat is True:
+            # calibrate L1
+            l1_steps = cal_data['l1']
+            calibration.wavelength_to_l1(l1_steps, mode='additive')
+            calibration.l1_to_wavelength(l1_steps, mode='additive')
+
+            # calibrate L2
+            l2_steps = cal_data['l2']
+            calibration.wavelength_to_l2(l2_steps, mode='additive')
+            calibration.l2_to_wavelength(l2_steps, mode='additive')
+
+            # calibrate G1
+            g1_steps = cal_data['g1']
+            calibration.wavelength_to_g1(g1_steps, mode='additive')
+            calibration.g1_to_wavelength(g1_steps, mode='additive')
+
+        # calibrate G2
+        g2_steps = cal_data['g2']
+        calibration.wavelength_to_g2(g2_steps, mode='additive')
+        calibration.g2_to_wavelength(g2_steps, mode='additive')
+
+
+    calibration, cal_data = initialise(showplots=False)
+    triax_calibrations(calibration, cal_data)
+    subtractive_calibrations(calibration, cal_data)
+    additive_calibrations(calibration, cal_data)
     # TRIAX cal is absolute - only needs to be saved once
     # calibration.save_triax_calibrations()
     calibration.save_all_calibrations()
+    calibration.save_report()
+    # review_report()
     # print(calibration.calibrations)
 

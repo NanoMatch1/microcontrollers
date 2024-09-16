@@ -1,12 +1,12 @@
 import csv
 import json
 from dataclasses import dataclass
+import scipy.optimize as opt
 
 
 '''make a quick plot of calibration data'''
 
 '''eventually, create a calibration routine that goes to each wavelength and sweeps the laser frequency across the ccd. Collect spectra, peakfit, extract peak centre, and use to calibrate more efficiently.'''
-
 
 '''
 from most recent calibration
@@ -81,6 +81,20 @@ calibration_records = {
 
 
 laser_calibration = {}
+
+
+def simple_sin_fit(xvalues, a, b, c, d):
+    return a * np.sin(b * xvalues + c) + d
+
+def polynomial_fit(xvalues, a, b, c):
+    return a*xvalues**2 + b*xvalues + c
+
+def poly_sin_modulation_fit(x, a2, a1, a0, A, B, C, D):
+    # Polynomial part
+    poly = a2 * x**2 + a1 * x + a0
+    # Sinusoidal modulation part
+    modulation = A * np.sin(B * x + C) + D
+    return poly + modulation
 
 def review_report():
     with open(os.path.join(os.path.dirname(__file__), 'calibration_report.json'), 'r') as f:
@@ -210,7 +224,7 @@ class Calibration:
         return cal_data, sorted_data
     
     def load_aapt_file(self):
-        cal_data = np.array(["wavelength", "l1", "l2", "NIU", "NIU", "g1", "g2", "NIU", "NIU"])
+        cal_data = np.array(["laser_wl", "l1", "l2", "NIU", "NIU", "g1", "g2", "NIU", "NIU", 'grating_wl'])
         with open(self.aapt_file, 'r') as f:
             lines = f.readlines()
 
@@ -222,7 +236,7 @@ class Calibration:
                 if len(line) == 0:
                     continue
                 try:
-                    wavelength, set_avo, set_gary, set_triax = line.split(':')
+                    laser_wl, set_avo, set_gary, grating_wl = line.split(':')
                 except Exception as e:
                     print(e)
                     print("check data file aapt.txt")
@@ -233,9 +247,9 @@ class Calibration:
 
                 set_avo = set_avo.split(',')
                 set_gary = set_gary.split(',')
-                set_triax = set_triax.split(',')
+                # set_triax = set_triax.split(',')
 
-                data.extend([wavelength, *set_avo, *set_gary])
+                data.extend([laser_wl, *set_avo, *set_gary, grating_wl])
                 new_data = []
                 for x in data:
                     value = float(x.strip("' XYZA"))
@@ -248,10 +262,14 @@ class Calibration:
         cal_data_array = cal_data.T[1:, :].astype(float)
 
         sorted_data = cal_data_array[np.argsort(cal_data_array[:, 0])]
+        sorted_data_grating = cal_data_array[np.argsort(cal_data_array[:, -1])]
 
-        cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
+        # cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
+        # sort by grating wavelength
+        cal_data = {header: sorted_data_grating[:, idx] for idx, header in enumerate(headers)}
 
-        self.wavelength_axis = cal_data['wavelength']
+        self.laser_wavelength_axis = cal_data['laser_wl']
+        self.grating_wavelength_axis = cal_data['grating_wl']
 
         return cal_data, sorted_data
 
@@ -275,6 +293,13 @@ class Calibration:
 
         coeff_wl_to_l1 = np.polyfit(wavelength, l1_steps, 2)
         p_l1_steps = np.poly1d(coeff_wl_to_l1)
+
+        # coeff_wl_to_l1, pcov = opt.curve_fit(simple_sin_fit, wavelength, l1_steps, p0=[100000, 0.001, 1.5, -75000])
+        # p_l1_steps = simple_sin_fit(l1_steps, *coeff_wl_to_l1)
+        # alias to simple_sin_fit for testing
+        # p_l1_steps = lambda x: simple_sin_fit(x, *coeff_wl_to_l1)
+
+        # test_eq = simple_sin_fit(wavelength, 100000, 0.001, 1.5, -75000)
 
         y_pred = p_l1_steps(wavelength)
         residuals = l1_steps - y_pred
@@ -302,6 +327,7 @@ class Calibration:
             ax[1, 0].set_ylabel('% of $\Delta_{steps}$')
             ax[1, 0].set_xlabel('Wavelength (nm)')
             ax[0, 0].set_title('Wavelength to L1 Steps')
+            # ax[0, 0].plot(wavelength, test_eq, label='test fit', color='tab:orange')
             ax[0, 0].legend()
             ax[1, 0].legend()
 
@@ -331,9 +357,9 @@ class Calibration:
     
     def build_wavelength_axis(self, initial_wavelength_cal, l1_data):
         p_l1_to_wl = np.poly1d(initial_wavelength_cal['l1_to_wl'][0])
-        self.wavelength_axis = p_l1_to_wl(l1_data)
-        print('New wavelength axis calculated: \n', self.wavelength_axis)
-        return self.wavelength_axis
+        self.laser_wavelength_axis = p_l1_to_wl(l1_data)
+        print('New wavelength axis calculated: \n', self.laser_wavelength_axis)
+        return self.laser_wavelength_axis
 
     def save_triax_calibrations(self):
         triax_cals = {key: value for key, value in self.calibrations.items() if 'triax' in key}
@@ -353,7 +379,7 @@ class Calibration:
         '''Perparatory calculation. Calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
 
         if wavelength_axis is None:
-            wavelength_axis = self.wavelength_axis
+            wavelength_axis = self.laser_wavelength_axis
 
         if calib_dict is None:
             calib_dict = Calibration.calib_dict
@@ -384,7 +410,7 @@ class Calibration:
             spectrometer_position = self.spectrometer_position
 
         if wavelength_axis is None:
-            wavelength_axis = self.wavelength_axis
+            wavelength_axis = self.laser_wavelength_axis
 
         triax_steps = np.polyfit(wavelength_axis, spectrometer_position, 2)
         p_triax_steps = np.poly1d(triax_steps)
@@ -421,7 +447,7 @@ class Calibration:
             spectrometer_position = self.spectrometer_position
         
         if wavelength_axis is None:
-            wavelength_axis = self.wavelength_axis
+            wavelength_axis = self.laser_wavelength_axis
 
         steps_to_wavelength = np.polyfit(spectrometer_position, wavelength_axis, 2)
         p_steps_to_wavelength = np.poly1d(steps_to_wavelength)
@@ -458,10 +484,19 @@ class Calibration:
         if mode is None:
             assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_wavelength_to_l1 = np.polyfit(self.wavelength_axis, l1_steps, poly_order)
+        # if mode == 'subtractive':
+        #     wavelength_axis = self.laser_wavelength_axis
+        #     print('using laser wavelength axis')
+        # elif mode == 'additive':
+        #     wavelength_axis = self.grating_wavelength_axis
+        #     print('using grating wavelength axis')
+
+        wavelength_axis = self.laser_wavelength_axis
+
+        fit_coeff_wavelength_to_l1 = np.polyfit(wavelength_axis, l1_steps, poly_order)
         p_wavelength_to_l1 = np.poly1d(fit_coeff_wavelength_to_l1)
 
-        y_pred = p_wavelength_to_l1(self.wavelength_axis)
+        y_pred = p_wavelength_to_l1(wavelength_axis)
         residuals = l1_steps - y_pred
 
         # Fit quality metrics
@@ -470,10 +505,10 @@ class Calibration:
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(self.wavelength_axis, l1_steps, label='L1 Steps')
-            ax[0].plot(self.wavelength_axis, p_wavelength_to_l1(self.wavelength_axis), label='L1 Steps fit', color='tab:purple')
-            residuals = l1_steps - p_wavelength_to_l1(self.wavelength_axis)
-            ax[1].plot(self.wavelength_axis, residuals, label='L1 Steps residuals', marker='o')
+            ax[0].scatter(wavelength_axis, l1_steps, label='L1 Steps')
+            ax[0].plot(wavelength_axis, p_wavelength_to_l1(wavelength_axis), label='L1 Steps fit', color='tab:purple')
+            residuals = l1_steps - p_wavelength_to_l1(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='L1 Steps residuals', marker='o')
             ax[0].set_title('Wavelength to L1 Steps')
             ax[0].legend()
             ax[1].legend()
@@ -492,21 +527,30 @@ class Calibration:
         if mode is None:
             assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_l1_to_wavelength = np.polyfit(l1_steps, self.wavelength_axis, poly_order)
+        # if mode == 'subtractive':
+        #     wavelength_axis = self.laser_wavelength_axis
+        #     print('using laser wavelength axis')
+        # elif mode == 'additive':
+        #     wavelength_axis = self.grating_wavelength_axis
+        #     print('using grating wavelength axis')
+
+        wavelength_axis = self.laser_wavelength_axis
+
+        fit_coeff_l1_to_wavelength = np.polyfit(l1_steps, wavelength_axis, poly_order)
         p_l1_to_wavelength = np.poly1d(fit_coeff_l1_to_wavelength)
 
         y_pred = p_l1_to_wavelength(l1_steps)
-        residuals = self.wavelength_axis - y_pred
+        residuals = wavelength_axis - y_pred
 
         # Fit quality metrics
-        fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
         self.report_dict[mode]['l1_to_wl'] = (fit_metrics, fit_coeff_l1_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(l1_steps, self.wavelength_axis, label='Wavelength')
+            ax[0].scatter(l1_steps, wavelength_axis, label='Wavelength')
             ax[0].plot(l1_steps, p_l1_to_wavelength(l1_steps), label='Wavelength fit', color='tab:purple')
-            residuals = self.wavelength_axis - p_l1_to_wavelength(l1_steps)
+            residuals = wavelength_axis - p_l1_to_wavelength(l1_steps)
             ax[1].plot(l1_steps, residuals, label='Wavelength residuals', marker='o')
             ax[0].set_title('L1 Steps to Wavelength')
             ax[0].legend()
@@ -525,10 +569,19 @@ class Calibration:
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_wavelength_to_l2 = np.polyfit(self.wavelength_axis, l2_steps, poly_order)
+        # if mode == 'subtractive':
+        #     wavelength_axis = self.laser_wavelength_axis
+        #     print('using laser wavelength axis')
+        # elif mode == 'additive':
+        #     wavelength_axis = self.grating_wavelength_axis
+        #     print('using grating wavelength axis')
+
+        wavelength_axis = self.laser_wavelength_axis
+
+        fit_coeff_wavelength_to_l2 = np.polyfit(wavelength_axis, l2_steps, poly_order)
         p_wavelength_to_l2 = np.poly1d(fit_coeff_wavelength_to_l2)
 
-        y_pred = p_wavelength_to_l2(self.wavelength_axis)
+        y_pred = p_wavelength_to_l2(wavelength_axis)
         residuals = l2_steps - y_pred
 
         # Fit quality metrics
@@ -537,10 +590,10 @@ class Calibration:
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(self.wavelength_axis, l2_steps, label='L2 Steps')
-            ax[0].plot(self.wavelength_axis, p_wavelength_to_l2(self.wavelength_axis), label='L2 Steps fit', color='tab:purple')
-            residuals = l2_steps - p_wavelength_to_l2(self.wavelength_axis)
-            ax[1].plot(self.wavelength_axis, residuals, label='L2 Steps residuals', marker='o')
+            ax[0].scatter(wavelength_axis, l2_steps, label='L2 Steps')
+            ax[0].plot(wavelength_axis, p_wavelength_to_l2(wavelength_axis), label='L2 Steps fit', color='tab:purple')
+            residuals = l2_steps - p_wavelength_to_l2(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='L2 Steps residuals', marker='o')
             ax[0].set_title('Wavelength to L2 Steps')
             ax[0].legend()
             ax[1].legend()
@@ -556,21 +609,30 @@ class Calibration:
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_l2_to_wavelength = np.polyfit(l2_steps, self.wavelength_axis, poly_order)
+        # if mode == 'subtractive':
+        #     wavelength_axis = self.laser_wavelength_axis
+        #     print('using laser wavelength axis')
+        # elif mode == 'additive':
+        #     wavelength_axis = self.grating_wavelength_axis
+        #     print('using grating wavelength axis')
+
+        wavelength_axis = self.laser_wavelength_axis
+
+        fit_coeff_l2_to_wavelength = np.polyfit(l2_steps, wavelength_axis, poly_order)
         p_l2_to_wavelength = np.poly1d(fit_coeff_l2_to_wavelength)
 
         y_pred = p_l2_to_wavelength(l2_steps)
-        residuals = self.wavelength_axis - y_pred
+        residuals = wavelength_axis - y_pred
 
         # Fit quality metrics
-        fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
         self.report_dict[mode]['l2_to_wl'] = (fit_metrics, fit_coeff_l2_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(l2_steps, self.wavelength_axis, label='Wavelength')
+            ax[0].scatter(l2_steps, wavelength_axis, label='Wavelength')
             ax[0].plot(l2_steps, p_l2_to_wavelength(l2_steps), label='Wavelength fit', color='tab:purple')
-            residuals = self.wavelength_axis - p_l2_to_wavelength(l2_steps)
+            residuals = wavelength_axis - p_l2_to_wavelength(l2_steps)
             ax[1].plot(l2_steps, residuals, label='Wavelength residuals', marker='o')
             ax[0].set_title('L2 Steps to Wavelength')
             ax[0].legend()
@@ -581,16 +643,114 @@ class Calibration:
         self.calibrations['l2_to_wl'] = fit_coeff_l2_to_wavelength.tolist()
 
         return fit_coeff_l2_to_wavelength, fit_metrics
-
-    def wavelength_to_g1(self, g1_steps, poly_order=2, mode=None, show=False):
-        '''Calibration for using laser wavelength to calculate G1 steps.'''
+    
+    def wavelength_to_g2_tester(self, g2_steps, poly_order=2, mode=None, show=False):
+        '''Calibration for using laser wavelength to calculate G2 steps.'''
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_wavelength_to_g1 = np.polyfit(self.wavelength_axis, g1_steps, poly_order)
+        if mode == 'subtractive':
+            wavelength_axis = self.laser_wavelength_axis
+            print('using laser wavelength axis')
+        elif mode == 'additive':
+            wavelength_axis = self.grating_wavelength_axis
+            print('using grating wavelength axis')
+        
+        fit_coeff_wavelength_to_g2 = np.polyfit(wavelength_axis, g2_steps, poly_order)
+        p_wavelength_to_g2 = np.poly1d(fit_coeff_wavelength_to_g2)
+
+        y_pred = p_wavelength_to_g2(wavelength_axis)
+        residuals = g2_steps - y_pred
+        fit_metrics_poly = self.calculate_fit_metrics(g2_steps, y_pred)
+
+        # print(interpolated_wavelength)
+
+        sin_fit_coeff, pcov = opt.curve_fit(simple_sin_fit, wavelength_axis, residuals, p0=[-50, 0.05, 5, 0])
+        print(sin_fit_coeff)
+
+        y_pred_sin = simple_sin_fit(wavelength_axis, *sin_fit_coeff)
+        sin_residuals = residuals - simple_sin_fit(wavelength_axis, *sin_fit_coeff)
+        # residuals_sin = 
+
+        fit_metrics_sin = self.calculate_fit_metrics(residuals, y_pred_sin)
+
+        polysin_model = lambda x: p_wavelength_to_g2(x) + simple_sin_fit(x, *sin_fit_coeff)
+
+        # Fit quality metrics
+        total_y_pred = polysin_model(wavelength_axis)
+        total_residuals = g2_steps - total_y_pred
+        fit_metrics_total = self.calculate_fit_metrics(g2_steps, total_y_pred)
+
+
+        # poltsinmod test
+        psm_fit_coeff, pcov = opt.curve_fit(poly_sin_modulation_fit, wavelength_axis, g2_steps, p0=[0.01, -5, 5000, -50, 0.05, 5, 0])
+        psm_y_pred = poly_sin_modulation_fit(wavelength_axis, *psm_fit_coeff)
+        residuals_psm = g2_steps - psm_y_pred
+        fit_metrics_psm = self.calculate_fit_metrics(g2_steps, psm_y_pred)
+
+        psm_fit = lambda x: poly_sin_modulation_fit(x, *psm_fit_coeff)
+
+
+        print('Poly fit', fit_metrics_poly.__dict__)
+        print('Sin correction', fit_metrics_sin.__dict__)
+        print('Total fit', fit_metrics_total.__dict__)
+        print('Poly sin mod', fit_metrics_psm.__dict__)
+
+        p_sin_fit = lambda x: simple_sin_fit(x, *sin_fit_coeff)
+
+        interpolated_wavelength = np.linspace(wavelength_axis[0], wavelength_axis[-1], 1000)
+
+        # Fit quality metrics
+        # self.report_dict[mode]['wl_to_g2'] = (fit_metrics_poly, fit_coeff_wavelength_to_g2.tolist())
+
+        if show is True or self.showplots is True:
+            fig, ax = plt.subplots(3, 2)
+            ax[0, 0].scatter(wavelength_axis, g2_steps, label='G2 Steps')
+            ax[0, 0].plot(wavelength_axis, p_wavelength_to_g2(wavelength_axis), label='G2 Steps fit', color='tab:purple')
+            residuals = g2_steps - p_wavelength_to_g2(wavelength_axis)
+            ax[1, 0].scatter(wavelength_axis, residuals, label='G2 Steps residuals', marker='o')
+            ax[1, 0].plot(interpolated_wavelength, p_sin_fit(interpolated_wavelength), label='sin fit', color='tab:orange')
+            ax[2, 0].plot(wavelength_axis, sin_residuals, label='sin residuals', marker='o')
+            # ax[2].plot
+            ax[2, 0].set_ylabel('sin Residuals')
+
+            ax[0, 1].scatter(wavelength_axis, g2_steps, label='G2 Steps')
+            ax[0, 1].plot(wavelength_axis, psm_fit(wavelength_axis), label='G2 Steps PSM fit', color='tab:purple')
+            residuals = g2_steps - psm_fit(wavelength_axis)
+            ax[2, 1].plot(wavelength_axis, residuals, label='G2 Steps PSM residuals', marker='o')
+
+
+            ax[0, 0].set_title('Wavelength to G2 Steps {} - TESTER'.format(mode))
+            ax[0, 0].legend()
+            ax[1, 0].legend()
+            ax[2, 0].legend()
+            ax[0, 1].legend()
+            ax[2, 1].legend()
+
+            plt.show()
+
+        self.report_dict[mode]['wl_to_g2'] = (fit_metrics_psm, psm_fit_coeff.tolist())
+        self.calibration_metrics['wl_to_g2_{}'.format(mode)] = fit_metrics_psm
+        self.calibrations['wl_to_g2_{}'.format(mode)] = psm_fit_coeff.tolist()
+
+        return fit_coeff_wavelength_to_g2, fit_metrics_psm
+    
+    def wavelength_to_g1_tester(self, g1_steps, poly_order=2, mode=None, show=False):
+        # Same as other but using new fitting methods
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        if mode == 'subtractive':
+            wavelength_axis = self.laser_wavelength_axis
+            print('using laser wavelength axis')
+        elif mode == 'additive':
+            wavelength_axis = self.grating_wavelength_axis
+            print('using grating wavelength axis')
+
+
+        fit_coeff_wavelength_to_g1 = np.polyfit(wavelength_axis, g1_steps, poly_order)
         p_wavelength_to_g1 = np.poly1d(fit_coeff_wavelength_to_g1)
 
-        y_pred = p_wavelength_to_g1(self.wavelength_axis)
+        y_pred = p_wavelength_to_g1(wavelength_axis)
         residuals = g1_steps - y_pred
 
         # Fit quality metrics
@@ -599,10 +759,56 @@ class Calibration:
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(self.wavelength_axis, g1_steps, label='G1 Steps')
-            ax[0].plot(self.wavelength_axis, p_wavelength_to_g1(self.wavelength_axis), label='G1 Steps fit', color='tab:purple')
-            residuals = g1_steps - p_wavelength_to_g1(self.wavelength_axis)
-            ax[1].plot(self.wavelength_axis, residuals, label='G1 Steps residuals', marker='o')
+            ax[0].scatter(wavelength_axis, g1_steps, label='G1 Steps')
+            ax[0].plot(wavelength_axis, p_wavelength_to_g1(wavelength_axis), label='G1 Steps fit', color='tab:purple')
+            residuals = g1_steps - p_wavelength_to_g1(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='G1 Steps residuals', marker='o')
+            ax[0].set_title('Wavelength to G1 Steps {} - tester'.format(mode))
+            ax[0].legend()
+            ax[1].legend()
+            plt.show()
+
+        self.calibration_metrics['wl_to_g1'] = fit_metrics
+        self.calibrations['wl_to_g1'] = fit_coeff_wavelength_to_g1.tolist()
+
+        return fit_coeff_wavelength_to_g1, fit_metrics
+
+
+    def wavelength_to_g1(self, g1_steps, poly_order=2, mode=None, show=False, polysin=True):
+        '''Calibration for using laser wavelength to calculate G1 steps.'''
+
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        if mode == 'subtractive':
+            wavelength_axis = self.laser_wavelength_axis
+            print('using laser wavelength axis')
+        elif mode == 'additive':
+            wavelength_axis = self.grating_wavelength_axis
+            print('using grating wavelength axis')
+
+        if polysin is True:
+            print('Fitting with polysin')
+            initial_guess = [0.01, -5, 5000, 200, 0.05, 0, 100]
+            # fit_coeff_wavelength_to_g1 = poly_sin_modulation_fit(wavelength_axis, *initial_guess)
+            fit_coeff_wavelength_to_g1, pcov = opt.curve_fit(poly_sin_modulation_fit, wavelength_axis, g1_steps, p0=initial_guess)
+            p_wavelength_to_g1 = lambda x: poly_sin_modulation_fit(x, *fit_coeff_wavelength_to_g1)
+        else:
+            fit_coeff_wavelength_to_g1 = np.polyfit(wavelength_axis, g1_steps, poly_order)
+            p_wavelength_to_g1 = np.poly1d(fit_coeff_wavelength_to_g1)
+
+        y_pred = p_wavelength_to_g1(wavelength_axis)
+        residuals = g1_steps - y_pred
+
+        # Fit quality metrics
+        fit_metrics = self.calculate_fit_metrics(g1_steps, y_pred)
+        self.report_dict[mode]['wl_to_g1'] = (fit_metrics, fit_coeff_wavelength_to_g1.tolist())
+
+        if show is True or self.showplots is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(wavelength_axis, g1_steps, label='G1 Steps')
+            ax[0].plot(wavelength_axis, p_wavelength_to_g1(wavelength_axis), label='G1 Steps fit', color='tab:purple')
+            residuals = g1_steps - p_wavelength_to_g1(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='G1 Steps residuals', marker='o')
             ax[0].set_title('Wavelength to G1 Steps')
             ax[0].legend()
             ax[1].legend()
@@ -618,21 +824,28 @@ class Calibration:
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_g1_to_wavelength = np.polyfit(g1_steps, self.wavelength_axis, poly_order)
+        if mode == 'subtractive':
+            wavelength_axis = self.laser_wavelength_axis
+            print('using laser wavelength axis')
+        elif mode == 'additive':
+            wavelength_axis = self.grating_wavelength_axis
+            print('using grating wavelength axis')
+
+        fit_coeff_g1_to_wavelength = np.polyfit(g1_steps, wavelength_axis, poly_order)
         p_g1_to_wavelength = np.poly1d(fit_coeff_g1_to_wavelength)
 
         y_pred = p_g1_to_wavelength(g1_steps)
-        residuals = self.wavelength_axis - y_pred
+        residuals = wavelength_axis - y_pred
 
         # Fit quality metrics
-        fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
         self.report_dict[mode]['g1_to_wl'] = (fit_metrics, fit_coeff_g1_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(g1_steps, self.wavelength_axis, label='Wavelength')
+            ax[0].scatter(g1_steps, wavelength_axis, label='Wavelength')
             ax[0].plot(g1_steps, p_g1_to_wavelength(g1_steps), label='Wavelength fit', color='tab:purple')
-            residuals = self.wavelength_axis - p_g1_to_wavelength(g1_steps)
+            residuals = wavelength_axis - p_g1_to_wavelength(g1_steps)
             ax[1].plot(g1_steps, residuals, label='Wavelength residuals', marker='o')
             ax[0].set_title('G1 Steps to Wavelength')
             ax[0].legend()
@@ -648,11 +861,18 @@ class Calibration:
         '''Calibration for using laser wavelength to calculate G2 steps.'''
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        if mode == 'subtractive':
+            wavelength_axis = self.laser_wavelength_axis
+            print('using laser wavelength axis')
+        elif mode == 'additive':
+            wavelength_axis = self.grating_wavelength_axis
+            print('using grating wavelength axis')
         
-        fit_coeff_wavelength_to_g2 = np.polyfit(self.wavelength_axis, g2_steps, poly_order)
+        fit_coeff_wavelength_to_g2 = np.polyfit(wavelength_axis, g2_steps, poly_order)
         p_wavelength_to_g2 = np.poly1d(fit_coeff_wavelength_to_g2)
 
-        y_pred = p_wavelength_to_g2(self.wavelength_axis)
+        y_pred = p_wavelength_to_g2(wavelength_axis)
         residuals = g2_steps - y_pred
 
         # Fit quality metrics
@@ -661,10 +881,10 @@ class Calibration:
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(self.wavelength_axis, g2_steps, label='G2 Steps')
-            ax[0].plot(self.wavelength_axis, p_wavelength_to_g2(self.wavelength_axis), label='G2 Steps fit', color='tab:purple')
-            residuals = g2_steps - p_wavelength_to_g2(self.wavelength_axis)
-            ax[1].plot(self.wavelength_axis, residuals, label='G2 Steps residuals', marker='o')
+            ax[0].scatter(wavelength_axis, g2_steps, label='G2 Steps')
+            ax[0].plot(wavelength_axis, p_wavelength_to_g2(wavelength_axis), label='G2 Steps fit', color='tab:purple')
+            residuals = g2_steps - p_wavelength_to_g2(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='G2 Steps residuals', marker='o')
             ax[0].set_title('Wavelength to G2 Steps {}'.format(mode))
             ax[0].legend()
             ax[1].legend()
@@ -680,21 +900,28 @@ class Calibration:
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
-        fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, self.wavelength_axis, poly_order)
+        if mode == 'subtractive':
+            wavelength_axis = self.laser_wavelength_axis
+            print('using laser wavelength axis')
+        elif mode == 'additive':
+            wavelength_axis = self.grating_wavelength_axis
+            print('using grating wavelength axis')
+
+        fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, wavelength_axis, poly_order)
         p_g2_to_wavelength = np.poly1d(fit_coeff_g2_to_wavelength)
 
         y_pred = p_g2_to_wavelength(g2_steps)
-        residuals = self.wavelength_axis - y_pred
+        residuals = wavelength_axis - y_pred
 
         # Fit quality metrics
-        fit_metrics = self.calculate_fit_metrics(self.wavelength_axis, y_pred)
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
         self.report_dict[mode]['g2_to_wl'] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
-            ax[0].scatter(g2_steps, self.wavelength_axis, label='Wavelength')
+            ax[0].scatter(g2_steps, wavelength_axis, label='Wavelength')
             ax[0].plot(g2_steps, p_g2_to_wavelength(g2_steps), label='Wavelength fit', color='tab:purple')
-            residuals = self.wavelength_axis - p_g2_to_wavelength(g2_steps)
+            residuals = wavelength_axis - p_g2_to_wavelength(g2_steps)
             ax[1].plot(g2_steps, residuals, label='Wavelength residuals', marker='o')
             ax[0].set_title('G2 Steps to Wavelength {}'.format(mode))
             ax[0].legend()
@@ -723,7 +950,7 @@ if __name__ == '__main__':
         # calibration.load_aapt_file()
 
         # calculate spectrometer position from triax steps and position
-        spectrometer_position = calibration.calculate_triax_steps((cal_data['triax_steps'], cal_data['pixels']), calibration.wavelength_axis)
+        spectrometer_position = calibration.calculate_triax_steps((cal_data['triax_steps'], cal_data['pixels']), calibration.laser_wavelength_axis)
 
         print('Initialisation complete - spectrometer position calculated.')
 
@@ -776,8 +1003,11 @@ if __name__ == '__main__':
 
     calibration, cal_data = initialise(showplots=False)
     triax_calibrations(calibration, cal_data)
+    calibration.wavelength_to_g1_tester(cal_data['g1'], mode='subtractive', show=True)
+    calibration.wavelength_to_g2_tester(cal_data['g2'], mode='subtractive', show=True)
+    breakpoint()
     subtractive_calibrations(calibration, cal_data)
-    additive_calibrations(calibration, cal_data)
+    # additive_calibrations(calibration, cal_data)
     # TRIAX cal is absolute - only needs to be saved once
     # calibration.save_triax_calibrations()
     calibration.save_all_calibrations()

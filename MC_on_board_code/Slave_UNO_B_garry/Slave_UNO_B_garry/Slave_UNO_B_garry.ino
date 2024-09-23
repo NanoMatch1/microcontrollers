@@ -15,6 +15,9 @@ AccelStepper stepperA(AccelStepper::DRIVER, 12, 13); // Pin 10 = step, Pin 11 = 
 // const int enablePinC = 12; // Enable pin for Stepper C (Z Axis)
 // const int enablePinD = 13; // Enable pin for Stepper D (A Axis)
 
+int sensorPin = A0; // select the input pin for LDR
+int sensorValue = 0; // variable to store the value coming from the sensor
+
 const int SLAVE_ADDRESS = 9;  // I2C address of this slave Arduino
 String testFlag = "0";
 
@@ -79,6 +82,10 @@ void receiveEvent(int howMany) {
     testFlag = "2";
     response = "Test mode activated";
   } 
+  // else if (command.startsWith("scang1")) {
+  //   String steps = command.substring(6);
+  // }
+
   else if (command == "isrun") {
     if (stepperX.isRunning() == true) {
       response = "R1";

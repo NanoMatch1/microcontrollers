@@ -155,13 +155,16 @@ class Calibration:
         'wl_to_g1': {'poly': [0.001, 8, -0.007],
                      'sin': [-17.06930504,   0.08537372, -27.92235843,   0.70444867]},
         'g1_to_wl': {'poly': [0.00, 0.1, 800],
-                    'sin': [-1.79755316,  0.00870857,  6.16713228, -0.05141395]},
+                    'sin': [-1.53840861,  0.00463291, -1.04822887, -0.15844918]},
         'wl_to_g2': {'poly': [0.001, -0.4, 850],
                      'sin': [5.87970348,   0.08537372, -27.92235843,   0.70444867]},
         'g2_to_wl': {'poly': [0.00, 1, 600],
                     'sin': [-1.07, 0.04, -7, 0]},
 
         }
+    
+    lower_bound = [-50, 0.075, -150, -100]
+    upper_bound = [50, 0.1, 150, 100]
     
 
     def __init__(self, showplots=False):
@@ -741,14 +744,18 @@ class Calibration:
         # self.calibrations['wl_to_g2_{}'.format(mode)] = psm_fit_coeff.tolist()
 
         print("Saving poly fit for wl_to_g2")
-        self.report_dict[mode]['wl_to_g2'] = (fit_metrics_poly, fit_coeff_wavelength_to_g2.tolist())
-        self.calibration_metrics['wl_to_g2'] = fit_metrics_poly
-        self.calibrations['wl_to_g2'] = fit_coeff_wavelength_to_g2.tolist()
+        self.report_dict[mode]['wl_to_g2_{}'.format(mode)] = (fit_metrics_poly, fit_coeff_wavelength_to_g2.tolist())
+        self.calibration_metrics['wl_to_g2_{}'.format(mode)] = fit_metrics_poly
+        self.calibrations['wl_to_g2_{}'.format(mode)] = fit_coeff_wavelength_to_g2.tolist()
 
         return fit_coeff_wavelength_to_g2, fit_metrics_psm
     
     def wavelength_to_g1_tester(self, g1_steps, poly_order=2, mode=None, show=False):
         # Same as other but using new fitting methods
+        lower_bound = [-np.inf, -np.inf, -np.inf, -50, 0.075, -150, -100]
+        upper_bound = [np.inf, np.inf, np.inf, 50, 0.1, 150, 100]
+        initial_guess = [0.001, 7, -7149, 17, 0.085, -24, 0]
+
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
         if mode == 'subtractive':
@@ -768,7 +775,10 @@ class Calibration:
         # self.report_dict[mode]['wl_to_g1'] = (fit_metrics, fit_coeff_wavelength_to_g1.tolist())
 
         # Fit a sinusoidal correction to the residuals
-        sin_fit_coeff, pcov = opt.curve_fit(simple_sin_fit, wavelength_axis, residuals, p0=[17, 0.08, -24, 0])
+        # lower_bound = [-50, 0.03, -150, -100]
+        # upper_bound = [50, 0.06, 150, 100]
+        # initial_guess = [17, 0.085, -24, 0]
+        sin_fit_coeff, pcov = opt.curve_fit(simple_sin_fit, wavelength_axis, residuals, p0=initial_guess[3:], bounds=(lower_bound[3:], upper_bound[3:]))
         y_pred_sin = simple_sin_fit(wavelength_axis, *sin_fit_coeff)
         sin_residuals = residuals - simple_sin_fit(wavelength_axis, *sin_fit_coeff)
         fit_metrics_sin = self.calculate_fit_metrics(residuals, y_pred_sin)
@@ -781,20 +791,27 @@ class Calibration:
         fit_metrics_total = self.calculate_fit_metrics(g1_steps, total_y_pred)
 
         interpolated_wavelength = np.linspace(wavelength_axis[0], wavelength_axis[-1], 1000)
+
+        print(fit_coeff_wavelength_to_g1)
+        print(sin_fit_coeff)
         # quick plot:
-        # fig, ax = plt.subplots(2, 1)
-        # ax[0].scatter(wavelength_axis, g1_steps, label='G1 Steps')
-        # ax[0].plot(wavelength_axis, p_wavelength_to_g1(wavelength_axis), label='G1 Steps fit', color='tab:purple')
-        # ax[1].plot(interpolated_wavelength, simple_sin_model(interpolated_wavelength), label='G1 Steps fit with sin correction', color='tab:orange')
-        # residuals = g1_steps - p_wavelength_to_g1(wavelength_axis)
-        # ax[1].scatter(wavelength_axis, residuals, label='G1 Steps residuals', marker='o')
-        # ax[1].plot(wavelength_axis, sin_residuals, label='sin residuals', marker='o')
-        # ax[0].legend()
-        # ax[1].legend()
-        # plt.show()
+        fig, ax = plt.subplots(2, 1)
+        ax[0].set_title('Wavelength to G1 Steps initial sin fit testing')
+        ax[0].scatter(wavelength_axis, g1_steps, label='G1 Steps')
+        ax[0].plot(wavelength_axis, p_wavelength_to_g1(wavelength_axis), label='G1 Steps fit', color='tab:purple')
+        ax[1].plot(interpolated_wavelength, simple_sin_model(interpolated_wavelength), label='G1 Steps fit with sin correction', color='tab:orange')
+        residuals = g1_steps - p_wavelength_to_g1(wavelength_axis)
+        ax[1].scatter(wavelength_axis, residuals, label='G1 Steps residuals', marker='o')
+        ax[1].plot(wavelength_axis, sin_residuals, label='sin residuals', marker='o')
+        ax[0].legend()
+        ax[1].legend()
+        plt.show()
 
         # Calculate a fit for the polynomial with sinusoidal modulation
-        psm_fit_coeff, pcov = opt.curve_fit(poly_sin_modulation_fit, wavelength_axis, g1_steps, p0=[0.001, 7, -7149, -17, 0.08, -27, 0])
+        lower_bound = [-np.inf, -np.inf, -np.inf].extend(Calibration.lower_bound)
+        upper_bound = [np.inf, np.inf, np.inf].extend(Calibration.upper_bound)
+        initial_guess = [0.001, 7, -7149, -17, 0.08, -27, 0]
+        psm_fit_coeff, pcov = opt.curve_fit(poly_sin_modulation_fit, wavelength_axis, g1_steps, p0=initial_guess, bounds=(lower_bound, upper_bound))
 
         psm_y_pred = poly_sin_modulation_fit(wavelength_axis, *psm_fit_coeff)
         residuals_psm = g1_steps - psm_y_pred
@@ -835,7 +852,7 @@ class Calibration:
             plt.show()
 
         print("Saving PSM fit for wl_to_g1")
-        self.report_dict[mode]['wl_to_g1'] = (fit_metrics_psm, psm_fit_coeff.tolist())
+        self.report_dict[mode]['wl_to_g1_{}'.format(mode)] = (fit_metrics_psm, psm_fit_coeff.tolist())
         self.calibration_metrics['wl_to_g1_{}'.format(mode)] = fit_metrics_psm
         self.calibrations['wl_to_g1_{}'.format(mode)] = psm_fit_coeff.tolist()
 
@@ -843,6 +860,10 @@ class Calibration:
 
     def g1_to_wavelength_tester(self, g1_steps, poly_order=2, mode=None, show=False):
         '''Reverse calibration for calculating laser wavelength from G1 steps.'''
+
+        lower_bound = [-np.inf, -np.inf, -np.inf, -20, 0.002, -150, -100]
+        upper_bound = [np.inf, np.inf, np.inf, 20, 0.01, 150, 100]
+        initial_guess = [0.00, 0.05, 800, -1.53, 0.0045, -1, 0]
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
 
@@ -853,6 +874,8 @@ class Calibration:
             wavelength_axis = self.grating_wavelength_axis
             print('using grating wavelength axis')
 
+
+
         fit_coeff_g1_to_wavelength = np.polyfit(g1_steps, wavelength_axis, poly_order)
         p_g1_to_wavelength = np.poly1d(fit_coeff_g1_to_wavelength)
 
@@ -861,10 +884,22 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
-        self.report_dict[mode]['g1_to_wl'] = (fit_metrics, fit_coeff_g1_to_wavelength.tolist())
+
+        # # quickplot of sin component
+        # fig, ax = plt.subplots(2, 1)
+        # ax[0].set_title('G1_wl_ sin fit testing')
+        # # ax[0].scatter(g1_steps, wavelength_axis, label='Wavelength')
+        # ax[0].scatter(g1_steps, residuals, label='Wavelength residuals')
+        # test_sin = lambda x: simple_sin_fit(x, -1.2, 0.0045, 5.5, 0.3)
+        # interpolated_g1_steps = np.linspace(g1_steps[0], g1_steps[-1], 1000)
+        # ax[0].plot(interpolated_g1_steps, test_sin(interpolated_g1_steps), label='sin fit', color='tab:orange')
+        # ax[1].plot(g1_steps, residuals - test_sin(g1_steps), label='sin residuals', marker='o')
+        # plt.show()
+
 
         # fit a sinusoidal correction to the residuals
-        sin_fit_coeff, pcov = opt.curve_fit(simple_sin_fit, g1_steps, residuals, p0=[-1.2, 0.01, 5, 0])
+        sin_fit_coeff, pcov = opt.curve_fit(simple_sin_fit, g1_steps, residuals, p0=initial_guess[3:], bounds=(lower_bound[3:], upper_bound[3:]))
+        
         y_pred_sin = simple_sin_fit(g1_steps, *sin_fit_coeff)
         sin_residuals = residuals - simple_sin_fit(g1_steps, *sin_fit_coeff)
         fit_metrics_sin = self.calculate_fit_metrics(residuals, y_pred_sin)
@@ -875,26 +910,28 @@ class Calibration:
         total_residuals = wavelength_axis - total_y_pred
         fit_metrics_total = self.calculate_fit_metrics(wavelength_axis, total_y_pred)
 
-        test_sin = lambda x: simple_sin_fit(x, -1.2, 0.01, 5, 0.3)
+        test_sin = lambda x: simple_sin_fit(x, -1.2, 0.005, 5, 0.3)
 
         # interpolated axis for plotting
         interpolated_g1_steps = np.linspace(g1_steps[0], g1_steps[-1], 1000)
 
+        print(fit_coeff_g1_to_wavelength)
+        print(sin_fit_coeff)
         # # plot
-        # fig, ax = plt.subplots(2, 1)
-        # ax[0].scatter(g1_steps, residuals, label='Wavelength residuals')
-        # ax[0].plot(interpolated_g1_steps, simple_sin_fit(interpolated_g1_steps, *sin_fit_coeff), label='sin fit', color='tab:orange')
-        # ax[1].plot(g1_steps, sin_residuals, label='sin residuals', marker='o')
-        # ax[1].plot(interpolated_g1_steps, test_sin(interpolated_g1_steps), label='test sin fit', color='tab:orange')
-        # ax[1].set_ylabel('sin Residuals')
-        # ax[0].legend()
-        # ax[1].legend()
-        # plt.show()
-
+        fig, ax = plt.subplots(2, 1)
+        ax[0].set_title('G1 Steps to Wavelength initial sin fit testing')
+        ax[0].scatter(g1_steps, residuals, label='Wavelength residuals')
+        ax[0].plot(interpolated_g1_steps, simple_sin_fit(interpolated_g1_steps, *sin_fit_coeff), label='sin fit', color='tab:orange')
+        ax[1].plot(g1_steps, sin_residuals, label='sin residuals', marker='o')
+        ax[1].plot(interpolated_g1_steps, simple_sin_fit(interpolated_g1_steps, *sin_fit_coeff), label='test sin fit', color='tab:orange')
+        ax[1].set_ylabel('sin Residuals')
+        ax[0].legend()
+        ax[1].legend()
+        plt.show()
 
 
         # Calculate a fit for the polynomial with sinusoidal modulation
-        psm_fit_coeff, pcov = opt.curve_fit(poly_sin_modulation_fit, g1_steps, wavelength_axis, p0=[0, 0.1, 800, -1.7, 0.008, 5, 0.3])
+        psm_fit_coeff, pcov = opt.curve_fit(poly_sin_modulation_fit, g1_steps, wavelength_axis, p0=initial_guess, bounds=(lower_bound, upper_bound))
         psm_y_pred = poly_sin_modulation_fit(g1_steps, *psm_fit_coeff)
         residuals_psm = wavelength_axis - psm_y_pred
         fit_metrics_psm = self.calculate_fit_metrics(wavelength_axis, psm_y_pred)
@@ -937,7 +974,7 @@ class Calibration:
             plt.show()
         
         print('Saving PSM fit for g1_to_wl')
-        self.report_dict[mode]['g1_to_wl'] = (fit_metrics_psm, psm_fit_coeff.tolist())
+        self.report_dict[mode]['g1_to_wl_{}'.format(mode)] = (fit_metrics_psm, psm_fit_coeff.tolist())
         self.calibration_metrics['g1_to_wl_{}'.format(mode)] = fit_metrics_psm
         self.calibrations['g1_to_wl_{}'.format(mode)] = psm_fit_coeff.tolist()
         
@@ -1029,14 +1066,14 @@ class Calibration:
         # self.calibration_metrics['g2_to_wl_{}'.format(mode)] = fit_metrics_psm
         # self.calibrations['g2_to_wl_{}'.format(mode)] = psm_fit_coeff.tolist()
 
-        print('saving poly fit for g2_to_wl')
-        self.report_dict[mode]['g2_to_wl'] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
-        self.calibration_metrics['g2_to_wl'] = fit_metrics
-        self.calibrations['g2_to_wl'] = fit_coeff_g2_to_wavelength.tolist()
+        print('saving poly fit for g2_to_wl_{}'.format(mode))
+        self.report_dict[mode]['g2_to_wl_{}'.format(mode)] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
+        self.calibration_metrics['g2_to_wl_{}'.format(mode)] = fit_metrics
+        self.calibrations['g2_to_wl_{}'.format(mode)] = fit_coeff_g2_to_wavelength.tolist()
 
         return fit_coeff_g2_to_wavelength, fit_metrics
 
-    def wavelength_to_g1(self, g1_steps, poly_order=2, mode=None, show=False, polysin=True):
+    def wavelength_to_g1(self, g1_steps, poly_order=2, mode=None, show=False, polysin=False):
         '''Calibration for using laser wavelength to calculate G1 steps.'''
 
         assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
@@ -1063,7 +1100,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(g1_steps, y_pred)
-        self.report_dict[mode]['wl_to_g1'] = (fit_metrics, fit_coeff_wavelength_to_g1.tolist())
+        self.report_dict[mode]['wl_to_g1_{}'.format(mode)] = (fit_metrics, fit_coeff_wavelength_to_g1.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -1076,8 +1113,8 @@ class Calibration:
             ax[1].legend()
             plt.show()
 
-        self.calibration_metrics['wl_to_g1'] = fit_metrics
-        self.calibrations['wl_to_g1'] = fit_coeff_wavelength_to_g1.tolist()
+        self.calibration_metrics['wl_to_g1_{}'.format(mode)] = fit_metrics
+        self.calibrations['wl_to_g1_{}'.format(mode)] = fit_coeff_wavelength_to_g1.tolist()
 
         return fit_coeff_wavelength_to_g1, fit_metrics
         
@@ -1101,7 +1138,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
-        self.report_dict[mode]['g1_to_wl'] = (fit_metrics, fit_coeff_g1_to_wavelength.tolist())
+        self.report_dict[mode]['g1_to_wl_{}'.format(mode)] = (fit_metrics, fit_coeff_g1_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -1114,8 +1151,8 @@ class Calibration:
             ax[1].legend()
             plt.show()
 
-        self.calibration_metrics['g1_to_wl'] = fit_metrics
-        self.calibrations['g1_to_wl'] = fit_coeff_g1_to_wavelength.tolist()
+        self.calibration_metrics['g1_to_wl_{}'.format(mode)] = fit_metrics
+        self.calibrations['g1_to_wl_{}'.format(mode)] = fit_coeff_g1_to_wavelength.tolist()
         
         return fit_coeff_g1_to_wavelength, fit_metrics
         
@@ -1139,7 +1176,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(g2_steps, y_pred)
-        self.report_dict[mode]['wl_to_g2'] = (fit_metrics, fit_coeff_wavelength_to_g2.tolist())
+        self.report_dict[mode]['wl_to_g2_{}'.format(mode)] = (fit_metrics, fit_coeff_wavelength_to_g2.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -1177,7 +1214,7 @@ class Calibration:
 
         # Fit quality metrics
         fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
-        self.report_dict[mode]['g2_to_wl'] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
+        self.report_dict[mode]['g2_to_wl_{}'.format(mode)] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
 
         if show is True or self.showplots is True:
             fig, ax = plt.subplots(2, 1)
@@ -1223,7 +1260,7 @@ if __name__ == '__main__':
 
     def triax_calibrations(calibration, cal_data):
         calibration.wavelength_to_triax()
-        calibration.triax_steps_to_wavelength(cal_data['l1'])
+        calibration.triax_steps_to_wavelength()
     
     def subtractive_calibrations(calibration, cal_data):
         # cal_data, cal_data_array = calibration.load_eept_file()
@@ -1231,14 +1268,14 @@ if __name__ == '__main__':
         calibration.l1_to_wavelength(cal_data['l1'], mode='subtractive')
         calibration.wavelength_to_l2(cal_data['l2'], mode='subtractive')
         calibration.l2_to_wavelength(cal_data['l2'], mode='subtractive')
-        calibration.wavelength_to_g1(cal_data['g1'], mode='subtractive')
-        calibration.g1_to_wavelength(cal_data['g1'], mode='subtractive')
-        calibration.wavelength_to_g2(cal_data['g2'], mode='subtractive')
-        calibration.g2_to_wavelength(cal_data['g2'], mode='subtractive')
+        calibration.wavelength_to_g1(cal_data['g1'], mode='subtractive', show=False)
+        calibration.g1_to_wavelength(cal_data['g1'], mode='subtractive', show=False)
+        calibration.wavelength_to_g2(cal_data['g2'], mode='subtractive', show=False)
+        calibration.g2_to_wavelength(cal_data['g2'], mode='subtractive', show=False)
 
     # FEAT Make additive calibrations
 
-    def additive_calibrations(calibration, cal_data, repeat=True):
+    def additive_calibrations(calibration, cal_data, repeat=False):
         cal_data, cal_data_array = calibration.load_aapt_file()
         
         if repeat is True:
@@ -1253,25 +1290,22 @@ if __name__ == '__main__':
             calibration.l2_to_wavelength(l2_steps, mode='additive')
 
             # calibrate G1
-            g1_steps = cal_data['g1']
-            # calibration.wavelength_to_g1(g1_steps, mode='additive')
-            # calibration.g1_to_wavelength(g1_steps, mode='additive')
-            calibration.wavelength_to_g1_tester(g1_steps, mode='additive', show=True)
-            calibration.g1_to_wavelength_tester(g1_steps, mode='additive', show=True)
+        g1_steps = cal_data['g1']
+        calibration.wavelength_to_g1(g1_steps, mode='additive')
+        calibration.g1_to_wavelength(g1_steps, mode='additive')
+        # calibration.wavelength_to_g1_tester(g1_steps, mode='additive', show=True)
+        # calibration.g1_to_wavelength_tester(g1_steps, mode='additive', show=True)
 
         # calibrate G2
         g2_steps = cal_data['g2']
-        # calibration.wavelength_to_g2(g2_steps, mode='additive')
-        # calibration.g2_to_wavelength(g2_steps, mode='additive')
-        calibration.wavelength_to_g2_tester(g2_steps, mode='additive', show=True)
-        calibration.g2_to_wavelength_tester(g2_steps, mode='additive', show=True)
+        calibration.wavelength_to_g2(g2_steps, mode='additive', show=True)
+        calibration.g2_to_wavelength(g2_steps, mode='additive', show=True)
+        # calibration.wavelength_to_g2_tester(g2_steps, mode='additive', show=True)
+        # calibration.g2_to_wavelength_tester(g2_steps, mode='additive', show=True)
 
-    calibration, cal_data = initialise(showplots=False)
+    calibration, cal_data = initialise(showplots=True)
     triax_calibrations(calibration, cal_data)
-    # calibration.wavelength_to_g1_tester(cal_data['g1'], mode='subtractive', show=True)
-    # calibration.wavelength_to_g2_tester(cal_data['g2'], mode='subtractive', show=True)
     subtractive_calibrations(calibration, cal_data)
-    # calibration.g1_to_wavelength_tester(cal_data['g1'], mode='additive', show=True)
     additive_calibrations(calibration, cal_data)
     # TRIAX cal is absolute - only needs to be saved once
     # calibration.save_triax_calibrations()

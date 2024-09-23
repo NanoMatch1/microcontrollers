@@ -42,6 +42,45 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import numpy as np
 import os
 
+# def poly_sin_modulation_fit(x, a2, a1, a0, A, B, C, D):
+#     # Polynomial part
+#     poly = a2 * x**2 + a1 * x + a0
+#     # Sinusoidal modulation part
+#     modulation = A * np.sin(B * x + C) + D
+#     return poly + modulation
+
+class PolySinModulation:
+    def __init__(self, a2, a1, a0, A, B, C, D):
+        """
+        Initialize the polynomial and sinusoidal coefficients.
+        Polynomial: a2*x^2 + a1*x + a0
+        Sinusoidal modulation: A*sin(B*x + C) + D
+        """
+        self.a2 = a2
+        self.a1 = a1
+        self.a0 = a0
+        self.A = A
+        self.B = B
+        self.C = C
+        self.D = D
+
+    def __call__(self, x):
+        """
+        Evaluate the polynomial + sinusoidal modulation at the given x value.
+        """
+        poly = self.a2 * x**2 + self.a1 * x + self.a0
+        modulation = self.A * np.sin(self.B * x + self.C) + self.D
+        return poly + modulation
+
+    def __repr__(self):
+        """
+        String representation of the polynomial and sinusoidal components.
+        """
+        poly_part = f"{self.a2}*x^2 + {self.a1}*x + {self.a0}"
+        sin_part = f"{self.A}*sin({self.B}*x + {self.C}) + {self.D}"
+        return f"PolySinModulation: ({poly_part}) + ({sin_part})"
+
+
 class GUI:
 
     def __init__(self):
@@ -335,7 +374,7 @@ class MotorPositions:
 
 class Microscope:
 
-    # calibration_backup = {"wl_to_triax_steps": [0.10804683994803718, 331.8588098129754, 43950.89354704326], "triax_steps_to_wl": [-8.032233265071597e-10, 0.002589893546654974, -65.392713732836], "wl_to_l1": [-0.013186836473750425, -41.70675588176, 41979.647251902534], "l1_to_wl": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "wl_to_l2": [0.0044654441032724625, 19.364118550454624, -18407.332735973865], "l2_to_wl": [-2.314868977807367e-07, 0.03770216648918488, 802.1840388363821], "wl_to_g1": [9.14706131106529, -7363.889052419929], "g1_to_wl": [0.10924618909058334, 805.0765596939007], "wl_to_g2": [9.476770361542474, -7618.1369780449895], "g2_to_wl": [0.10490835215435425, 804.0545327018295], "wl_to_g2_add": [9.47677036154247, -20608.136978044986], "g2_to_wl_add": [0.10490835215435408, 2166.814027186889]}
+    # calibration_backup = {"wl_to_triax_steps": [0.10804683994803718, 331.8588098129754, 43950.89354704326], "triax_steps_to_wl": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "wl_to_l1": [-0.01252753345943214, -42.75470684410267, 42395.08424620002], "l1_to_wl": [-5.094413299758575e-08, -0.015908133940084567, 802.765386148867], "wl_to_l2": [0.004068479941637935, 20.30418040830074, -18891.41344719332], "l2_to_wl": [-2.1134374286916415e-07, 0.03727793396921931, 801.6492620060089], "wl_to_g1_subtractive": [-0.0009343860392719734, 10.7261833692083, 650945.1172672338, 4.655494031296545, 0.08293861801416774, -28.836971874316305, -658973.3758272409], "g1_to_wl_subtractive": [-3.997416525894944e-06, 0.11504349729740472, 40924.95099077628, -3.7657797835191977, 0.0029830668481275646, 6.0959394773331725, -40119.77931396578], "wl_to_g2": [0.023079240005018726, -45.473382574917395, 8566.991143604224], "g2_to_wl": [4.023690443149823e-05, 0.9297669680984147, 6082.062394487625], "wl_to_g1_additive": [0.005183899414806875, 1.448578450504759, 624081.2598467232, 18.066764876201965, 0.08365631420139119, -29.51008752837752, -628605.1425510542], "g1_to_wl_additive": [-9.626148251565028e-06, 0.10420683828922353, -4848.442236579409, -2.272040105929268, 0.0074373346698996335, 6.471415416643864, 5653.535879138745]}
 
     # standard positions:
     # Current laser wavelength: 802.7494779639835
@@ -348,18 +387,7 @@ class Microscope:
         if not os.path.exists(self.dataDir):
             os.makedirs(self.dataDir)
 
-        if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
-            with open(os.path.join(self.scriptDir, 'calibrations.json'), 'r') as f:
-                calibrations = json.load(f)
-                print('Calibrations loaded from file')
-        
-        else:
-            calibrations = Microscope.calibration_backup
-            print('Calibration file not found, using backup')
-
-        # self.calibrations = SimpleNamespace(**self.calibrations)
-        self.calibrations = SimpleNamespace(**{calib: np.poly1d(calibrations[calib]) for calib in calibrations})
-        self.all_calibrations = calibrations
+        self.generate_calibrations(report=True)
 
         self.scan_min = 800
         self.scan_max = 835
@@ -541,6 +569,37 @@ class Microscope:
 
         self.report_status()
 
+    def generate_calibrations(self, report=False):
+        if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
+            with open(os.path.join(self.scriptDir, 'calibrations.json'), 'r') as f:
+                calibrations = json.load(f)
+                print('Calibrations loaded from file')
+        
+        else:
+            calibrations = Microscope.calibration_backup
+            print('Calibration file not found, using backup')
+        
+        self.all_calibrations = calibrations
+        self.calibrations = SimpleNamespace()
+        
+        for name, calib in calibrations.items():
+            if report:
+                print(name, calib, "poly" if len(calib) == 3 else "poly_sin")
+            if len(calib) == 7:
+                self.calibrations.__setattr__(name, PolySinModulation(*calib))
+            else:
+                self.calibrations.__setattr__(name, np.poly1d(calib))
+
+        print("defaulting to additive calibration for G1. Return to fix this later.")
+        self.calibrations.g1_to_wl = self.calibrations.g1_to_wl_additive
+        self.calibrations.wl_to_g1 = self.calibrations.wl_to_g1_additive
+
+        print("Calibrations successfully built.")
+
+        #save peanut -45
+        # self.calibrations = SimpleNamespace(**self.calibrations)
+        # self.calibrations = SimpleNamespace(**{calib: np.poly1d(calibrations[calib]) for calib in calibrations})
+
     def show_help(self):
         print('Available commands:')
         for key in self.microscope_functions:
@@ -555,16 +614,17 @@ class Microscope:
         else:
             self.monochromator_mode = 'subtractive'
             print('Guessed subtractive mode')
+            self._switch_calibrations('subtractive', overwrite=True)
 
     def _switch_calibrations(self, mode, overwrite=False):
         if mode == 'additive':
             # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
-            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2_additive'])
-            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_additive'])
+            self.calibrations.wl_to_g2 = self.calibrations.wl_to_g2_additive
+            self.calibrations.g2_to_wl = self.calibrations.g2_to_wl_additive
         elif mode == 'subtractive':
             # self.calibrations = SimpleNamespace(**{calib: np.poly1d(self.calibration_backup[calib]) for calib in self.calibration_backup})
-            self.calibrations.wl_to_g2 = np.poly1d(self.all_calibrations['wl_to_g2_subtractive'])
-            self.calibrations.g2_to_wl = np.poly1d(self.all_calibrations['g2_to_wl_subtractive'])
+            self.calibrations.wl_to_g2 = self.calibrations.wl_to_g2_subtractive
+            self.calibrations.g2_to_wl = self.calibrations.g2_to_wl_subtractive
 
     #g2 start -39
     def change_monochromator_mode(self, mode):
@@ -1006,13 +1066,15 @@ class Microscope:
         # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
         # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
         true_wavelength = self.calibrations.triax_steps_to_wl(float(steps))
-        print('True wavelength: {}. Moving motors to true wavelength'.format(true_wavelength))
+        print('True wavelength: {}. Shifting motor positions to true wavelength'.format(true_wavelength))
         
         
         l1_target = round(self.calibrations.wl_to_l1(true_wavelength))
         l2_target = round(self.calibrations.wl_to_l2(true_wavelength))
         g1_target = round(self.calibrations.wl_to_g1(true_wavelength))
         g2_target = round(self.calibrations.wl_to_g2(true_wavelength))
+
+        breakpoint() #378617
 
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
         self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')

@@ -15,8 +15,6 @@ AccelStepper stepperA(AccelStepper::DRIVER, 12, 13); // Pin 10 = step, Pin 11 = 
 // const int enablePinC = 12; // Enable pin for Stepper C (Z Axis)
 // const int enablePinD = 13; // Enable pin for Stepper D (A Axis)
 
-int sensorPin = A0; // select the input pin for LDR
-int sensorValue = 0; // variable to store the value coming from the sensor
 
 const int SLAVE_ADDRESS = 9;  // I2C address of this slave Arduino
 String testFlag = "0";
@@ -44,8 +42,8 @@ void setup() {
   stepperX.setAcceleration(1000);
   stepperY.setMaxSpeed(1000);
   stepperY.setAcceleration(1000);
-  stepperZ.setMaxSpeed(1000);
-  stepperZ.setAcceleration(1000);
+  stepperZ.setMaxSpeed(50);
+  stepperZ.setAcceleration(200);
   stepperA.setMaxSpeed(1000);
   stepperA.setAcceleration(1000);
 }
@@ -69,6 +67,28 @@ void loop() {
   }
 }
 
+// void scanAndRead() {
+//       int index = 0;
+//       int totalSteps = 20;
+//       int stepIncrement = 2;
+//       int pos = 0;
+    
+//     // Loop through each step position
+//     // for (int pos = 0; pos <= totalSteps; pos += stepIncrement) {
+//     while (index <= totalSteps) {
+//         stepperX.move(stepIncrement); // Move motor
+//         delay(1); // Wait for motor to stabilize
+        
+//         int analogValue = analogRead(ANALOG_PIN); // Read analog input
+        
+//         // Store the data
+//         stepPosition[index] = pos;
+//         analogValues[index] = analogValue;
+//         index++;
+//         pos++;
+//     }
+// }
+
 void receiveEvent(int howMany) {
   String command = "";
   while (Wire.available()) {
@@ -85,6 +105,12 @@ void receiveEvent(int howMany) {
   // else if (command.startsWith("scang1")) {
   //   String steps = command.substring(6);
   // }
+
+  // else if (command == "calscan") {
+
+  // }
+
+
 
   else if (command == "isrun") {
     if (stepperX.isRunning() == true) {
@@ -129,6 +155,8 @@ void receiveEvent(int howMany) {
 
     stepperX.setCurrentPosition(pos1);
     stepperY.setCurrentPosition(pos2);
+    stepperZ.setCurrentPosition(pos3);
+    stepperA.setCurrentPosition(pos4);
     
     response = "S0";
   }

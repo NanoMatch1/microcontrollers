@@ -20,6 +20,10 @@ const int countEnable = 13;     // Pin for resetting latch to LOW. Note Active-L
 const int counterClear = 12;  // Pin clearing the counter IC
 const int lastDigit = 11;    // Pin for reading the last digit of the counters
 
+const int gShutPin = 9; // Pin for controlling the stepper motor pinhole shutter/LDR shutter
+int ldr0pin = A0; // select the input pin for LDR
+int ldr0value = 0; // variable to store the value coming from the sensor
+
 // // ADP acquisition
 // const int checkPin = 2; // Pin to receive the interrupt signal
 // const int resetPin = 3;     // Pin to send the reset high signal
@@ -37,10 +41,12 @@ void setup() {
   pinMode(counterClear, OUTPUT);
   pinMode(lastDigit, INPUT);
   pinMode(countEnable, OUTPUT);
+  pinMode(gShutPin, OUTPUT); // set up grating shutter pin
 
   digitalWrite(countEnable, LOW); // disable the toggle flip flop, initial state of output is 0V when countEnable is LOW.
   digitalWrite(counterClear, LOW); // clear the counter initially. Active-LOW
   // digitalWrite(loadRegisterPin, LOW);
+  digitalWrite(gShutPin, LOW);
 
   Serial.begin(9600);
   // picoSerial.begin(9600);
@@ -82,6 +88,15 @@ void loop() {
 //     serial.read();
 //   }
 // }
+
+void gShutter(String state) {
+  if (state == "on") {
+    digitalWrite(gShutPin, HIGH);
+  }
+  else if (state == "off") {
+    digitalWrite(gShutPin, LOW);
+  }
+}
 
 int sendToPico(String command) {
     String response = "";
@@ -264,6 +279,16 @@ void processCommand(String command) {
     if (com == "acq") {
       response = acquireAPD(comVal);
       Serial.println("#CF");
+    }
+    else if (com == "gon") {
+      gShutter("on");
+    }
+    else if (com == "gof") {
+      gShutter("off");
+    }
+    else if (com == 'ldr0') {
+      ldr0value = digitalRead(ldr0pin);
+      Serial.print(ldr0value);
     }
     else if (com == "run") {
       int count = 0;

@@ -400,6 +400,7 @@ class Microscope:
         self.current_wavelength = None
         self.current_shift = 0
         self.monochromator_mode = 'subtractive'
+        self.pinhole = None
         # self.to_addivite = -12990 -13108+39 
 
         self.acq_time = 1
@@ -428,6 +429,10 @@ class Microscope:
             'writemotorb': self.set_absolute_positions_B,
             'help': self.show_help,
             'motorscan': self.motor_scan,
+            'lockcal': self.lock_calibration,
+            'unlockcal': self.unlock_calibration,
+            'pin': self.move_pinhole,
+            'setpin': self.set_pinhole_pos,
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
@@ -509,6 +514,7 @@ class Microscope:
             'gpa' : 'Apos',
             'getposb': 'Bpos',
             'gpb' : 'Bpos',
+            'gshut': 'Bgshut',
 
         }
 
@@ -568,6 +574,57 @@ class Microscope:
         self.guess_mode()
 
         self.report_status()
+    def set_pinhole_pos(self, pos):
+        try:
+            pos = int(pos)
+        except:
+            print('Invalid input')
+            return
+        grating_pos = self.get_grating_motor_positions()
+        grating_pos[2] = pos
+        self.process_coms('setposb {},{},{},{}'.format(*grating_pos))
+        self.pinhole = pos
+        print('Pinhole position set to {}'.format(pos))
+
+    def move_pinhole(self, z):
+        if self.pinhole is None:
+            # pinhole = self.get_motor_positions().z
+            while True:
+                pinhole = input('Enter current pinhole position: ')
+                try:
+                    # pinhole = int(pinhole)
+                    self.pinhole = int(pinhole)
+                    break
+                except:
+                    print('Invalid input')
+        
+        try:
+            z = int(z)
+        except:
+            print('Invalid input')
+            return
+        if z < 0 or z > 160:
+            print('Invalid input - must be between 0 and 160')
+            return
+        move_motor = z - self.pinhole
+        self.process_coms('z {}'.format(move_motor))
+        self.pinhole = z
+
+    def unlock_calibration(self):
+        '''Unlocks the calibration so that G1 and G2 can be moved independently.'''
+        self.calibrations.__setattr__('wl_to_g2', np.poly1d(self.all_calibrations['wl_to_g2_subtractive']))
+        print('Calibration unlocked. G2 is now independent of G1.')
+
+    def lock_calibration(self):
+        '''Takes the current monochromator positions and makes G2 a function of G1 at this position. Only works for subtractive operation mode. Note the g2_to_wl calibration is still the original, so the calculated wavelength may be innacurate, but the position will be correct.'''
+
+        motor_positions = self.get_grating_motor_positions() # FIX - make this a .get() function of an attribute
+        g2_pos = motor_positions[1]
+        g2_calibration = [x for x in self.all_calibrations['wl_to_g1_subtractive']]
+        g2_calibration[2] += g2_pos
+        self.calibrations.__setattr__('wl_to_g2_subtractive', np.poly1d(g2_calibration))
+        # breakpoint()
+        print('Calibration locked. G2 is now a function of G1 at this position.')
 
     def generate_calibrations(self, report=False):
         if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
@@ -658,17 +715,21 @@ class Microscope:
             'laser wavenumber': self.current_laser_wavenumber,
             'grating wavenumber': self.current_raman_wavenumber,
             'Raman wavelength': self.current_raman_wavelength,
-            'Raman shift': self.current_shift
+            'Raman shift': self.current_shift,
+            # 'pinhole': self.pinhole
         }
 
         if  report['g1 lambda'][0] < 500 or report['g1 lambda'][0] > 2000:
             print('Grating wavelength out of range - please check monochromator mode')
 
+        self.pinhole = report['grating motor positions'][2]
+        report['pinhole'] = self.pinhole
 
         print('-'*20)
         for key, value in report.items():
             print('{}: {}'.format(key, value))
         print('-'*20)
+
 
     @property
     def current_grating_wavelength(self):
@@ -740,12 +801,12 @@ class Microscope:
 
         # set the motor positions to the calculated positions, shifting the calibration to the current wavelength
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
-        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},{self.pinhole},0')
         
         new_laser_pos = self.get_laser_motor_positions()
         new_laser_wavelength, l2_wavelength = self.calculate_laser_position(new_laser_pos)
         new_grating_pos = self.get_grating_motor_positions()
-        new_grating_wavelength, g2_wavelength = self.calculate_grating_position(new_grating_pos)
+        new_grating_wavelength = self.calculate_grating_position(new_grating_pos)[0]
         
         if new_grating_pos[0] == g1_target and new_grating_pos[1] == g2_target and new_laser_pos[0] == l1_target and new_laser_pos[1] == l2_target:
             print('Calibration shift successful')
@@ -832,7 +893,11 @@ class Microscope:
 
     def get_all_current_positions(self):
         l1_wavelength, l2_wavelength = self.calculate_laser_position()
-        g1_wavelength, g2_wavelength = self.calculate_grating_position()
+
+        b_positions = self.calculate_grating_position()
+        g1_wavelength = b_positions[0]
+        g2_wavelength = b_positions[1]
+        pin_pos = b_positions[2]
         g2_pos = self.get_grating_motor_positions()
         l1_pos = self.get_laser_motor_positions()
 
@@ -845,6 +910,7 @@ class Microscope:
         print('Current l2 wavelength: {}'.format(l2_wavelength))
         print('Current g1 wavelength: {}'.format(g1_wavelength))
         print('Current g2 wavelength: {}'.format(g2_wavelength))
+        print('Current pinhole position: {}'.format(pin_pos))
 
         # TODO: Change to @property
         # self.current_grating_wavelength = self.calculate_grating_position()
@@ -924,6 +990,7 @@ class Microscope:
 
         g1_pos = current_grating_pos[0]
         g2_pos = current_grating_pos[1]
+        pin_pos = current_grating_pos[2]
 
         # if self.monochromator_mode == 'additive':
         #     g2_pos = g2_pos - self.to_addivite
@@ -931,7 +998,7 @@ class Microscope:
         g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
         g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
 
-        return g1_wavelength, g2_wavelength
+        return (g1_wavelength, g2_wavelength, pin_pos)
 
     def go_to_wavenumber(self, wavenumber):
         try:
@@ -1005,8 +1072,20 @@ class Microscope:
 
         print('Laser excitation at {}'.format(wavelength))
 
+    def enable_pinhole_shutter(self):
+        response = self.process_coms('gshut on')
+        print('Pinhole shutter closed')
 
-    
+    def disable_pinhole_shutter(self):
+        response = self.process_coms('gshut off')
+        print('Pinhole shutter opened')
+
+    def pinhole_shutter(self, state):
+        if state == 'open':
+            # self.process_coms('z 160')
+            self.enable_pinhole_shutter()
+        elif state == 'closed':
+
     def go_to_grating_wavelength(self, wavelength):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''
         try:
@@ -1061,6 +1140,18 @@ class Microscope:
 
         print('Grating detection at {}'.format(wavelength))
 
+    def run_calibration(self, wavelength_range: tuple, resolution: float):
+        calibrationDict = {}
+
+        wavelengths = np.linspace(*wavelength_range, resolution)
+        for wl in wavelengths:
+            
+            self.go_to_laser_wavelength(wl)
+            self.go_to_grating_wavelength(wl)
+            
+
+
+
     def reference_calibration(self, steps):
         '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
         # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
@@ -1074,10 +1165,10 @@ class Microscope:
         g1_target = round(self.calibrations.wl_to_g1(true_wavelength))
         g2_target = round(self.calibrations.wl_to_g2(true_wavelength))
 
-        breakpoint() #378617
+        # breakpoint() #378617
 
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
-        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},{self.pinhole},0')
 
         laser_pos = self.get_laser_motor_positions()
         grating_pos = self.get_grating_motor_positions()
@@ -1558,7 +1649,7 @@ class Microscope:
         print("custom scan")
         scan_results = np.empty((0, 3)).astype(float)
         grating_pos = self.get_grating_motor_positions()
-        grating_wavelength, g2_wavelength = self.calculate_grating_position(grating_pos)
+        grating_wavelength = self.calculate_grating_position(grating_pos)[0]
         scan_min = -100
         scan_max = 100
         scan_resolution = 5
@@ -1662,7 +1753,7 @@ class Microscope:
         print("custom scan")
         scan_results = np.empty((0, 3)).astype(float)
         grating_pos = self.get_grating_motor_positions()
-        grating_wavelength, g2_wavelength = self.calculate_grating_position(grating_pos)
+        grating_wavelength = self.calculate_grating_position(grating_pos)[0]
 
 
         while True:

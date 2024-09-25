@@ -582,6 +582,9 @@ class Microscope:
         self.guess_mode()
         self.report_status()
 
+        # self.run_ldr0_scan()
+        self.run_calibration((800, 810), 5)
+
     def calculate_overhead(self):
         acq_times = [0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 0.128, 0.256, 0.512, 1.024]
         time_overhead = []
@@ -605,8 +608,6 @@ class Microscope:
 
         resolution = float(resolution)
 
-        breakpoint()
-        
         wavelengths = np.arange(*wavelength_range, resolution)
         print("Running calibration for wavelengths: ", wavelengths)
         cond = input("Continue? (y/n): ")
@@ -617,10 +618,33 @@ class Microscope:
             
             self.go_to_laser_wavelength(wl)
             self.go_to_grating_wavelength(wl)
-            
-            breakpoint()
+            scan_data = self.run_ldr0_scan()
+            calibrationDict[wl] = scan_data
+        
+        index = len(os.listdir(os.path.join(self.scriptDir, 'autocalibration')))
+        with open(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}.json'.format(index)), 'w') as f:
+            json.dump(calibrationDict, f)
+        
+        print("Scan complete. Data saved to autocal_{}.json".format(index))
     
-    def run_ldr_scan(self, step_number):
+    def run_ldr0_scan(self, search_length=20, resolution=1):
+        current_pos = self.grating_steps[0]
+        scan_data = []
+        scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
+        breakpoint()
+
+        for idx, final_pos in enumerate(scan_points):
+            self.process_coms("g1 {}".format(final_pos - current_pos))
+            if idx == 0:
+                self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
+            breakpoint()
+            scan_data.append([final_pos, self.read_ldr0()])
+            current_pos = final_pos
+        
+        return scan_data
+
+            
+
         pass
 
     def print_debug(self):
@@ -628,10 +652,10 @@ class Microscope:
         breakpoint()
 
     def read_ldr0(self):
-        response = self.process_coms('rldr00')
-        print("LDR0:", int(response[0][1:]))
-        # breakpoint()
-        # print(response)
+        response = self.process_coms('rldr0')
+        ldr_value = int(response[0][1:])
+        print("LDR0:", ldr_value)
+        return ldr_value
 
     def move_grating_shutter(self, state):
         if state == 'open' or state == 'o':
@@ -986,7 +1010,7 @@ class Microscope:
         return 
         
     def get_laser_motor_positions(self):
-        print('entered get laser')
+        # print('entered get laser')
         try:
             response = self.process_coms('gpa')
             print('got response')
@@ -1403,7 +1427,7 @@ class Microscope:
 
 
         elif com[0] in self.tuning_motor_dict.keys():
-            print('entered turning dict')
+            # print('entered turning dict')
             if len(com) > 1:
                 command = 'o{}{}o'.format(self.tuning_motor_dict[com[0]], com[1])
             else:

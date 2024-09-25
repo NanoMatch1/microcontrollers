@@ -274,23 +274,27 @@ void processCommand(String command) {
     String content = command.substring(1, command.length() - 1);  // Remove '<' and '>'
     String com = content.substring(0, 3);  // The 3 character command
     String comvalstring = content.substring(3, content.length());
-    float comVal = comvalstring.toFloat();
 
     if (com == "acq") {
+      float comVal = comvalstring.toFloat();
       response = acquireAPD(comVal);
       Serial.println("#CF");
     }
-    else if (com == "gon") {
-      gShutter("on");
+    else if (com == "gsh") {
+      gShutter(comvalstring);
+      Serial.println("tShutter closed, LDR ready");
     }
-    else if (com == "gof") {
-      gShutter("off");
+    else if (com == "gsh") {
+      gShutter(comvalstring);
+      Serial.println("tShutter Open");
     }
-    else if (com == 'ldr0') {
+    else if (com == 'ld0') {
       ldr0value = digitalRead(ldr0pin);
-      Serial.print(ldr0value);
+      Serial.print('t');
+      Serial.println(ldr0value);
     }
     else if (com == "run") {
+      float comVal = comvalstring.toFloat();
       int count = 0;
       while (count < 30) {
         response = acquireAPD(comVal);

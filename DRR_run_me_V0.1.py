@@ -433,6 +433,8 @@ class Microscope:
             'unlockcal': self.unlock_calibration,
             'pin': self.move_pinhole,
             'setpin': self.set_pinhole_pos,
+            'gshut': self.move_grating_shutter,
+            'readldr': self.read_ldr0,
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
@@ -514,7 +516,9 @@ class Microscope:
             'gpa' : 'Apos',
             'getposb': 'Bpos',
             'gpb' : 'Bpos',
-            'gshut': 'Bgshut',
+            'gsh': 'mgshm',
+            'rldr0': 'mldr0m'
+
 
         }
 
@@ -574,6 +578,18 @@ class Microscope:
         self.guess_mode()
 
         self.report_status()
+
+    def read_ldr0(self):
+        response = self.process_coms('rldr0')
+        breakpoint()
+        print(response)
+
+    def move_grating_shutter(self, state):
+        if state == 'open':
+            self.process_coms('gsh open')
+        elif state == 'closed':
+            self.process_coms('gsh closed')
+
     def set_pinhole_pos(self, pos):
         try:
             pos = int(pos)
@@ -1072,19 +1088,27 @@ class Microscope:
 
         print('Laser excitation at {}'.format(wavelength))
 
-    def enable_pinhole_shutter(self):
-        response = self.process_coms('gshut on')
-        print('Pinhole shutter closed')
+    def close_pinhole(self):
+        response = self.process_coms('pin 0')
+        print('Pinhole fully closed')
 
-    def disable_pinhole_shutter(self):
+    def open_pinhole(self):
+        response = self.process_coms('pin 160')
+        print('Pinhole fully opened')
+
+    def close_pinhole_shutter(self):
+        response = self.process_coms('gshut on')
+        print('Pinhole g shutter closed')
+
+    def open_pinhole_shutter(self):
         response = self.process_coms('gshut off')
-        print('Pinhole shutter opened')
+        print('Pinhole g shutter opened')
 
     def pinhole_shutter(self, state):
         if state == 'open':
-            # self.process_coms('z 160')
-            self.enable_pinhole_shutter()
+            self.open_pinhole_shutter()
         elif state == 'closed':
+            self.close_pinhole_shutter()
 
     def go_to_grating_wavelength(self, wavelength):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''

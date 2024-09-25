@@ -395,7 +395,8 @@ class Microscope:
 
         # self.grating_calib = calibrations['']
 
-
+        self.grating_steps = None
+        self.laser_steps = None
 
         self.current_wavelength = None
         self.current_shift = 0
@@ -435,6 +436,8 @@ class Microscope:
             'setpin': self.set_pinhole_pos,
             'gshut': self.move_grating_shutter,
             'readldr': self.read_ldr0,
+            'debug': self.print_debug,
+            'calibrate': self.run_calibration
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
@@ -516,8 +519,6 @@ class Microscope:
             'gpa' : 'Apos',
             'getposb': 'Bpos',
             'gpb' : 'Bpos',
-            'gsh': 'mgshm',
-            'rldr0': 'mldr0m'
 
 
         }
@@ -527,6 +528,9 @@ class Microscope:
         self.acquisition_dict = {
             'acq': 'acq', 
             'run': 'run',
+            'gsh': 'gsh',
+            'rldr0': 'ld0'
+
 
         }
 
@@ -560,7 +564,7 @@ class Microscope:
         # self.pico_marlin = self.connect_to_marlin()
         # self.apd_serial = self.connect_to_APD()
         if 'UNO' not in debug_skip:
-            self.uno_serial = self.connect_to_UNO(unoCOM)
+            self.uno_serial = self.connect_to_UNO(unoCOM, baud=9600)
         if not 'laser' in debug_skip:
             self.laser_serial = self.connect_to_laser()
         # if not 'APD' in debug_skip:
@@ -576,19 +580,64 @@ class Microscope:
     #     return APD_serial
 
         self.guess_mode()
-
         self.report_status()
 
-    def read_ldr0(self):
-        response = self.process_coms('rldr0')
+    def calculate_overhead(self):
+        acq_times = [0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 0.128, 0.256, 0.512, 1.024]
+        time_overhead = []
+        for val in acq_times:
+            start = time.time()
+            for i in range(10):
+                self.process_coms(f'acq {val}')
+            end = time.time()
+            time_overhead.append([val, (end-start)/10])
+        
+        print(time_overhead)
+        # breakpoint()
+
+
+    def run_calibration(self, wavelength_range: tuple, resolution: float):
+        calibrationDict = {}
+
+        if isinstance(wavelength_range, str):
+            vals = wavelength_range.split(',')
+            wavelength_range = (float(vals[0]), float(vals[1]))
+
+        resolution = float(resolution)
+
         breakpoint()
-        print(response)
+        
+        wavelengths = np.arange(*wavelength_range, resolution)
+        print("Running calibration for wavelengths: ", wavelengths)
+        cond = input("Continue? (y/n): ")
+        if cond.lower() == 'n':
+            return
+        
+        for wl in wavelengths:
+            
+            self.go_to_laser_wavelength(wl)
+            self.go_to_grating_wavelength(wl)
+            
+            breakpoint()
+    
+    def run_ldr_scan(self, step_number):
+        pass
+
+    def print_debug(self):
+        print('Entering print debug')
+        breakpoint()
+
+    def read_ldr0(self):
+        response = self.process_coms('rldr00')
+        print("LDR0:", int(response[0][1:]))
+        # breakpoint()
+        # print(response)
 
     def move_grating_shutter(self, state):
-        if state == 'open':
-            self.process_coms('gsh open')
-        elif state == 'closed':
-            self.process_coms('gsh closed')
+        if state == 'open' or state == 'o':
+            self.process_coms('gsh off')
+        elif state == 'close' or state == 'c':
+            self.process_coms('gsh on')
 
     def set_pinhole_pos(self, pos):
         try:
@@ -944,15 +993,15 @@ class Microscope:
             positions = response[1].split(':')[1]
             positions = positions.strip('<P>P')
             positions = positions.split(',')
-            laser_pos = [float(x[1:]) for x in positions]
+            self.laser_steps = [float(x[1:]) for x in positions]
         except Exception as e:
             traceback.print_exc()
             print('Error getting laser position')
             print(e)
             return
         
-        print('Current laser pos: {}'.format(laser_pos))
-        return laser_pos
+        print('Current laser pos: {}'.format(self.laser_steps))
+        return self.laser_steps
     
     def get_grating_motor_positions(self):
         try:
@@ -960,15 +1009,15 @@ class Microscope:
             positions = response[1].split(':')[1]
             positions = positions.strip('<P>P')
             positions = positions.split(',')
-            grating_pos = [float(x[1:]) for x in positions]
+            self.grating_steps = [float(x[1:]) for x in positions]
         except Exception as e:
             traceback.print_exc()
             print('Error getting grating position')
             print(e)
             return
         
-        print('Current grating pos: {}'.format(grating_pos))
-        return grating_pos
+        print('Current grating pos: {}'.format(self.grating_steps))
+        return self.grating_steps
     
     def calculate_laser_position(self, current_pos=None):
         if current_pos is None:
@@ -1039,6 +1088,7 @@ class Microscope:
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.
         Uses the calibrations to move the laser motors into position for a specified wavelength.'''
         # 
+        self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
 
         try:
             wavelength = float(wavelength)
@@ -1087,6 +1137,7 @@ class Microscope:
             response = self.process_coms('l2 20')
 
         print('Laser excitation at {}'.format(wavelength))
+        self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
 
     def close_pinhole(self):
         response = self.process_coms('pin 0')
@@ -1112,6 +1163,9 @@ class Microscope:
 
     def go_to_grating_wavelength(self, wavelength):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''
+
+        self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+
         try:
             wavelength = float(wavelength)
         except ValueError:
@@ -1163,15 +1217,9 @@ class Microscope:
             response = self.process_coms('g2 20')
 
         print('Grating detection at {}'.format(wavelength))
+        self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
 
-    def run_calibration(self, wavelength_range: tuple, resolution: float):
-        calibrationDict = {}
 
-        wavelengths = np.linspace(*wavelength_range, resolution)
-        for wl in wavelengths:
-            
-            self.go_to_laser_wavelength(wl)
-            self.go_to_grating_wavelength(wl)
             
 
 
@@ -1344,7 +1392,7 @@ class Microscope:
 
         elif com[0] in self.acquisition_dict.keys():
             if len(com) > 1:
-                command = 'm{} {}m'.format(self.acquisition_dict[com[0]], com[1])
+                command = 'm{}{}m'.format(self.acquisition_dict[com[0]], com[1])
             else:
                 command = 'm{}m'.format(self.acquisition_dict[com[0]])
             print('UI>UNO:{}'.format(command))
@@ -1382,7 +1430,7 @@ class Microscope:
 
         elif com[0] in self.microscope_functions.keys():
             if len(com) > 1:
-                response = self.microscope_functions[com[0]](com[1])
+                response = self.microscope_functions[com[0]](*com[1:])
             else:
                 response = self.microscope_functions[com[0]]()
 
@@ -1442,8 +1490,8 @@ class Microscope:
         # print(response)
         # 
 
-    def connect_to_UNO(self, unoCOM='COM8'):
-        UNO_serial = serial.Serial(unoCOM, 9600, timeout=1)
+    def connect_to_UNO(self, unoCOM='COM8', baud=9600):
+        UNO_serial = serial.Serial(unoCOM, baud, timeout=1)
         while UNO_serial.in_waiting == 0:
             time.sleep(0.1)
         while UNO_serial.in_waiting > 0:

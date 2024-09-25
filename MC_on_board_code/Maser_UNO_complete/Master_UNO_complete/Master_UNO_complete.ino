@@ -65,6 +65,8 @@ void loop() {
       return;  // Skip the rest of this iteration of loop()
     }
     processCommand(command);
+    Serial.println("#CF");
+
   }
 
   // if (Serial1.available() > 0) {
@@ -92,9 +94,18 @@ void loop() {
 void gShutter(String state) {
   if (state == "on") {
     digitalWrite(gShutPin, HIGH);
+    Serial.println("Shutter closed, LDR ready");
   }
   else if (state == "off") {
     digitalWrite(gShutPin, LOW);
+    Serial.println("Shutter open");
+  }
+}
+
+void stepScanX(int numberOfSteps) {
+  int counts = 0;
+  while (counts <= numberOfSteps) {
+    break;
   }
 }
 
@@ -266,32 +277,30 @@ void processCommand(String command) {
     String response = readFromPico();
     Serial.print("Response from Pico:");
     Serial.println(response);
-    Serial.println("#CF");
+    // Serial.println("#CF");
   }
 
-  else if (command.startsWith("m") && command.endsWith("m")) {
+  else if (command.startsWith("m") && command.endsWith("m")) { // process simple three-character commands followed by a float or int
     String response = "";
     String content = command.substring(1, command.length() - 1);  // Remove '<' and '>'
     String com = content.substring(0, 3);  // The 3 character command
-    String comvalstring = content.substring(3, content.length());
+    String comvalstring = content.substring(3, content.length()); 
 
     if (com == "acq") {
       float comVal = comvalstring.toFloat();
       response = acquireAPD(comVal);
-      Serial.println("#CF");
+      // Serial.println("#CF");
+      return;
     }
     else if (com == "gsh") {
       gShutter(comvalstring);
-      Serial.println("tShutter closed, LDR ready");
+      return;
     }
-    else if (com == "gsh") {
-      gShutter(comvalstring);
-      Serial.println("tShutter Open");
-    }
-    else if (com == 'ld0') {
+    else if (com == "ld0") {
       ldr0value = digitalRead(ldr0pin);
       Serial.print('t');
       Serial.println(ldr0value);
+      return;
     }
     else if (com == "run") {
       float comVal = comvalstring.toFloat();
@@ -300,7 +309,8 @@ void processCommand(String command) {
         response = acquireAPD(comVal);
         count ++;
       }
-    Serial.println("#CF");
+    // Serial.println("#CF");
+    return;
     }
   }
 
@@ -344,7 +354,8 @@ void processCommand(String command) {
         break;
     }
   } else {
-    Serial.println("Invalid command format#CF");
+    Serial.print("Invalid command format");
+    // Serial.println("#CF");
   }
   // String response = readFromPico();
   // Serial.println(response);

@@ -297,9 +297,14 @@ void processCommand(String command) {
       return;
     }
     else if (com == "ld0") {
-      ldr0value = digitalRead(ldr0pin);
+      int count = 0;
+      while (count < 5) {
+        ldr0value += analogRead(ldr0pin);
+        count ++;
+      }
       Serial.print('t');
       Serial.println(ldr0value);
+      ldr0value = 0;
       return;
     }
     else if (com == "run") {
@@ -311,6 +316,10 @@ void processCommand(String command) {
       }
     // Serial.println("#CF");
     return;
+    }
+    else {
+      Serial.print("Command not recognised: ");
+      Serial.println(content);
     }
   }
 

@@ -402,6 +402,8 @@ class Microscope:
         self.current_shift = 0
         self.monochromator_mode = 'subtractive'
         self.pinhole = None
+        self.save_pinhole = None
+        # self.current_motor_positions = {'A': {}, 'B': {}}
         # self.to_addivite = -12990 -13108+39 
 
         self.acq_time = 1
@@ -437,7 +439,8 @@ class Microscope:
             'gshut': self.move_grating_shutter,
             'readldr': self.read_ldr0,
             'debug': self.print_debug,
-            'calibrate': self.run_calibration
+            'calibrate': self.run_calibration,
+            'gtgsteps': self.go_to_grating_steps
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
@@ -599,7 +602,7 @@ class Microscope:
         # breakpoint()
 
 
-    def run_calibration(self, wavelength_range: tuple, resolution: float):
+    def run_calibration(self, wavelength_range: tuple, resolution: float, pinhole_size=30):
         calibrationDict = {}
 
         if isinstance(wavelength_range, str):
@@ -608,36 +611,50 @@ class Microscope:
 
         resolution = float(resolution)
 
+        initial_grating = self.grating_steps
+        initial_laser = self.laser_steps
+
         wavelengths = np.arange(*wavelength_range, resolution)
         print("Running calibration for wavelengths: ", wavelengths)
         cond = input("Continue? (y/n): ")
         if cond.lower() == 'n':
             return
         
+        initial_pinhole_pos = int(self.pinhole)
+        self.close_pinhole(pinhole_size)
+        
         for wl in wavelengths:
-            
-            self.go_to_laser_wavelength(wl)
-            self.go_to_grating_wavelength(wl)
+            # self.close_pinhole_shutter()
+            self.go_to_laser_wavelength(wl, autoshutter=True)
+            self.go_to_grating_wavelength(wl, autoshutter=True)
+            # self.close_pinhole_shutter()
             scan_data = self.run_ldr0_scan()
             calibrationDict[wl] = scan_data
         
         index = len(os.listdir(os.path.join(self.scriptDir, 'autocalibration')))
         with open(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}.json'.format(index)), 'w') as f:
             json.dump(calibrationDict, f)
-        
+
+        # self.open_pinhole_shutter()
         print("Scan complete. Data saved to autocal_{}.json".format(index))
+        print("Returning to initial position")
+        self.go_to_laser_steps(initial_laser)
+        self.go_to_grating_steps(initial_grating)
+
+        self.open_pinhole(initial_pinhole_pos)
     
-    def run_ldr0_scan(self, search_length=20, resolution=1):
+    # def close_pinhole(self):
+    #     self.
+    
+    def run_ldr0_scan(self, search_length=100, resolution=1):
         current_pos = self.grating_steps[0]
         scan_data = []
         scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
-        breakpoint()
 
         for idx, final_pos in enumerate(scan_points):
             self.process_coms("g1 {}".format(final_pos - current_pos))
             if idx == 0:
                 self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
-            breakpoint()
             scan_data.append([final_pos, self.read_ldr0()])
             current_pos = final_pos
         
@@ -972,9 +989,11 @@ class Microscope:
 
         while True:
             positions = get_positions()
-            if positions[0] == targets[0] and positions[1] == targets[1]:
+            if positions[0] == targets[0] and positions[1] == targets[1] and positions[2] == targets[2] and positions[3] == targets[3]:
                 break
             time.sleep(0.2)
+
+        # self.current_motor_positions[motors] = positions
 
         print('Motors at target positions')
     
@@ -1108,11 +1127,13 @@ class Microscope:
         self.current_shift = wavenumber
         print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.current_wavelength))
 
-    def go_to_laser_wavelength(self, wavelength):
+    def go_to_laser_wavelength(self, wavelength, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.
         Uses the calibrations to move the laser motors into position for a specified wavelength.'''
         # 
-        self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+        if autoshutter is True:
+            # self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+            self.close_pinhole(0)
 
         try:
             wavelength = float(wavelength)
@@ -1161,34 +1182,118 @@ class Microscope:
             response = self.process_coms('l2 20')
 
         print('Laser excitation at {}'.format(wavelength))
-        self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
+        if autoshutter is True:
+            # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
+            self.open_pinhole(self.save_pinhole)
 
-    def close_pinhole(self):
-        response = self.process_coms('pin 0')
+    def close_pinhole(self, pos=0):
+        self.save_pinhole = int(self.pinhole) # backs up last position
+        response = self.process_coms('pin {}'.format(pos))
         print('Pinhole fully closed')
 
-    def open_pinhole(self):
-        response = self.process_coms('pin 160')
+    def open_pinhole(self, pos=160):
+        self.save_pinhole = int(self.pinhole) # backs up last position
+        response = self.process_coms('pin {}'.format(pos))
         print('Pinhole fully opened')
 
-    def close_pinhole_shutter(self):
-        response = self.process_coms('gshut on')
-        print('Pinhole g shutter closed')
+    # def close_pinhole_shutter(self):
+    #     response = self.process_coms('gsh on')
+    #     print('Pinhole g shutter closed')
 
-    def open_pinhole_shutter(self):
-        response = self.process_coms('gshut off')
-        print('Pinhole g shutter opened')
+    # def open_pinhole_shutter(self):
+    #     response = self.process_coms('gsh off')
+    #     print('Pinhole g shutter opened')
 
-    def pinhole_shutter(self, state):
-        if state == 'open':
-            self.open_pinhole_shutter()
-        elif state == 'closed':
-            self.close_pinhole_shutter()
+    # def pinhole_shutter(self, state):
+    #     if state == 'open':
+    #         self.open_pinhole_shutter()
+    #     elif state == 'closed':
+    #         self.close_pinhole_shutter()
 
-    def go_to_grating_wavelength(self, wavelength):
+    def go_to_laser_steps(self, laser_pos:list):
+        '''Moves the laser motors to the specified position in steps.'''
+        current_pos = self.get_laser_motor_positions()
+        if current_pos is None:
+            return 
+
+        l1_target = laser_pos[0]
+        l2_target = laser_pos[1]
+        move_l1 = l1_target - current_pos[0]
+        move_l2 = l2_target - current_pos[1]
+
+        backlash = False
+        if move_l1 != 0:
+            if move_l1 < 0:
+                backlash = True
+            response = self.process_coms('l1 {}'.format(move_l1))
+
+        if move_l2 != 0:
+            if move_l2 < 0:
+                backlash = True
+            response = self.process_coms('l2 {}'.format(move_l2))
+
+        self.wait_for_motors_manual([l1_target, l2_target, 0, 0], 'A')
+        if backlash:
+            response = self.process_coms('l1 -20')
+            response = self.process_coms('l2 -20')
+            time.sleep(0.1)
+            response = self.process_coms('l1 20')
+            response = self.process_coms('l2 20')
+
+        print('Laser motors moved to position {}'.format(laser_pos))
+
+    def go_to_grating_steps(self, grating_pos:list):
+        '''Moves the grating motors to the specified position in steps.'''
+
+        current_pos = self.get_grating_motor_positions()
+        if current_pos is None:
+            return 
+
+        # g1_target = round(self.calibrations.wl_to_g1(wavelength))
+        # print("l1 target: {}".format(g1_target))
+
+        # g2_target = round(self.calibrations.wl_to_g2(wavelength))
+        g1_target = grating_pos[0]
+        g2_target = grating_pos[1]
+        pinhole_target = grating_pos[2]
+        # print("l2 target: {}".format(g2_target))
+        move_g1 = g1_target - current_pos[0]
+        move_g2 = g2_target - current_pos[1] # 1, 13, 0, 0/ -21, -11, 0, 0
+        move_pinhole = pinhole_target - current_pos[2]
+
+        backlash = False
+        if move_g1 != 0:
+            if move_g1 < 0:
+                backlash = True
+                # move_g1 = move_g1 - 20 # move 20 steps further to correct for backlash
+            response = self.process_coms('g1 {}'.format(move_g1))
+
+        if move_g2 != 0:
+            if move_g2 < 0:
+                backlash = True
+                # move_g2 = move_g2 - 20 # move 20 steps further to correct for backlash
+            response = self.process_coms('g2 {}'.format(move_g2))
+
+        if move_pinhole != 0:
+            response = self.process_coms('z {}'.format(move_pinhole))
+
+        self.wait_for_motors_manual([g1_target, g2_target, pinhole_target, 0], 'B')
+        # time.sleep(5)
+        if backlash:
+            response = self.process_coms('g1 -20')
+            response = self.process_coms('g2 -20')
+            time.sleep(0.1)
+            response = self.process_coms('g1 20')
+            response = self.process_coms('g2 20')
+
+        print('Grating motors moved to position {}'.format(grating_pos))
+
+    def go_to_grating_wavelength(self, wavelength, step=None, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''
 
-        self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+        if autoshutter is True:
+            # self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+            self.close_pinhole(0)
 
         try:
             wavelength = float(wavelength)
@@ -1241,7 +1346,11 @@ class Microscope:
             response = self.process_coms('g2 20')
 
         print('Grating detection at {}'.format(wavelength))
-        self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
+        # self.current_grating_positions = [g1_target, g2_target]
+
+        if autoshutter is True:
+            # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
+            self.open_pinhole(self.save_pinhole)
 
 
             
@@ -1594,8 +1703,10 @@ class Microscope:
     
     def extract_data(self, response):
         if type(response) == float: # TODO: change this to detect data type better
-            return
+            return response
         new_data = []
+        if isinstance(response, int):
+            return response
         for item in response:
             if item.startswith("COUNTS:"):
                 try:
@@ -2006,6 +2117,9 @@ class Microscope:
                 coms = coms.strip(' ')
                 response = self.process_coms(coms)
                 if response is None:
+                    continue
+                if isinstance(response, int) or isinstance(response, float):
+                    # already processed
                     continue
                 
                 data = self.extract_data(response)

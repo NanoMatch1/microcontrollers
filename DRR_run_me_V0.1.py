@@ -654,7 +654,8 @@ class Microscope:
         for idx, final_pos in enumerate(scan_points):
             self.process_coms("g1 {}".format(final_pos - current_pos))
             if idx == 0:
-                self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
+                # self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
+                self.wait_for_motors()
             scan_data.append([final_pos, self.read_ldr0()])
             current_pos = final_pos
         
@@ -714,6 +715,7 @@ class Microscope:
             return
         move_motor = z - self.pinhole
         self.process_coms('z {}'.format(move_motor))
+        self.wait_for_motors()
         self.pinhole = z
 
     def unlock_calibration(self):
@@ -938,11 +940,11 @@ class Microscope:
     def extract_coms_message(self, message):
         return message[1].split(':')[1].strip(' ')
 
-    def wait_for_motors(self, delay=0.5):
+    def wait_for_motors(self, delay=0.1):
         count = 0
         running_A = True
         running_B = True
-        while running_A is True and running_B is True:
+        while running_A is True or running_B is True:
 
             if running_A is True:
                 response = self.process_coms('Aisrun')
@@ -953,6 +955,7 @@ class Microscope:
                     running_A = False
                 # elif res1 == 'R1':
                 else:
+                    print("A running")
                     time.sleep(delay)
                     continue
 
@@ -964,6 +967,7 @@ class Microscope:
                 # elif res2 == 'R1':
                 else:
                     time.sleep(delay)
+                    print("B running")
                     continue
                 
             if count > 0:
@@ -982,6 +986,8 @@ class Microscope:
             'B': self.get_grating_motor_positions,
             # Add more motors here as needed
         }
+
+
 
         get_positions = motor_dict.get(motors)
         if get_positions is None:
@@ -1172,7 +1178,8 @@ class Microscope:
                 backlash = True
             response = self.process_coms('l2 {}'.format(move_l2))
 
-        self.wait_for_motors_manual([l1_target, l2_target, 0, 0], 'A')
+        # self.wait_for_motors_manual([l1_target, l2_target, 0, 0], 'A')
+        self.wait_for_motors()
 
         if backlash:
             response = self.process_coms('l1 -20')
@@ -1188,13 +1195,19 @@ class Microscope:
 
     def close_pinhole(self, pos=0):
         self.save_pinhole = int(self.pinhole) # backs up last position
-        response = self.process_coms('pin {}'.format(pos))
-        print('Pinhole fully closed')
+        # response = self.process_coms('pin {}'.format(pos))
+        self.move_pinhole(pos)
+        self.wait_for_motors()
+        print('Pinhole at {}'.format(pos))
 
     def open_pinhole(self, pos=160):
         self.save_pinhole = int(self.pinhole) # backs up last position
-        response = self.process_coms('pin {}'.format(pos))
-        print('Pinhole fully opened')
+        # response = self.process_coms('pin {}'.format(pos))
+        self.move_pinhole(pos)
+        self.wait_for_motors()
+
+        # breakpoint()
+        print('Pinhole opened at {}'.format(pos))
 
     # def close_pinhole_shutter(self):
     #     response = self.process_coms('gsh on')
@@ -1232,7 +1245,9 @@ class Microscope:
                 backlash = True
             response = self.process_coms('l2 {}'.format(move_l2))
 
-        self.wait_for_motors_manual([l1_target, l2_target, 0, 0], 'A')
+        # self.wait_for_motors_manual([l1_target, l2_target, 0, 0], 'A')
+        self.wait_for_motors()
+
         if backlash:
             response = self.process_coms('l1 -20')
             response = self.process_coms('l2 -20')
@@ -1277,7 +1292,8 @@ class Microscope:
         if move_pinhole != 0:
             response = self.process_coms('z {}'.format(move_pinhole))
 
-        self.wait_for_motors_manual([g1_target, g2_target, pinhole_target, 0], 'B')
+        # self.wait_for_motors_manual([g1_target, g2_target, pinhole_target, 0], 'B')
+        self.wait_for_motors()
         # time.sleep(5)
         if backlash:
             response = self.process_coms('g1 -20')
@@ -1336,7 +1352,8 @@ class Microscope:
                 # move_g2 = move_g2 - 20 # move 20 steps further to correct for backlash
             response = self.process_coms('g2 {}'.format(move_g2))
 
-        self.wait_for_motors_manual([g1_target, g2_target, 0, 0], 'B')
+        # self.wait_for_motors_manual([g1_target, g2_target, 0, 0], 'B')
+        self.wait_for_motors()
         # time.sleep(5)
         if backlash:
             response = self.process_coms('g1 -20')

@@ -602,7 +602,22 @@ class Microscope:
         # breakpoint()
 
 
-    def run_calibration(self, wavelength_range: tuple, resolution: float, pinhole_size=30):
+    def run_calibration(self, wavelength_range: tuple, resolution: float, motor:str, pinhole_size=25):
+        if motor.lower() not in ['g1', 'g2']:
+            print("Invalid motor. Must be 'g1' or 'g2'")
+            return
+
+        def convert_to_serializable(obj):
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()  # Convert NumPy arrays to Python lists
+            elif isinstance(obj, np.int32) or isinstance(obj, np.int64):
+                return int(obj)  # Convert NumPy integers to Python ints
+            elif isinstance(obj, np.float32) or isinstance(obj, np.float64):
+                return float(obj)  # Convert NumPy floats to Python floats
+            else:
+                return obj  # Leave other types unchanged
+            
+
         calibrationDict = {}
 
         if isinstance(wavelength_range, str):
@@ -615,7 +630,7 @@ class Microscope:
         initial_laser = self.laser_steps
 
         wavelengths = np.arange(*wavelength_range, resolution)
-        print("Running calibration for wavelengths: ", wavelengths)
+        print(f"Running {motor} calibration for wavelengths: ", wavelengths)
         cond = input("Continue? (y/n): ")
         if cond.lower() == 'n':
             return
@@ -629,14 +644,30 @@ class Microscope:
             self.go_to_grating_wavelength(wl, autoshutter=True)
             # self.close_pinhole_shutter()
             scan_data = self.run_ldr0_scan()
-            calibrationDict[wl] = scan_data
+            # Apply the conversion to ensure the data is serializable
+            calibrationDict[float(wl)] = scan_data
+
         
+        # breakpoint()
+        calibrationDict = {'autocal': calibrationDict}
         index = len(os.listdir(os.path.join(self.scriptDir, 'autocalibration')))
+
+        # try:
+        #     all_call_data = np.empty((0, len(scan_data)))
+        #     for key, val in calibrationDict.items():
+        #         column = np.vstack((key, val))
+        #         all_call_data = np.hstack((all_call_data, column))
+        #     np.savetxt(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}.csv'.format(index)), all_call_data, delimiter=',')
+        # except Exception as e:
+        #     print(e)
+        #     print("Error saving data. Saving as JSON")
+
         with open(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}.json'.format(index)), 'w') as f:
             json.dump(calibrationDict, f)
+        print(f"{motor.lower()} Scan complete. Data saved to autocal_{index}_{motor}.json")
+
 
         # self.open_pinhole_shutter()
-        print("Scan complete. Data saved to autocal_{}.json".format(index))
         print("Returning to initial position")
         self.go_to_laser_steps(initial_laser)
         self.go_to_grating_steps(initial_grating)
@@ -646,7 +677,7 @@ class Microscope:
     # def close_pinhole(self):
     #     self.
     
-    def run_ldr0_scan(self, search_length=100, resolution=1):
+    def run_ldr0_scan(self, search_length=100, resolution=4):
         current_pos = self.grating_steps[0]
         scan_data = []
         scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
@@ -656,7 +687,7 @@ class Microscope:
             if idx == 0:
                 # self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
                 self.wait_for_motors()
-            scan_data.append([final_pos, self.read_ldr0()])
+            scan_data.append([int(final_pos), int(self.read_ldr0())])
             current_pos = final_pos
         
         return scan_data
@@ -1005,6 +1036,25 @@ class Microscope:
     
         # 
 
+    def confirm_motor_positions(self, targets, motors):
+        motor_dict = {
+            'A': self.get_laser_motor_positions,
+            'B': self.get_grating_motor_positions,
+            # Add more motors here as needed
+        }
+
+        get_positions = motor_dict.get(motors)
+        if get_positions is None:
+            raise ValueError(f"Unexpected motor identifier: {motors}")
+
+        positions = get_positions()
+        if positions[0] == targets[0] and positions[1] == targets[1] and positions[2] == targets[2] and positions[3] == targets[3]:
+            print("Motors at target positions")
+            return True
+        else:
+            print("ERROR: Motors not at target positions")
+            return False
+
     def get_all_current_positions(self):
         l1_wavelength, l2_wavelength = self.calculate_laser_position()
 
@@ -1188,6 +1238,10 @@ class Microscope:
             response = self.process_coms('l1 20')
             response = self.process_coms('l2 20')
 
+        self.confirm_motor_positions([l1_target, l2_target, 0, 0], 'A')
+        self.laser_steps[0] = l1_target
+        self.laser_steps[1] = l2_target
+
         print('Laser excitation at {}'.format(wavelength))
         if autoshutter is True:
             # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
@@ -1255,6 +1309,10 @@ class Microscope:
             response = self.process_coms('l1 20')
             response = self.process_coms('l2 20')
 
+
+        self.confirm_motor_positions([l1_target, l2_target, 0, 0], 'A')
+        self.laser_steps = laser_pos
+
         print('Laser motors moved to position {}'.format(laser_pos))
 
     def go_to_grating_steps(self, grating_pos:list):
@@ -1301,6 +1359,10 @@ class Microscope:
             time.sleep(0.1)
             response = self.process_coms('g1 20')
             response = self.process_coms('g2 20')
+
+
+        self.confirm_motor_positions([g1_target, g2_target, pinhole_target, 0], 'B')
+        self.grating_steps = grating_pos
 
         print('Grating motors moved to position {}'.format(grating_pos))
 
@@ -1361,6 +1423,10 @@ class Microscope:
             time.sleep(0.1)
             response = self.process_coms('g1 20')
             response = self.process_coms('g2 20')
+
+        self.confirm_motor_positions([g1_target, g2_target, 0, 0], 'B')
+        self.grating_steps[0] = g1_target
+        self.grating_steps[1] = g2_target
 
         print('Grating detection at {}'.format(wavelength))
         # self.current_grating_positions = [g1_target, g2_target]
@@ -1740,7 +1806,7 @@ class Microscope:
         response = self.send_command_to_spectrometer('H0')
         response = response.strip()
         grating_pos = int(response[1:])
-        self.grating_pos = grating_pos
+        self.trax_grating = grating_pos
         print('Grating Pos: {}'.format(response))
         return grating_pos
 

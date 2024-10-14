@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk
+import numpy as np
 import time
 
 class SpectrometerGUI(tk.Tk):
@@ -76,9 +77,9 @@ class SpectrometerGUI(tk.Tk):
         self.secondary_y_rb.grid(row=1, column=2, padx=5, pady=5)
 
         # Angle settings for the scan
-        start_angle_label = ttk.Label(self.scan_frame, text="Start Angle (deg):")
-        stop_angle_label = ttk.Label(self.scan_frame, text="Stop Angle (deg):")
-        resolution_label = ttk.Label(self.scan_frame, text="Step Resolution (deg):")
+        start_angle_label = ttk.Label(self.scan_frame, text="1 Start Angle (deg):")
+        stop_angle_label = ttk.Label(self.scan_frame, text="1 Stop Angle (deg):")
+        resolution_label = ttk.Label(self.scan_frame, text="1 Step Resolution (deg):")
 
         self.primary_start_angle = tk.DoubleVar()
         self.primary_stop_angle = tk.DoubleVar()
@@ -88,13 +89,17 @@ class SpectrometerGUI(tk.Tk):
         self.secondary_stop_angle = tk.DoubleVar()
         self.secondary_resolution = tk.DoubleVar()
 
+        # Trace changes in the angle values and update UI when edited
+        self.primary_start_angle.trace_add("write", self.update_scan_tree)
+        self.primary_stop_angle.trace_add("write", self.update_scan_tree)
+        self.primary_resolution.trace_add("write", self.update_scan_tree)
+        self.secondary_start_angle.trace_add("write", self.update_scan_tree)
+        self.secondary_stop_angle.trace_add("write", self.update_scan_tree)
+        self.secondary_resolution.trace_add("write", self.update_scan_tree)
+
         start_angle_entry = ttk.Entry(self.scan_frame, textvariable=self.primary_start_angle, width=10)
         stop_angle_entry = ttk.Entry(self.scan_frame, textvariable=self.primary_stop_angle, width=10)
         resolution_entry = ttk.Entry(self.scan_frame, textvariable=self.primary_resolution, width=10)
-
-        self.secondary_start_angle_entry = ttk.Entry(self.scan_frame, textvariable=self.secondary_start_angle, width=10)
-        self.secondary_stop_angle_entry = ttk.Entry(self.scan_frame, textvariable=self.secondary_stop_angle, width=10)
-        self.secondary_resolution_entry = ttk.Entry(self.scan_frame, textvariable=self.secondary_resolution, width=10)
 
         start_angle_label.grid(row=2, column=0, padx=5, pady=5)
         start_angle_entry.grid(row=2, column=1, padx=5, pady=5)
@@ -103,10 +108,14 @@ class SpectrometerGUI(tk.Tk):
         resolution_label.grid(row=2, column=4, padx=5, pady=5)
         resolution_entry.grid(row=2, column=5, padx=5, pady=5)
 
+        self.secondary_start_angle_entry = ttk.Entry(self.scan_frame, textvariable=self.secondary_start_angle, width=10)
+        self.secondary_stop_angle_entry = ttk.Entry(self.scan_frame, textvariable=self.secondary_stop_angle, width=10)
+        self.secondary_resolution_entry = ttk.Entry(self.scan_frame, textvariable=self.secondary_resolution, width=10)
+
         # Secondary row for uncoupled mode (initially hidden)
-        self.secondary_start_angle_label = ttk.Label(self.scan_frame, text="Secondary Start Angle (deg):")
-        self.secondary_stop_angle_label = ttk.Label(self.scan_frame, text="Secondary Stop Angle (deg):")
-        self.secondary_resolution_label = ttk.Label(self.scan_frame, text="Secondary Step Resolution (deg):")
+        self.secondary_start_angle_label = ttk.Label(self.scan_frame, text="2 Start Angle (deg):")
+        self.secondary_stop_angle_label = ttk.Label(self.scan_frame, text="2 Stop Angle (deg):")
+        self.secondary_resolution_label = ttk.Label(self.scan_frame, text="2 Step Resolution (deg):")
 
         start_scan_button = ttk.Button(self.scan_frame, text="Start Scan", command=self.start_scan)
         start_scan_button.grid(row=4, column=0, columnspan=6, pady=10)

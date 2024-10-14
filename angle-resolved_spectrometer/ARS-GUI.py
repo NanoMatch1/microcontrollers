@@ -205,22 +205,26 @@ class SpectrometerGUI(tk.Tk):
 
     def run_specular_scan(self, start, stop, resolution):
         print(f"Running specular scan from {start}° to {stop}° with resolution {resolution}°.")
-        for angle in range(int(start), int(stop), int(resolution)):
-            print(f"Moving both axes to {angle}°")
+        for angle in np.arange(start, stop+resolution, resolution):
+            # print(f"Moving both axes to {angle}°")
             self.spectrometer.go_to_angle(angle, angle)
             # Simulate data collection or user pause
             input("Press Enter to continue to next angle...")
+        print("Scan complete.")
 
     def run_uncoupled_scan(self, p_start, p_stop, p_res, s_start, s_stop, s_res):
         print(f"Running uncoupled scan with primary axis from {p_start}° to {p_stop}° and secondary axis from {s_start}° to {s_stop}°.")
-        for sec_angle in range(int(s_start), int(s_stop), int(s_res)):
-            print(f"Moving secondary axis to {sec_angle}°")
+        for sec_angle in np.arange(s_start, s_stop+s_res, s_res):
+            # print(f"Moving secondary axis to {sec_angle}°")
             self.spectrometer.go_to_angle(None, sec_angle)  # Move only Y axis
-            for pri_angle in range(int(p_start), int(p_stop), int(p_res)):
-                print(f"Moving primary axis to {pri_angle}°")
-                self.spectrometer.go_to_angle(pri_angle, sec_angle)  # Move both axes in sync
+            for pri_angle in np.arange(p_start, p_stop+p_res, p_res):
+                # print(f"Moving primary axis to {pri_angle}°")
+                self.spectrometer.go_to_angle(pri_angle, None)  # Move both axes in sync
                 # Simulate data collection or user pause
                 input("Press Enter to continue to next primary axis angle...")
+        
+        print("Scan complete.")
+        
 
 # For testing purposes, we'll create a dummy Spectrometer class
 class DummySpectrometer:

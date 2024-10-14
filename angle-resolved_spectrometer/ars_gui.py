@@ -237,6 +237,7 @@ class DummySpectrometer:
             print(f"Moving X axis to {x}° and Y axis to {y}°")
 
 # Instantiate the GUI with the dummy spectrometer
-spectrometer = DummySpectrometer()
-app = SpectrometerGUI(spectrometer)
-app.mainloop()
+if __name__ == "__main__":
+    spectrometer = DummySpectrometer()
+    app = SpectrometerGUI(spectrometer)
+    app.mainloop()

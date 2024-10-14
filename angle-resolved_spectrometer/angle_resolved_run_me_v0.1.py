@@ -3,6 +3,10 @@ import serial
 import struct
 import time
 import numpy as np
+import tkinter as tk
+from tkinter import ttk
+from ars_gui import SpectrometerGUI
+
 # // initial cal: X motor 0 angle: -10720 steps from limit switch
 # // initial cal: X 10 deg, 9770 steps from vertical
 # // initial cal: X 170 deg, -9680 steps from vertical
@@ -11,15 +15,6 @@ import numpy as np
 # // initial cal: Y 170 deg, 9680 steps from vertical
 # // initial cal: Y 10 deg, -9680 steps from vertical
 # (9680*2)/160
-
-# class SpoofConnection:
-#     '''This class is a stand-in for the serial connection to the Arduino'''
-#     def __init__(self):
-#         pass
-
-#     def receive_command(self):
-#         '''Receive a command from the Arduino'''
-#         return input("Enter command: ")
 
 class AngleResolvedSpectrometer:
 
@@ -45,11 +40,12 @@ class AngleResolvedSpectrometer:
         self.y_home = -10252
 
         self.hard_limits = {
-            'X': 10720,
-            'Y': 10252,
+            'X': ((self.angle_to_steps("X", 15)), 10720),
+            'Y': ((self.angle_to_steps("Y", 15)), 10252),
         }
 
         self.measure_mode = 'specular'
+        self.measure_mode = 'variable'
         
         self.commandDict = {
             'wait': self.wait_for_motors,
@@ -58,6 +54,9 @@ class AngleResolvedSpectrometer:
             'wai': self.get_current_position,
             'basic': self.basic_scan,
         }
+
+    # def __initialise(self):
+        # print("Welcome to ")
 
     def process_coms(self, command):
         cmd = command.split(' ')
@@ -100,22 +99,34 @@ class AngleResolvedSpectrometer:
         angle = steps / self.steps_per_degree[axis]
         return angle
 
-    def go_to_angle(self, angle):
+    def go_to_angle(self, x_angle, y_angle):
         """Move both motors to the given angle (specular reflectance mode)."""
-        angle = float(angle)
-        
-        # Convert angle to steps for both motors
-        x_target = self.angle_to_steps('X', angle)
-        y_target = self.angle_to_steps('Y', angle)
+        try:
+            x_angle = float(x_angle)
+            y_angle = float(y_angle)
+        except ValueError:
+            print("Error: Invalid angle value.")
 
+        # Convert angle to steps for both motors
+        x_target = self.angle_to_steps('X', x_angle)
+        y_target = self.angle_to_steps('Y', y_angle)
+        if x_target > self.hard_limits['X'][1] or x_target < self.hard_limits['X'][0]:
+            print("Error: X angle exceeds hard limits.")
+            return
+        if y_target > self.hard_limits['Y'][1] or y_target < self.hard_limits['Y'][0]:
+            print("Error: Y angle exceeds hard limits.")
+            return
+        
         # Calculate relative movement from current position
         x_move_steps = x_target - self.current_position['X']
         y_move_steps = y_target - self.current_position['Y']
 
         # Send commands to motors
         print("sending command")
-        self.send_command_to_UNO('mox{}'.format(x_move_steps))
-        self.send_command_to_UNO('moy{}'.format(y_move_steps))
+        if x_move_steps != 0:
+            self.send_command_to_UNO('mox{}'.format(x_move_steps))
+        if y_move_steps != 0:
+            self.send_command_to_UNO('moy{}'.format(y_move_steps))
 
         # Wait for motors to finish moving
         # self.wait_for_motors()
@@ -123,10 +134,11 @@ class AngleResolvedSpectrometer:
         # Update current positions and angles
         self.current_position['X'] = x_target
         self.current_position['Y'] = y_target
-        self.current_angle['X'] = angle
-        self.current_angle['Y'] = angle
+        self.current_angle['X'] = x_angle
+        self.current_angle['Y'] = y_angle
 
-        print(f"Motors moved to {angle} degrees (specular).")
+        # print(f"Motors moved to {angle} degrees (specular).")
+        print(f"Motors moved to X: {x_angle} degrees, Y: {y_angle} degrees.")
 
     def wait_for_motors(self, delay=0.2):
         """Wait until the motors are done moving."""
@@ -189,29 +201,29 @@ class AngleResolvedSpectrometer:
         
         print(f'X: {self.current_angle["X"]}, Y: {self.current_angle["Y"]}')
         
-    def run_scan(self, start_angle, end_angle, resolution):
-        series_name = input("Enter series name: ")
-        self.scan_log = []
-        """Run a scan from start to end angle with given step size."""
-        if abs(self.angle_to_steps('X', start_angle)) > self.hard_limits['X']:
-            print("Start angle exceeds hard limit for X motor.")
-            return
-        if abs(self.angle_to_steps('Y', start_angle)) > self.hard_limits['Y']:
-            print("Start angle exceeds hard limit for Y motor.")
-            return
+    # def run_scan(self, start_angle, end_angle, resolution):
+    #     series_name = input("Enter series name: ")
+    #     self.scan_log = []
+    #     """Run a scan from start to end angle with given step size."""
+    #     if abs(self.angle_to_steps('X', start_angle)) > self.hard_limits['X']:
+    #         print("Start angle exceeds hard limit for X motor.")
+    #         return
+    #     if abs(self.angle_to_steps('Y', start_angle)) > self.hard_limits['Y']:
+    #         print("Start angle exceeds hard limit for Y motor.")
+    #         return
         
-        angles = np.arange(start_angle, end_angle + resolution, resolution)
-        print("Scan to commence at angles: ", angles)
-        input("Press Enter to start the scan...")
-        os.makedirs(os.path.join(self.working_dir, series_name), exist_ok=True)
+    #     angles = np.arange(start_angle, end_angle + resolution, resolution)
+    #     print("Scan to commence at angles: ", angles)
+    #     input("Press Enter to start the scan...")
+    #     os.makedirs(os.path.join(self.working_dir, series_name), exist_ok=True)
 
-        for angle in angles:
-            self.go_to_angle(angle)
-            self.scan_log.append([self.current_angle['X'], self.current_angle['Y']])
-            input("Collect data at this angle and press Enter to continue...")
-            # Do something with the spectrometer here
-            # For example, take a measurement at the current angle
-            # and store the data for further
+    #     for angle in angles:
+    #         self.go_to_angle(angle)
+    #         self.scan_log.append([self.current_angle['X'], self.current_angle['Y']])
+    #         input("Collect data at this angle and press Enter to continue...")
+    #         # Do something with the spectrometer here
+    #         # For example, take a measurement at the current angle
+    #         # and store the data for further
 
     def rename_files(self, series_name, angles):
         """Rename files in the current directory with a given prefix and suffix."""
@@ -262,8 +274,12 @@ class AngleResolvedSpectrometer:
 
 # Instantiate the spectrometer
 ars = AngleResolvedSpectrometer()
+app = SpectrometerGUI(ars)
+app.mainloop()
 
-ars.main_loop()
+
+
+# ars.main_loop()
 
 # range is 15 deg (0/1) - 75 (1-13)
 # z ~600 steps/90 deg

@@ -268,7 +268,8 @@ class AngleResolvedSpectrometer:
             responses.append(response)
             print(response)
 
-
+    def calibration(self):
+        pass
 
     def send_and_receive(self, command):
         '''Blocking. waits until axes are done'''

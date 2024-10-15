@@ -21,6 +21,7 @@ class AngleResolvedSpectrometer:
     def __init__(self, serial_port='COM7', working_dir=None):
         self.uno_serial = serial.Serial(serial_port, 9600)
         time.sleep(2)
+        print(self.read_command_from_uno())
 
         if working_dir is None:
             working_dir = os.path.dirname(os.path.abspath(__file__))
@@ -40,7 +41,8 @@ class AngleResolvedSpectrometer:
         self.y_home = -10252
 
         self.hard_limits = {
-            'X': ((self.angle_to_steps("X", 15)), 10720),
+            # 'X': ((self.angle_to_steps("X", 15)), 10720),
+            'X': ((self.angle_to_steps("X", 15)), self.angle_to_steps("X", 75)),
             'Y': ((self.angle_to_steps("Y", 15)), 10252),
         }
 
@@ -53,41 +55,113 @@ class AngleResolvedSpectrometer:
             'a': self.go_to_angle,
             'wai': self.get_current_position,
             'basic': self.basic_scan,
+            'debug': self.debug,
+            # 'pos': self.get_motor_positions,
+            'mox': self.move_x,
+            'moy': self.move_y,
+            'setpos': self.set_motor_positions,
+            'a' : self.go_to_angle,
+            'z' : self.move_z,
+        }
+
+        self.flag_dict = {'S0': 'ok',
+                          'R1': 'motors running',
+                          'F0': 'invalid command',
+                          '#CF': 'end of response'
         }
 
     # def __initialise(self):
         # print("Welcome to ")
+    
+    def debug(self):
+        print("Debugging...")
+        breakpoint()
+
+    def move_x(self, steps):
+        self.send_command_to_UNO('mox{}'.format(steps))
+        time.sleep(0.1)
+        self.wait_for_motors()
+
+    def move_y(self, steps):
+        self.send_command_to_UNO('moy{}'.format(steps))
+        time.sleep(0.1)
+        self.wait_for_motors()
+
+    def move_z(self, steps):
+        self.send_command_to_UNO('moz{}'.format(steps))
+        time.sleep(0.1)
+        self.wait_for_motors()
 
     def process_coms(self, command):
         cmd = command.split(' ')
-        breakpoint()
+
         if len(cmd) > 1:
             command = cmd[0]
             args = cmd[1:]
             if command in self.commandDict:
                 return self.commandDict[command](*args)
             else:
-                return 'Invalid command'
+                print('Invalid command')
+                return
 
         else:
             if command in self.commandDict:
                 return self.commandDict[command]()
             else:
-                return 'Invalid command'
+                print('Invalid command')
+                return 
+            
+    # def get_motor_positions(self):
+    #     """Get current motor positions."""
+    #     print("Getting current motor positions...")
+    #     self.send_command_to_UNO('pos')
+    #     time.sleep(0.1)
+    #     response = self.read_from_serial_until()
+    #     pos = response[0][2:-2].split(',')
+    #     current_steps = (int(pos[0]), int(pos[1]))
+    #     print("Finished getting motor positions.")
+    #     return current_steps
 
-    def home_motors(self):
-        # Home both motors to 0 degrees
-        # self.send_and_receive('mox{}'.format(self.x_home))
-        # self.send_and_receive('moy{}'.format(self.y_home))
+
+    def home_motors(self, soft_limit=15):
+        # print("Homing motors...")
 
         self.send_command_to_UNO('home')
+        time.sleep(0.1)
+        responses = self.read_from_serial_until()
+        # print(responses)
 
-        self.send_command_to_UNO('mox{}'.format(self.x_home))
-        self.send_command_to_UNO('moy{}'.format(self.y_home))
+        # calculate steps from zero to soft limit
+        steps_soft_limit_x = self.angle_to_steps('X', soft_limit)
+        steps_soft_limit_y = self.angle_to_steps('Y', soft_limit)
 
-        self.current_position = {'X': 0, 'Y': 0}
-        self.current_angle = {'X': 0, 'Y': 0}
-        print("Motors homed to 0 degrees.")
+        # calculate steps from limit switch to soft limit 
+        steps_to_soft_home_x = self.x_home+steps_soft_limit_x
+        steps_to_soft_home_y = self.y_home+steps_soft_limit_y
+
+        # self.wait_for_motors()
+
+        # move from limit switch (hard limit) to soft limit 
+        self.send_command_to_UNO('mox{}'.format(steps_to_soft_home_x))
+        self.send_command_to_UNO('moy{}'.format(steps_to_soft_home_y))
+
+        self.wait_for_motors()
+
+        # set motor positions in controller to soft limit (in steps)
+        self.set_motor_positions(steps_soft_limit_x, steps_soft_limit_y, 0)
+
+        # set current position and angle to soft limit - necessary for correctly calculating relative movements
+        self.current_position = {'X': steps_soft_limit_x, 'Y': steps_soft_limit_y}
+        self.current_angle = {'X': soft_limit, 'Y': soft_limit}
+
+        print("Motors homed to {} degrees.".format(soft_limit))
+
+    def set_motor_positions(self, x_pos, y_pos, z_pos):
+        self.send_command_to_UNO('setpos{},{},{}'.format(x_pos, y_pos, z_pos))
+        flag = self.wait_for_flag()
+        if flag == 'S0':
+            print("Motor positions set successfully.")
+
 
     def angle_to_steps(self, axis, angle):
         """Convert angle to steps for the given axis."""
@@ -110,6 +184,7 @@ class AngleResolvedSpectrometer:
         # Convert angle to steps for both motors
         x_target = self.angle_to_steps('X', x_angle)
         y_target = self.angle_to_steps('Y', y_angle)
+
         if x_target > self.hard_limits['X'][1] or x_target < self.hard_limits['X'][0]:
             print("Error: X angle exceeds hard limits.")
             return
@@ -129,7 +204,7 @@ class AngleResolvedSpectrometer:
             self.send_command_to_UNO('moy{}'.format(y_move_steps))
 
         # Wait for motors to finish moving
-        # self.wait_for_motors()
+        self.wait_for_motors()
 
         # Update current positions and angles
         self.current_position['X'] = x_target
@@ -145,8 +220,8 @@ class AngleResolvedSpectrometer:
         while True:
             self.send_command_to_UNO('isrun')
             time.sleep(delay)
-            response = self.read_from_serial_until()
-            if response and response[0] == 'S0':
+            response = self.wait_for_flag()
+            if response == "S0":
                 break
             time.sleep(delay)
 
@@ -161,25 +236,38 @@ class AngleResolvedSpectrometer:
         while self.uno_serial.in_waiting > 0:
             response += self.uno_serial.readline().decode()
             # print(response)
+        
         return response.strip()
+    
+    def wait_for_flag(self):
+        """Wait for a specific flag to be received."""
+        while True:
+            response = self.read_command_from_uno()
+            response = response.splitlines()
+            for res in response:
+                if res in self.flag_dict.keys():
+                    return res
+            time.sleep(0.1)
 
     def read_from_serial_until(self, end_flag='#CF', report=False):
         """Read from serial until end flag is encountered."""
         responses = []
         while True:
+            # print("Reading from serial...")
             response = self.read_command_from_uno()
             if response == '':
                 time.sleep(0.01)
                 continue
-            if report:
-                print(response)
-            # breakpoint()
             if end_flag in response:
+                # print("End flag found.")
+                print(response)
                 response = response[:-len('\r\n'+end_flag)]
                 responses.append(response)
                 return responses
             
             responses.append(response)
+            print(response)
+
 
 
     def send_and_receive(self, command):
@@ -250,27 +338,31 @@ class AngleResolvedSpectrometer:
     def main_loop(self):
         """Main loop to receive commands."""
         while True:
-            cmd = input("Enter command: ").strip().lower()
+            try:
+                cmd = input("Enter command: ").strip().lower()
 
-            if cmd.startswith('a'):
-                angle = cmd.split(' ')[1]
-                self.go_to_angle(angle)
+            # if cmd.startswith('a'):
+            #     angle = cmd.split(' ')[1]
+            #     self.go_to_angle(angle)
 
-            elif cmd == 'pos':
-                self.get_current_position()
-                print(f"Current positions: X: {self.current_angle['X']} degrees, Y: {self.current_angle['Y']} degrees")
-            elif cmd == 'home':
-                self.home_motors()
-            elif cmd == 'exit':
-                break
-            elif cmd in self.commandDict:
-                self.process_coms(cmd)
-            elif cmd.startswith('z'):
-                angle = cmd.split(' ')[1]
-                self.send_command_to_UNO('moz{}'.format(angle))
-            else:
-                self.process_coms(cmd)
-                print("Invalid command")
+            # elif cmd == 'pos':
+            #     self.get_current_position()
+            #     print(f"Current positions: X: {self.current_angle['X']} degrees, Y: {self.current_angle['Y']} degrees")
+            # elif cmd == 'home':
+            #     self.home_motors()
+            # elif cmd == 'exit':
+            #     break
+            # elif cmd in self.commandDict:
+            #     self.process_coms(cmd)
+                if cmd.startswith('z'):
+                    angle = cmd.split(' ')[1]
+                    self.send_command_to_UNO('moz{}'.format(angle))
+                else:
+                    self.process_coms(cmd)
+                    # print("Invalid command")
+            except Exception as e:
+                print("Error:", e)
+                continue
 
 # Instantiate the spectrometer
 ars = AngleResolvedSpectrometer()

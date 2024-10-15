@@ -33,6 +33,15 @@ class SpectrometerGUI(tk.Tk):
         specular_rb.pack(side="left", padx=5, pady=5)
         uncoupled_rb.pack(side="left", padx=5, pady=5)
 
+        home_button = ttk.Button(mode_frame, text="Home", command=self.spectrometer.home_motors)
+        home_button.pack(side="right", padx=5, pady=5) # Add a home button to reset the motors
+
+        show_motor_pos_button = ttk.Button(mode_frame, text="Show Motor Positions", command=self.spectrometer.get_current_position)
+        show_motor_pos_button.pack(side="right", padx=5, pady=5) # Add a button to show the current motor positions
+
+        set_motor_pos_button = ttk.Button(mode_frame, text="Set Motor Positions", command=self.set_motor_positions)
+        set_motor_pos_button.pack(side="right", padx=5, pady=5) # Add a button to set the motor positions
+
     def create_angle_control(self):
         angle_frame = ttk.LabelFrame(self, text="Manual Angle Control", padding=(10, 10))
         angle_frame.pack(padx=10, pady=10, fill="x")
@@ -51,6 +60,15 @@ class SpectrometerGUI(tk.Tk):
         y_label.grid(row=0, column=2, padx=5, pady=5)
         y_entry.grid(row=0, column=3, padx=5, pady=5)
         goto_button.grid(row=0, column=4, padx=5, pady=5)
+
+    def create_file_saving(self):
+        '''Create a frame for opening a browser to select a folder to save the data to'''
+        self.file_frame = ttk.LabelFrame(self, text="File Saving", padding=(10, 10))
+        self.file_frame.pack(padx=10, pady=10, fill="x")
+
+        self.file_path = tk.StringVar()
+        self.file_path.set("C:/Users/sjbrooke/OneDrive - The University of Melbourne/Data/Secondary/Sam Zaman/2024-08-05_BP/analysis")
+
 
     def create_scan_setup(self):
         self.scan_frame = ttk.LabelFrame(self, text="Scan Setup", padding=(10, 10))
@@ -134,6 +152,16 @@ class SpectrometerGUI(tk.Tk):
         self.scan_tree.heading("Resolution", text="Step Resolution (deg)")
         self.scan_tree.pack(fill="both", expand=True)
 
+    def set_motor_positions(self):
+        x_angle = self.x_angle.get()
+        x_steps = self.spectrometer.angle_to_steps("X", x_angle)
+        y_angle = self.y_angle.get()
+        y_steps = self.spectrometer.angle_to_steps("Y", y_angle)
+
+        print(f"Setting X axis to {x_angle}° and Y axis to {y_angle}°")
+        # Z is not yet implemented
+        self.spectrometer.set_motor_positions(x_steps, y_steps, 0)
+
     def update_scan_tree(self, *args):
         self.scan_tree.delete(*self.scan_tree.get_children())
         # Update the scan tree with the selected scan configuration
@@ -194,6 +222,7 @@ class SpectrometerGUI(tk.Tk):
         primary_start = self.primary_start_angle.get()
         primary_stop = self.primary_stop_angle.get()
         primary_resolution = self.primary_resolution.get()
+        primary_parameters = (primary_start, primary_stop, primary_resolution)
 
         if self.mode.get() == "specular":
             self.run_specular_scan(primary_start, primary_stop, primary_resolution)
@@ -201,30 +230,78 @@ class SpectrometerGUI(tk.Tk):
             secondary_start = self.secondary_start_angle.get()
             secondary_stop = self.secondary_stop_angle.get()
             secondary_resolution = self.secondary_resolution.get()
-            self.run_uncoupled_scan(primary_start, primary_stop, primary_resolution, secondary_start, secondary_stop, secondary_resolution)
+            secondary_parameters = (secondary_start, secondary_stop, secondary_resolution)
+
+            self.run_uncoupled_scan(primary_parameters, secondary_parameters)
+
+    def generate_scan_dimensions(self, primary_parameters, secondary_parameters, axis_order):
+        # Generate the scan dimensions based on the primary and secondary axis
+        primary_angles = np.arange(primary_parameters[0], primary_parameters[1]+primary_parameters[2], primary_parameters[2])
+        secondary_angles = np.arange(secondary_parameters[0], secondary_parameters[1]+secondary_parameters[2], secondary_parameters[2])
+
+        flattened_angles = []
+
+        for i, secondary_angle in enumerate(secondary_angles):
+            for j, primary_angle in enumerate(primary_angles):
+                if axis_order == ("X", "Y"):
+                    flattened_angles.append((primary_angle, secondary_angle))
+                elif axis_order == ("Y", "X"):
+                    flattened_angles.append((secondary_angle, primary_angle))
+
+        return flattened_angles
 
     def run_specular_scan(self, start, stop, resolution):
         print(f"Running specular scan from {start}° to {stop}° with resolution {resolution}°.")
+
+        print("Scan to commense:")
+        print(f"Angles: {np.arange(start, stop+resolution, resolution)}")
+        input("Press Enter to start the scan...")
+
         for angle in np.arange(start, stop+resolution, resolution):
-            # print(f"Moving both axes to {angle}°")
             self.spectrometer.go_to_angle(angle, angle)
-            # Simulate data collection or user pause
+            self.spectrometer.wait_for_motors()
             input("Press Enter to continue to next angle...")
+
+        self.spectrometer.go_to_angle(start, start)  # Return to the origin
         print("Scan complete.")
 
-    def run_uncoupled_scan(self, p_start, p_stop, p_res, s_start, s_stop, s_res):
+    def run_uncoupled_scan(self, primary_parameters, secondary_parameters):
+        p_start, p_stop, p_res = primary_parameters
+        s_start, s_stop, s_res = secondary_parameters
+        axis_order = (self.primary_axis.get(), self.secondary_axis.get())
+        scan_list = self.generate_scan_dimensions(primary_parameters, secondary_parameters, axis_order)
+        
         print(f"Running uncoupled scan with primary axis from {p_start}° to {p_stop}° and secondary axis from {s_start}° to {s_stop}°.")
-        for sec_angle in np.arange(s_start, s_stop+s_res, s_res):
-            # print(f"Moving secondary axis to {sec_angle}°")
-            self.spectrometer.go_to_angle(None, sec_angle)  # Move only Y axis
-            for pri_angle in np.arange(p_start, p_stop+p_res, p_res):
-                # print(f"Moving primary axis to {pri_angle}°")
-                self.spectrometer.go_to_angle(pri_angle, None)  # Move both axes in sync
-                # Simulate data collection or user pause
-                input("Press Enter to continue to next primary axis angle...")
-        
+        # primary_angles = np.arange(p_start, p_stop+p_res, p_res)
+        # secondary_angles = np.arange(s_start, s_stop+s_res, s_res)
+
+        print("Scan to commense:")
+        print(scan_list)
+        input("Press Enter to start the scan...")
+
+        self.export_scan_list(scan_list, "scan_list.txt") # Export the scan list to a file, 
+
+        # for sec_angle in np.arange(s_start, s_stop+s_res, s_res):
+        #     pri_angle = p_start
+        #     self.spectrometer.go_to_angle(pri_angle, sec_angle) 
+
+        #     for pri_angle in np.arange(p_start, p_stop+p_res, p_res):
+        #         self.spectrometer.go_to_angle(pri_angle, sec_angle)  
+        #         self.spectrometer.wait_for_motors()
+        #         input("Press Enter to continue to next primary axis angle...")
+
+        for primary_angle, secondary_angle in scan_list:
+            self.spectrometer.go_to_angle(primary_angle, secondary_angle)
+            self.spectrometer.wait_for_motors()
+            input("Press Enter to continue to next angle...")
+
+        self.spectrometer.go_to_angle(p_start, s_start)  # Return to the origin
         print("Scan complete.")
-        
+    
+    def export_scan_list(self, scan_list, filename):
+        with open(filename, "w") as f:
+            for primary_angle, secondary_angle in scan_list:
+                f.write(f"{primary_angle},{secondary_angle}\n")
 
 # For testing purposes, we'll create a dummy Spectrometer class
 class DummySpectrometer:

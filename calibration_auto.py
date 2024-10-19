@@ -160,7 +160,14 @@ class Peak:
 class AutoCalibration:
 
     def __init__(self, showplots=True, exclude=[]):
-        self.motor_calibrations = ['l1', 'l2', 'g1', 'g2'] # list of possible motor calibrations. Update here as new autocals are created
+        self.excluded = exclude
+        self.data_mask_dict = {'l1': (710, 880), 'l2': (710, 880), 'g1': (710, 880), 'g2': (710, 880)}
+        self.motor_calibrations = {
+            'l1': (self.l1_to_wavelength, self.wavelength_to_l1),
+            'l2': (self.l2_to_wavelength, self.wavelength_to_l2),
+            'g1': (self.g1_to_wavelength, self.wavelength_to_g1),
+            'g2': (self.g2_to_wavelength, self.wavelength_to_g2)
+        } # dict of possible motor calibrations and their methods. Update here as new autocals are created
         self.scriptDir = os.path.dirname(__file__)
         self.showplots = showplots
         self.calibration_metrics = {}
@@ -169,7 +176,7 @@ class AutoCalibration:
         self.autocal_dict = self.collect_autocalibration_files()
 
     def collect_autocalibration_files(self):
-        '''Collect all calibration files from the calibration directory.'''
+        '''Collect all calibration files from the calibration directory and sorts into the latest for each type.'''
     
         autocal_dict = {}
         files = [f for f in os.listdir(os.path.join(self.scriptDir, 'autocalibration')) if f.endswith('.json')]
@@ -189,6 +196,88 @@ class AutoCalibration:
             autocal_dict[motor_type] = latest_cal
         
         return autocal_dict
+    
+    def autocalibrate_all(self):
+        for motor_type, file in self.autocal_dict.items():
+            if file is None or motor_type in self.excluded:
+                continue
+            self.peakfit_autocal(file, motor_type)
+
+
+    def peakfit_autocal(self, file, motor_type):
+        dataSet = asp.DataSet(dataDir, fileList=[file])
+        data_mask = self.data_mask_dict[motor_type]
+
+        fileObj = dataSet.dataDict.get(file)
+        # note: DataSet class is designed to work on a set of files, but the calibration dataset contains one file with a set of data. The following line is a workaround to access the data.
+        dataSet.dataDict = fileObj.data
+        dataSet.dataDict = mask_data(dataSet.dataDict, data_mask) # mask data to select only the wavelengths of interest. Ranges specified in the data_mask_dict
+
+        for cal_obj in dataSet.dataDict.values():
+            # cal_obj._invert_data()
+            cal_obj._minimise_data()
+            cal_obj._apply_smoothing(window_length=3)
+            # cal_obj._plot_individual()
+        dataSet.plot_current()
+        
+        peakfitting_info = {
+            'peak_list': [],
+            'peak_type': 'voigt_pseudo',
+            'peak_sign': 'positive',
+            'threshold': 0.01, # percentage of max intensity
+            'peak_detect': 'all',
+            'copy_peaks': False,
+        } 
+        dataSet._peakfit(peakfitting_info=peakfitting_info)
+        dataSet.save_database(tagList='', seriesName=calibration_name)
+
+    def generate_autocal(self, load=False):
+        key_index = {
+            'pos': 1,
+            'amp': 2,
+            'fwhm': 3,
+        }
+        if load:
+            calibration_name = input('Enter the filename of the calibration data to load: ')
+            dataSet = asp.DataSet(dataDir)
+            dataSet.load_database(calibration_name)
+        # dataSet.plot_peaks()
+        # dataSet.plot_current()
+
+        calibration_peaks = {}
+
+        for wave, peakdict in dataSet.peakfitDict.items():
+            peak_list = []
+            peaks = peakdict['peaks']
+            if len(peaks) == 0:
+                continue
+            # print(wave, peaks)
+            for peak in peaks:
+                # breakpoint()
+                peak_list.append(Peak(*peak))
+            if len(peak_list) > 1:
+                peak_list.sort(key=lambda x: x.amp)
+            peak = peak_list[0]
+            calibration_peaks[wave] = peak
+
+        for key, value in calibration_peaks.items():
+            print(key, value)
+        # breakpoint()
+        calibration = Calibration(calibration_peaks, showplots=True)
+        fit, fitmetrics1 = self.wavelength_to_g1(mode='subtractive', show=True, model='poly', poly_order=1)
+        print(fit)
+        print(fitmetrics1)
+        fit, fitmetrics2 = self.g1_to_wavelength(mode='subtractive', show=True, model='poly', poly_order=1)
+        print(fit)
+        print(fitmetrics2)
+        # fit, fitmetrics3 = calibration.wavelength_to_g1_test(mode='subtractive', show=True, poly_order=1)
+        # print(fit)
+        # print(fitmetrics3)
+        breakpoint()
+        calibration.save_calibration(calibration_name)
+        breakpoint()
+            
+
     
     def calculate_fit_metrics(self, actual, model):
         # Fit quality metrics
@@ -216,6 +305,18 @@ class AutoCalibration:
             json.dump(self.calibrations, f)
 
         print("Calibration complete: Successfully saved calibration data to 'calibrations.json' file.")
+
+    def wavelength_to_l1(self, poly_order=1, mode=None, show=False, model='poly'):
+        pass
+
+    def l1_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
+        pass
+
+    def wavelength_to_l2(self, poly_order=1, mode=None, show=False, model='poly'):
+        pass
+
+    def l2_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
+        pass
 
     def wavelength_to_g1(self, poly_order=1, mode=None, show=False, model='poly'):
         '''Calibration for using laser wavelength to calculate G1 steps.'''
@@ -317,6 +418,14 @@ class AutoCalibration:
         self.calibrations['g1_to_wl_{}'.format(mode)] = fit_coeff_g1_to_wavelength.tolist()
         
         return fit_coeff_g1_to_wavelength, fit_metrics
+    
+    def wavelength_to_g2(self, poly_order=1, mode=None, show=False, model='poly'):
+        pass
+    
+    def g2_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
+        pass
+
+
 
 
 class Calibration:
@@ -697,6 +806,7 @@ scriptDir = os.path.dirname(__file__)
 dataDir = os.path.join(scriptDir, 'autocalibration')
 
 autocal = AutoCalibration(showplots=True)
+autocal.autocalibrate_all()
 breakpoint()
 
 peakfit_autocal(scriptDir, dataDir, calibration_name)

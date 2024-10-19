@@ -80,6 +80,27 @@ class PolySinModulation:
         sin_part = f"{self.A}*sin({self.B}*x + {self.C}) + {self.D}"
         return f"PolySinModulation: ({poly_part}) + ({sin_part})"
 
+class LinSinModulation:
+    '''Class for linear + sinusoidal modulation fit.'''
+    def __init__(self, a1, a0, A, B, C, D):
+        self.a1 = a1
+        self.a0 = a0
+        self.A = A
+        self.B = B
+        self.C = C
+        self.D = D
+
+    def __call__(self, x):
+        linear = self.a1 * x + self.a0
+        modulation = self.A * np.sin(self.B * x + self.C) + self.D
+        return linear + modulation
+    
+    def __repr__(self):
+        linear_part = f"{self.a1}*x + {self.a0}"
+        sin_part = f"{self.A}*sin({self.B}*x + {self.C}) + {self.D}"
+        return f"LinSinModulation: ({linear_part}) + ({sin_part})"
+
+
 
 class GUI:
 
@@ -440,7 +461,8 @@ class Microscope:
             'readldr': self.read_ldr0,
             'debug': self.print_debug,
             'calibrate': self.run_calibration,
-            'gtgsteps': self.go_to_grating_steps
+            'gtgsteps': self.go_to_grating_steps,
+            'homemono': self.home_motors_monochromator,
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
@@ -585,8 +607,16 @@ class Microscope:
         self.guess_mode()
         self.report_status()
 
+        self.ammend_calibrations()
+
         # self.run_ldr0_scan()
-        self.run_calibration((800, 810), 5)
+        # self.run_calibration((800, 810), 5)
+
+
+    def home_motors_monochromator(self):
+        response = self.process_coms('Bhome')
+        return response
+
 
     def calculate_overhead(self):
         acq_times = [0.01, 0.02, 0.04, 0.08, 0.16, 0.32, 0.64, 0.128, 0.256, 0.512, 1.024]
@@ -602,7 +632,7 @@ class Microscope:
         # breakpoint()
 
 
-    def run_calibration(self, wavelength_range: tuple, resolution: float, motor:str, pinhole_size=25):
+    def run_calibration(self, wavelength_range: tuple, resolution: float, motor:str, pinhole_size=15):
         if motor.lower() not in ['g1', 'g2']:
             print("Invalid motor. Must be 'g1' or 'g2'")
             return
@@ -618,7 +648,7 @@ class Microscope:
                 return obj  # Leave other types unchanged
             
 
-        calibrationDict = {}
+        calibrationDict = {'data_type': 'autocal'}
 
         if isinstance(wavelength_range, str):
             vals = wavelength_range.split(',')
@@ -634,38 +664,26 @@ class Microscope:
         cond = input("Continue? (y/n): ")
         if cond.lower() == 'n':
             return
+        index = len([file for file in os.listdir(os.path.join(self.scriptDir, 'autocalibration')) if file.endswith('.json')])
         
         initial_pinhole_pos = int(self.pinhole)
         self.close_pinhole(pinhole_size)
         
         for wl in wavelengths:
             # self.close_pinhole_shutter()
-            self.go_to_laser_wavelength(wl, autoshutter=True)
-            self.go_to_grating_wavelength(wl, autoshutter=True)
+            self.go_to_laser_wavelength(wl, autoshutter=False)
+            self.go_to_grating_wavelength(wl, autoshutter=False)
             # self.close_pinhole_shutter()
             scan_data = self.run_ldr0_scan()
             # Apply the conversion to ensure the data is serializable
             calibrationDict[float(wl)] = scan_data
 
-        
-        # breakpoint()
-        calibrationDict = {'autocal': calibrationDict}
-        index = len(os.listdir(os.path.join(self.scriptDir, 'autocalibration')))
+            print("Saving state...")        
 
-        # try:
-        #     all_call_data = np.empty((0, len(scan_data)))
-        #     for key, val in calibrationDict.items():
-        #         column = np.vstack((key, val))
-        #         all_call_data = np.hstack((all_call_data, column))
-        #     np.savetxt(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}.csv'.format(index)), all_call_data, delimiter=',')
-        # except Exception as e:
-        #     print(e)
-        #     print("Error saving data. Saving as JSON")
+            with open(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}_{}.json'.format(index, motor)), 'w') as f:
+                json.dump(calibrationDict, f)
 
-        with open(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}.json'.format(index)), 'w') as f:
-            json.dump(calibrationDict, f)
         print(f"{motor.lower()} Scan complete. Data saved to autocal_{index}_{motor}.json")
-
 
         # self.open_pinhole_shutter()
         print("Returning to initial position")
@@ -677,7 +695,7 @@ class Microscope:
     # def close_pinhole(self):
     #     self.
     
-    def run_ldr0_scan(self, search_length=100, resolution=4):
+    def run_ldr0_scan(self, search_length=25, resolution=1):
         current_pos = self.grating_steps[0]
         scan_data = []
         scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
@@ -687,7 +705,7 @@ class Microscope:
             if idx == 0:
                 # self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
                 self.wait_for_motors()
-            scan_data.append([int(final_pos), int(self.read_ldr0())])
+            scan_data.append([int(final_pos), 6000-int(self.read_ldr0())])
             current_pos = final_pos
         
         return scan_data
@@ -765,6 +783,33 @@ class Microscope:
         # breakpoint()
         print('Calibration locked. G2 is now a function of G1 at this position.')
 
+    def ammend_calibrations(self, file_identifier='autocal'):
+        '''If an autocalibration has been performed, this function will update the current calibrations with the new data.'''
+        json_files = [f for f in os.listdir(self.scriptDir) if f.endswith('.json')]
+        json_files = [f for f in json_files if file_identifier in f]
+        if len(json_files) == 0:
+            print('No autocalibration data found.')
+            return
+        
+        file = json_files[-1]
+
+        with open(os.path.join(self.scriptDir, file), 'r') as f:
+            data = json.load(f)
+
+        for name, calib in data.items():
+            print("Updating {} with autocalibration data".format(name))
+            if len(calib) == 7:
+                print("Loading {} as poly_sin".format(name))
+                self.calibrations.__setattr__(name, PolySinModulation(*calib))
+            elif len(calib) == 6:
+                print("Loading {} as lin_sin".format(name))
+                self.calibrations.__setattr__(name, LinSinModulation(*calib))
+            else:
+                print("Loading {} as poly1d".format(name))
+                self.calibrations.__setattr__(name, np.poly1d(calib))
+        print('Calibrations updated with autocalibration data')
+
+
     def generate_calibrations(self, report=False):
         if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
             with open(os.path.join(self.scriptDir, 'calibrations.json'), 'r') as f:
@@ -779,11 +824,14 @@ class Microscope:
         self.calibrations = SimpleNamespace()
         
         for name, calib in calibrations.items():
-            if report:
-                print(name, calib, "poly" if len(calib) == 3 else "poly_sin")
             if len(calib) == 7:
+                print("Loading {} as poly_sin".format(name))
                 self.calibrations.__setattr__(name, PolySinModulation(*calib))
+            if len(calib) == 6:
+                print("Loading {} as poly_sin".format(name))
+                self.calibrations.__setattr__(name, LinSinModulation(*calib))
             else:
+                print("Loading {} as poly1d".format(name))
                 self.calibrations.__setattr__(name, np.poly1d(calib))
 
         print("defaulting to additive calibration for G1. Return to fix this later.")

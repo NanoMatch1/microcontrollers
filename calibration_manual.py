@@ -1276,7 +1276,7 @@ if __name__ == '__main__':
     # FEAT Make additive calibrations
 
     def additive_calibrations(calibration, cal_data, repeat=False):
-        cal_data, cal_data_array = calibration.load_aapt_file()
+        # cal_data, cal_data_array = calibration.load_aapt_file()
         
         if repeat is True:
             # calibrate L1
@@ -1305,6 +1305,7 @@ if __name__ == '__main__':
 
     calibration, cal_data = initialise(showplots=True)
     triax_calibrations(calibration, cal_data)
+    cal_data, cal_data_array = calibration.load_aapt_file()
     subtractive_calibrations(calibration, cal_data)
     additive_calibrations(calibration, cal_data)
     # TRIAX cal is absolute - only needs to be saved once

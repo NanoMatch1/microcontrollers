@@ -201,7 +201,8 @@ class AutoCalibration:
         for motor_type, file in self.autocal_dict.items():
             if file is None or motor_type in self.excluded:
                 continue
-            self.peakfit_autocal(file, motor_type)
+            dataSet = self.peakfit_autocal(file, motor_type)
+            self.generate_autocal(motor_type, dataSet=dataSet)
 
 
     def peakfit_autocal(self, file, motor_type):
@@ -218,7 +219,7 @@ class AutoCalibration:
             cal_obj._minimise_data()
             cal_obj._apply_smoothing(window_length=3)
             # cal_obj._plot_individual()
-        dataSet.plot_current()
+        # dataSet.plot_current()
         
         peakfitting_info = {
             'peak_list': [],
@@ -227,17 +228,20 @@ class AutoCalibration:
             'threshold': 0.01, # percentage of max intensity
             'peak_detect': 'all',
             'copy_peaks': False,
+            'show_ui': False,
         } 
         dataSet._peakfit(peakfitting_info=peakfitting_info)
+        # dataSet.plot_peaks()
         dataSet.save_database(tagList='', seriesName=calibration_name)
+        return dataSet
 
-    def generate_autocal(self, load=False):
+    def generate_autocal(self, motor_type, dataSet=None):
         key_index = {
             'pos': 1,
             'amp': 2,
             'fwhm': 3,
         }
-        if load:
+        if dataSet is None:
             calibration_name = input('Enter the filename of the calibration data to load: ')
             dataSet = asp.DataSet(dataDir)
             dataSet.load_database(calibration_name)
@@ -263,18 +267,25 @@ class AutoCalibration:
         for key, value in calibration_peaks.items():
             print(key, value)
         # breakpoint()
-        calibration = Calibration(calibration_peaks, showplots=True)
-        fit, fitmetrics1 = self.wavelength_to_g1(mode='subtractive', show=True, model='poly', poly_order=1)
+
+        data = [(key, value.pos) for key, value in calibration_peaks.items()]
+        data.sort(key=lambda x: x[0])
+        data = np.array(data).astype(float)
+
+        self.data_array = data
+        self.wavelength_axis = data[:, 0]
+
+        fit, fitmetrics1 = self.motor_calibrations[motor_type][0](mode='subtractive', show=True, model='poly', poly_order=2)
         print(fit)
         print(fitmetrics1)
-        fit, fitmetrics2 = self.g1_to_wavelength(mode='subtractive', show=True, model='poly', poly_order=1)
+        fit, fitmetrics2 = self.motor_calibrations[motor_type][1](mode='subtractive', show=True, model='poly', poly_order=2)
         print(fit)
         print(fitmetrics2)
         # fit, fitmetrics3 = calibration.wavelength_to_g1_test(mode='subtractive', show=True, poly_order=1)
         # print(fit)
         # print(fitmetrics3)
         breakpoint()
-        calibration.save_calibration(calibration_name)
+        self.save_calibration('autocal_{}'.format(motor_type))
         breakpoint()
             
 
@@ -421,7 +432,7 @@ class AutoCalibration:
     
     def wavelength_to_g2(self, poly_order=1, mode=None, show=False, model='poly'):
         pass
-    
+
     def g2_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
         pass
 

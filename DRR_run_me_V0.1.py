@@ -783,30 +783,32 @@ class Microscope:
         # breakpoint()
         print('Calibration locked. G2 is now a function of G1 at this position.')
 
-    def ammend_calibrations(self, file_identifier='autocal'):
+    def ammend_calibrations(self):
         '''If an autocalibration has been performed, this function will update the current calibrations with the new data.'''
-        json_files = [f for f in os.listdir(self.scriptDir) if f.endswith('.json')]
-        json_files = [f for f in json_files if file_identifier in f]
+        json_files = [f for f in os.listdir(self.scriptDir) if f.endswith('autocal.json')]
+
+
         if len(json_files) == 0:
             print('No autocalibration data found.')
             return
         
-        file = json_files[-1]
+        for file in json_files:
 
-        with open(os.path.join(self.scriptDir, file), 'r') as f:
-            data = json.load(f)
+            with open(os.path.join(self.scriptDir, file), 'r') as f:
+                data = json.load(f)
 
-        for name, calib in data.items():
-            print("Updating {} with autocalibration data".format(name))
-            if len(calib) == 7:
-                print("Loading {} as poly_sin".format(name))
-                self.calibrations.__setattr__(name, PolySinModulation(*calib))
-            elif len(calib) == 6:
-                print("Loading {} as lin_sin".format(name))
-                self.calibrations.__setattr__(name, LinSinModulation(*calib))
-            else:
-                print("Loading {} as poly1d".format(name))
-                self.calibrations.__setattr__(name, np.poly1d(calib))
+            for name, calib in data.items():
+                print("Updating {} with autocalibration data".format(name))
+                if len(calib) == 7:
+                    print("Loading {} as poly_sin".format(name))
+                    self.calibrations.__setattr__(name, PolySinModulation(*calib))
+                elif len(calib) == 6:
+                    print("Loading {} as lin_sin".format(name))
+                    self.calibrations.__setattr__(name, LinSinModulation(*calib))
+                else:
+                    print("Loading {} as poly1d".format(name))
+                    self.calibrations.__setattr__(name, np.poly1d(calib))
+
         print('Calibrations updated with autocalibration data')
 
 

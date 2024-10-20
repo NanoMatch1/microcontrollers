@@ -87,7 +87,7 @@ while True:
 
 
 
-    
+    # 0,1024,579,579+35,1,35
 
 breakpoint()
 print('end')

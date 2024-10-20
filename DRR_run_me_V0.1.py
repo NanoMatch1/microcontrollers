@@ -1005,23 +1005,11 @@ class Microscope:
             print('New Positions:\n Laser: {}\n Grating: {}'.format(new_laser_wavelength, new_grating_wavelength))
 
 
-#     Current laser pos: [1.0, 13.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX9,Y47,Z0,A0P>
-# UI<UNO<B:<PX9,Y47,Z0,A0P>
-# Current grating pos: [9.0, 47.0, 0.0, 0.0]
-# Current laser wavelength: 802.7494779639835
-# Current grating wavelength: 806.0597753957159
-# Enter command:
-
-
-
     def extract_coms_message(self, message):
         return message[1].split(':')[1].strip(' ')
 
     def wait_for_motors(self, delay=0.1):
+        '''Waits for the motors to finish moving by polling the motors until they are no longer running.'''
         count = 0
         running_A = True
         running_B = True
@@ -1055,9 +1043,6 @@ class Microscope:
                 print("Loop broke")
                 
             count += 1
-
-            # print()
-
 
         return 'S0'
     
@@ -1183,17 +1168,6 @@ class Microscope:
         # print('Current laser wavelength: {}'.format(l1_wavelength))
         return l1_wavelength, l2_wavelength
     
-# monochromator mode: additive
-# laser lambda: 747.9912874168725
-# g1 lambda: 760.3230930312565
-# laser motor positions: [3406.0, -1425.0, 0.0, 0.0]
-# grating motor positions: [-413.0, -12667.0, 0.0, 0.0]
-# laser wavenumber: 13369.139678797854
-# grating wavenumber: 13151.139678797854
-# Raman wavelength: 760.3903725638248
-# Raman shift: 218.0
-# --------------------
-# Enter command:
 
 
     def calculate_grating_position(self, current_pos=None):
@@ -1624,32 +1598,7 @@ class Microscope:
             print(f'exporting {laser_wavelength}:{gpa}:{gpb}:{grating_wavelength}')
             return (f'exporting {laser_wavelength}:{gpa}:{gpb}:{grating_wavelength}')
             
-            # sulfur REF: 210 sd (220 peak)
-            # init got response
 
-            # (785, 500), (800, 500)
-            # 750 at 4543
-            
-# Current laser pos: [192.0, -65.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX-49,Y-13108,Z0,A0P>
-# UI<UNO<B:<PX-49,Y-13108,Z0,A0P>
-# Current grating pos: [-49.0, -13108.0, 0.0, 0.0]
-# Current laser wavelength: 799.7091464278527
-# Current grating wavelength: 799.7234964284621
-
-# aligned manually to 0 shift:
-# Current laser pos: [192.0, -65.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX-49,Y-12865,Z0,A0P>
-# UI<UNO<B:<PX-49,Y-12865,Z0,A0P>
-# Current grating pos: [-49.0, -12865.0, 0.0, 0.0]
-# Current laser wavelength: 799.7091464278527
-# Current grating wavelength: 799.7234964284621
 
 
         if com[0] in self.general_dict.keys():
@@ -1702,15 +1651,6 @@ class Microscope:
 
             return response
 
-        # elif com[0] in self.apd_dict.keys():
-        #     if len(com) > 1:
-        #         command = '{} {}'.format(self.apd_dict[com[0]], com[1])
-        #     else:
-        #         command = self.apd_dict[com[0]]
-        #     self.send_command_to_UNO(command)
-        #     time.sleep(0.1)
-        #     # response = self.read_command_from_uno()
-        #     response = self.read_from_serial_until()
 
         elif com[0] in self.spectrometer_dict.keys():
             if len(com) > 1:
@@ -1823,17 +1763,6 @@ class Microscope:
             time.sleep(0.01)
             # else:
 
-    # def extract_data_old(self, response):
-    #     new_data = []
-    #     for item in response:
-    #         if item.startswith("#DAT"):
-    #             try:
-    #                 new_data.append(float(item[4:]))
-    #             except Exception as e:
-    #                 print('Error processing data')
-    #                 print(e)
-    #     return new_data
-    
     def extract_data(self, response):
         if type(response) == float: # TODO: change this to detect data type better
             return response
@@ -1860,97 +1789,6 @@ class Microscope:
         print('Grating Pos: {}'.format(response))
         return grating_pos
 
-
-
-    # def run_scan_custom(self, plot=True):
-
-
-    #     # Create figure for plotting
-    #     fig, ax = plt.subplots()
-    #     xs = [0]  # List to store x-axis values (time steps)
-    #     ys = [0]  # List to store y-axis values (data points)
-
-    #     # Initialize plot
-    #     line, = ax.plot(xs, ys, 'r-')  # 'r-' means red line
-
-    #     def init():
-    #         ax.set_xlim(0, 10)  # Set initial x-axis limits
-    #         ax.set_ylim(0, 1)  # Set initial y-axis limits
-    #         return line,
-
-    #     def update_plot(frame):
-    #         # Update line data
-    #         line.set_data(xs, ys)
-            
-    #         # Adjust x-axis and y-axis limits dynamically
-    #         ax.set_xlim(min(xs), max(xs))
-    #         ax.set_ylim(min(ys), max(ys))
-            
-    #         return line,
-
-    #     # Create an animation
-    #     ani = animation.FuncAnimation(fig, update_plot, init_func=init, blit=True, interval=100)
-
-    #     # Display the plot
-    #     plt.ion()
-    #     plt.show()
-
-    #     def add_data_point(newData):
-    #         # Append new data points to the lists
-    #         xs.append(newData[0])
-    #         ys.append(newData[1])
-    #         plt.draw()
-
-    #     def scan():
-    #         # TODO: Eventually replace code to skip process_coms and call send_to_UNO
-    #         self.scan_min = 0
-    #         self.scan_max = 10
-    #         self.scan_res = 1
-    #         self.acq_time = 0.5
-
-    #         print("custom scan")
-    #         scan_results = np.empty((0, 3)).astype(float)
-    #         response_list = self.process_coms('getpos')
-
-    #         stepper_pos = {}
-    #         for item in response_list:
-    #             if '<P' in item:
-    #                 positions = item.split('P')[1]
-    #                 positions = positions.split(',')
-    #                 for pos in positions:
-    #                     stepper_pos[pos[0]] = int(pos[1:]) # position in steps -> refer to calibration dataset for conversion
-    #         print("Established current motor positions:", stepper_pos)
-    #         self.grating_pos = stepper_pos['Y']
-    #         scan_pos = self.grating_pos
-    #         scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_res)
-    #         print(scan_dims)
-    #         input('\nScan to commence:')
-    #         self.process_coms('A {}'.format(self.scan_min))
-    #         scan_pos += self.scan_min
-    #         print("Beginning scan...")
-    #         time.sleep(0.5)
-    #         for idx, val in enumerate(scan_dims):
-    #             if idx != 0:
-    #                 self.process_coms('A {}'.format(self.scan_res))
-    #                 scan_pos += self.scan_res
-    #             time.sleep(0.1)
-    #             response = self.process_coms('acq {}'.format(self.acq_time))
-    #             time.sleep(0.1)
-    #             data = self.extract_data(response)
-    #             intensity = float(data[0])
-    #             print('{}:{}'.format(scan_pos, intensity))
-    #             add_data_point([scan_pos, intensity])
-    #             scan_results = np.vstack((scan_results, [scan_pos, data[0], data[1]]))
-
-    #         self.results = np.array(scan_results).astype(float)
-    #         print(self.results)
-    #         self.process_coms('A {}'.format(self.grating_pos-scan_pos))
-    #         filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
-    #         np.savetxt(filename, self.results)
-
-    #     # Run the scan in a separate thread
-    #     scan_thread = threading.Thread(target=scan)
-    #     scan_thread.start()
 
     def motor_scan(self, motor = 'g2'):
         # Create figure for plotting
@@ -2057,6 +1895,7 @@ class Microscope:
 
 
     def run_scan_spectrum(self, plot=True):
+        '''Function for scanning a spectrum with the ADP and plotting the results in real-time. Legacy code, needs updating'''
         # Create figure for plotting
         fig, ax = plt.subplots()
         xs = []  # List to store x-axis values (time steps)
@@ -2130,18 +1969,6 @@ class Microscope:
         print("Beginning scan...")
         print("Moving to initial grating position: {}".format(grating_wavelength))
 
-        # calshift 0
-#         Current laser pos: [193.0, -66.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX-49,Y-13070,Z0,A0P>
-# UI<UNO<B:<PX-49,Y-13070,Z0,A0P>
-# Current grating pos: [-49.0, -13070.0, 0.0, 0.0]
-# Current laser wavelength: 799.6932186804214
-# Current grating wavelength: 799.7234964284621
-
-
         for idx, target in enumerate(build_scan):
 
             self.go_to_grating_wavelength(target)
@@ -2161,83 +1988,6 @@ class Microscope:
         self.go_to_grating_wavelength(grating_wavelength)
         filename = os.path.join(self.dataDir, 'spectrum_scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
         np.savetxt(filename, self.results)
-
-
-        # current values:
-#         Current laser pos: [192.0, -65.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX82,Y-12973,Z0,A0P>
-# UI<UNO<B:<PX82,Y-12973,Z0,A0P>
-# Current grating pos: [82.0, -12973.0, 0.0, 0.0]
-# Current laser wavelength: 799.7091464278527
-# Current grating wavelength: 814.0347471993285
-
-#Calshift
-
-# Current laser pos: [193.0, -66.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX82,Y-13165,Z0,A0P>
-# UI<UNO<B:<PX82,Y-13165,Z0,A0P>
-# Current grating pos: [82.0, -13165.0, 0.0, 0.0]
-# Calibration shift successful
-# New Positions:
-#  Laser: 799.6932186804214
-#  Grating: 814.0347471993285
-# Enter command:
-
-
-    # def run_scan_TRIAX(self, plot=True):
-    #     scan_results = np.empty((0, 2)).astype(float)
-    #     self.grating_pos = self.get_grating_position()
-    #     initial_pos = self.grating_pos
-    #     current_pos = initial_pos
-    #     scan_dims = np.arange(self.grating_pos + self.scan_min, self.grating_pos + self.scan_max, self.scan_resolution)
-    #     print(scan_dims)
-    #     input('\nScan to commence:')
-    #     self.send_command_to_spectrometer('F0, {}'.format(self.scan_min))
-    #     current_pos += self.scan_min
-    #     print("Beginning scan...")
-    #     time.sleep(0.5)
-    #     for idx, val in enumerate(scan_dims):
-    #         if idx != 0:
-    #             self.send_command_to_spectrometer('F0, {}'.format(self.scan_resolution))
-    #             current_pos += self.scan_resolution
-    #         time.sleep(0.5)
-    #         self.send_command_to_UNO('oDacq{}o'.format(self.acq_time))
-    #         # time.sleep(self.acq_time)
-    #         # response = self.read_from_uno()
-    #         response = self.read_from_serial_until()
-    #         data = self.extract_data(response)
-    #         if len(data) > 1:
-    #             print("data is bigger than expected - change code to accommodate array of data")
-    #         intensity = float(data[0])
-    #         # scan_results.append([step, response])
-    #         # scan_pos = self.grating_pos+(idx*self.scan_resolution)
-    #         print('{} : {}'.format(current_pos, intensity))
-    #         scan_results = np.vstack((scan_results, [current_pos, intensity]))
-    #         # self.plot.update_plot([self.microscope.grating_pos, intensity])
-    #         # self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
-    #     self.results = np.array(scan_results).astype(float)
-    #     print(self.results)
-    #     # return to start pos
-    #     self.send_command_to_spectrometer('F0, {}'.format(initial_pos-current_pos))
-    #     print('Initial pos: {}'.format(initial_pos))
-    #     print('Current pos: {}'.format(current_pos))
-    #     print('Difference: {}'.format(current_pos-initial_pos))
-    #     # 
-    #     filename = os.path.join(self.dataDir, 'scan_results_{}.txt'.format(len([file for file in os.listdir(self.dataDir) if 'scan_results' in file])))
-    #     np.savetxt(filename, self.results)
-    #     if plot:
-    #         # self.plot_scan_results(self.results)
-    #         plt.plot(self.results[:, 0], self.results[:, 1])
-    #         plt.show()
-
-
-#662(200):469
 
 
     def cli_commands(self):

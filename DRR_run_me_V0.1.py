@@ -153,154 +153,6 @@ class DynamicPlotApp:
 
     
 
-# class ArduinoInterface:
-#     def __init__(self, master):
-
-#         self.plot = DynamicPlotApp(master)
-#         self.microscope = Microscope()
-        
-#         self.master = master
-#         master.title("Arduino Command Interface")
-
-
-#         # Setup the serial connection
-#         self.uno_serial = serial.Serial('COM8', 9600)  # Replace 'COM_PORT' with your actual COM port
-
-#         # Text box for command input
-#         self.command_entry = tk.Entry(master, width=50)
-#         self.command_entry.bind("<Return>", self.process_input)
-#         self.command_entry.pack()
-
-#         # box for scan min
-#         self.scan_min_entry = tk.Entry(master, width=10)
-#         self.scan_min_entry.insert(0, '-1000')
-#         self.scan_min_entry.bind("<Return>", self.update_scan_params)
-#         self.scan_min_entry.place(x=5, y=20)    
-#         # label for scan min
-#         self.scan_min_label = tk.Label(master, text="Scan Min")
-#         self.scan_min_label.place(x=70, y=20)    
-        
-#         # box for scan max
-#         self.scan_max_entry = tk.Entry(master, width=10)
-#         self.scan_max_entry.insert(0, '1000')
-#         self.scan_max_entry.bind("<Return>", self.update_scan_params)
-#         self.scan_max_entry.place(x=5, y=40)
-#         # label for scan max
-#         self.scan_max_label = tk.Label(master, text="Scan Max")
-#         self.scan_max_label.place(x=70, y=40)
-
-
-#         # box for scan resolution
-#         self.scan_resolution_entry = tk.Entry(master, width=10)
-#         self.scan_resolution_entry.insert(0, '100')
-#         self.scan_resolution_entry.bind("<Return>", self.update_scan_params)
-#         self.scan_resolution_entry.place(x=5, y=60)
-#         # label for scan resolution
-#         self.scan_resolution_label = tk.Label(master, text="Scan Resolution")
-#         self.scan_resolution_label.place(x=70, y=60)
-
-#         # Button for sending commands
-#         self.send_button = tk.Button(master, text="Send Command", command=self.send_command)
-#         self.send_button.pack()
-
-#         # button for running the scan
-#         self.send_button = tk.Button(master, text="Run Scan", command=self.run_scan)
-#         self.send_button.pack()
-
-#         # Scrolled Text Area for displaying outputs
-#         self.text_area = scrolledtext.ScrolledText(master, wrap=tk.WORD, width=60, height=10)
-#         self.text_area.pack(pady=10)
-
-#         # Separate thread to continuously read from serial port
-#         self.read_thread = threading.Thread(target=self.read_from_uno)
-#         self.read_thread.daemon = True
-#         self.read_thread.start()
-
-#         self.get_grating_position()
-
-#     def update_labels(self):
-#         self.scan_resolution_label = tk.Label(self.master, text="Scan Resolution {}".format(self.scan_resolution))
-
-#     def update_scan_params(self, event=None):
-#         try:
-#             self.microscope.scan_min = float(self.scan_min_entry.get())
-#         except:
-#             pass
-#         try:
-#             self.microscope.scan_max = float(self.scan_max_entry.get())
-#         except:
-#             pass
-#         try:
-#             self.microscope.scan_resolution = float(self.scan_resolution_entry.get())
-#         except:
-#             pass
-#         # self.update_labels()
-
-#     def process_input(self, event=None):  # Event is passed by bind
-#         command = self.command_entry.get()
-#         split_command = command.split(' ')
-#         self.command_entry.delete(0, tk.END)  # Clear entry after sending
-#         if split_command[0] in self.microscope.spectrometer_dict.keys():
-#             response = self.microscope.send_command_to_spectrometer(split_command)
-#             self.update_text_area(response)
-#         else:
-#             self.send_command_to_UNO(command=command)
-        
-#         # self.read_from_uno()
-
-
-#     def send_command_to_UNO(self, command=None, event=None):  # Event is passed by bind
-#         if not command:
-#             command = self.command_entry.get()
-#         self.uno_serial.write('{}\n'.format(command).encode())
-#         self.command_entry.delete(0, tk.END)  # Clear entry after sending
-
-#     def read_from_uno(self):
-#         while True:
-#             if self.uno_serial.in_waiting > 0:
-#                 response = self.uno_serial.readline().decode().strip()
-#                 # if response == '':  # Skip empty lines
-#                     # continue
-#                 self.update_text_area(response)
-
-#     def update_text_area(self, message):
-#         self.text_area.insert(tk.END, message + '\n')
-#         self.text_area.see(tk.END)  # Scroll to the bottom
-
-#     def send_command(self):
-#         self.send_command_to_UNO()
-
-#     def get_grating_position(self):
-#         response = self.microscope.send_command_to_spectrometer(['read_grating'])
-#         response = response.strip()
-
-#         grating_pos = int(response[1:])
-#         self.microscope.grating_pos = grating_pos
-#         self.update_text_area(response)
-
-
-
-#     # def run_scan(self):
-#         pass
-#         self.acq_time = 1
-#         scan_results = np.empty((0, 2)).astype(float)
-#         self.get_grating_position()
-#         self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_min])
-#         for idx in np.arange(self.microscope.scan_min, self.microscope.scan_max, self.microscope.scan_resolution):
-#             self.microscope.send_command_to_spectrometer(['grating', self.microscope.scan_resolution])
-#             time.sleep(0.5)
-#             self.send_command_to_UNO('acq')
-#             time.sleep(self.acq_time)
-#             response = self.read_from_uno()
-#             intensity = float(response[response.index('#')+1:])
-#             # scan_results.append([step, response])
-#             scan_results = np.vstack((scan_results, [self.microscope.grating_pos, intensity]))
-#             self.plot.update_plot([self.microscope.grating_pos, intensity])
-#             self.update_text_area('Grating Position: {} - Intensity: {}'.format(self.microscope.grating_pos, intensity))
-#         self.results = np.array(scan_results).astype(float)
-#         print(self.results)
-#         pass
-
 class DualMonochromator:
 
     def __init__(self, microscope):
@@ -384,7 +236,38 @@ there will be homing motors that the monochromator should.'''
 #         # self.__dict__.update(np.poly1d(calibrations))
 #         self.__dict__.update({calib: np.poly1d(self.coefficients[calib]) for calib in self.coefficients})
         
+'''Items still to do:
+Phase 1: High priority
+    1. Add shutter for safety. Use single power mosfet to feed 3-5V power to the shutter.
+        a. Edit the pinhole shutter method to drive this shutter.
+    2. Bring PICAM interface into the microscope. Use a separate class and feed it to the microscope class/microscope class to it.
+    2. Create methods for:
+        a. Acquiring a spectrum of a given range. This requires multiple scans and stitching them together. Note this can now be done internally using the PICAM interface
+            i. This requires a data save method. use the ui to enter a filename, and save the data to a file.
+        b. a basic laser excitation scan. This will simply acquire a spectrum at a range of wavelengths with a given resolution.
+            i. make the scan method agnistic, so it can be used in the final version of the multidiemensional scans.
+        c. Create a method for exporting a map of the data structure. This should eventually accommodate multi-dimensional data including wavelength, position, and polarization.
 
+ >>> Start scanning MoS2 powder
+
+Phase 2: In preparation of scanning MoS2 flakes
+    1. Add motor control for the sample stage.
+    2. Enclose system.
+    3. Add input polarization control.
+    4. Add output polarization control.
+    5. Create multidimensional scan method.
+    6. Motorise L3. Create calibration for L3.
+
+>>> Scan MoS2 flakes or WSe2 flakes
+
+Phase 3: Polishing the system
+    1. Create homing protocols for all motors.
+    2. Add control of laser
+    3. Try changing spectrometer control to RS232/MEGA UART
+    4. Create all autocalibration methods.
+    5. Try switch to linux
+    6. Build single board computer for control
+'''
 
 @dataclass
 class MotorPositions:
@@ -400,6 +283,7 @@ class Microscope:
     # standard positions:
     # Current laser wavelength: 802.7494779639835
     # Current grating wavelength: 802.7823897229985
+    
 
     def __init__(self, debug_skip=[], unoCOM='COM8'):
 
@@ -967,17 +851,6 @@ class Microscope:
         print(current_detector_wavelength)
 # Write function to store Raman shift on microcontrollers and get it back.
 
-
-# Current laser pos: [175.0, -58.0, 0.0, 0.0]
-# entered turning dict
-# UI>UNO:oBposo
-# UNO>B:pos
-# <PX125,Y87,Z0,A0P>
-# UI<UNO<B:<PX125,Y87,Z0,A0P>
-# Current grating pos: [125.0, 87.0, 0.0, 0.0]
-# Current laser wavelength: 799.9799025452799
-# Current grating wavelength: 818.7323333302236
-# Enter command:
 
         # calculate the motor positions which correspond to the current wavelength
         l1_target = round(self.calibrations.wl_to_l1(current_laser_wavelength))

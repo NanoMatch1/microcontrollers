@@ -10,6 +10,7 @@ import sys
 import traceback
 from types import SimpleNamespace
 from dataclasses import dataclass
+from pixis_camera import PIXISCam
 
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
@@ -301,13 +302,18 @@ class Microscope:
         # self.grating_calib = calibrations['']
 
         self.grating_steps = None
+        self.grating_wavelength = None
         self.laser_steps = None
+        self.laser_wavelength = None
+        self.triax_steps = None
+        self.triax_wavelength = None
 
         self.current_wavelength = None
         self.current_shift = 0
         self.monochromator_mode = 'subtractive'
         self.pinhole = None
         self.save_pinhole = None
+        self.detector_safety = True
         # self.current_motor_positions = {'A': {}, 'B': {}}
         # self.to_addivite = -12990 -13108+39 
 
@@ -325,6 +331,7 @@ class Microscope:
             'acq_time': self.set_acquisition_time,
             'sl': self.go_to_laser_wavelength,
             'sd': self.go_to_grating_wavelength,
+            'st': self.go_to_triax_wavelength,
             # 'shift': self.go_to_grating_wavelength,
             'wai': self.get_all_current_positions,
             'reference': self.reference_calibration,
@@ -341,7 +348,8 @@ class Microscope:
             'unlockcal': self.unlock_calibration,
             'pin': self.move_pinhole,
             'setpin': self.set_pinhole_pos,
-            'gshut': self.move_grating_shutter,
+            'mshut': self.close_mono_shutter,
+            'mopen': self.open_mono_shutter,
             'readldr': self.read_ldr0,
             'debug': self.print_debug,
             'calibrate': self.run_calibration,
@@ -476,6 +484,9 @@ class Microscope:
             self.uno_serial = self.connect_to_UNO(unoCOM, baud=9600)
         if not 'laser' in debug_skip:
             self.laser_serial = self.connect_to_laser()
+        if not 'camera' in debug_skip:
+            self.camera = PIXISCam()
+            
         # if not 'APD' in debug_skip:
         #     self.apd_serial = self.connect_to_APD()
         # time.sleep(1)
@@ -496,7 +507,69 @@ class Microscope:
         # self.run_ldr0_scan()
         # self.run_calibration((800, 810), 5)
 
+    def stitch_spectrum(self, data, window):
+        '''Takes a list of spectra in data and stitches them together in to one spectrum. The window is the size of the spectral shift in nm.'''
 
+        pass
+
+    def acquire_spectrum(self, raman_shift=250, window=13):
+        '''Takes the number of spectra required to cover the specified raman_shift. Converts shifts to wavelength using the current laser position in order to compensate for the non-linear dispersed spectral window. i.e. longer wavelengths disperse more.'''
+        starting_wavenumber = self.current_laser_wavenumber
+        starting_wavelength = self.current_laser_wavelength
+        limit_wavelength = self.calculate_raman_shift_wavelength(raman_shift)
+        
+        data = []
+        current_wavenumber = round(float(starting_wavenumber), 2)
+        current_wavelength = float(starting_wavelength)
+
+        while current_wavelength < limit_wavelength:
+            self.go_to_triax_wavelength(current_wavelength)     
+            data.append([current_wavenumber, self.cam.acquire_one_frame()])
+            current_wavelength += window
+            current_wavenumber = round(10_000_000/current_wavelength, 2)
+
+        self.latest_data = self.stitch_spectrum(raman_shift)
+        # while 
+        pass
+
+    def get_triax_steps(self):
+        '''Polls the spectrometer for position and returns the current position in steps.'''
+        response = self.process_coms('rg')
+        self.triax_steps = int(response.strip()[1:])
+        return self.triax_steps
+
+    def calculate_triax_wavelength(self, steps=None):
+        '''Calculates the wavelength that would appear at pixel 50 (as per the calibration file) for the given steps.'''
+        if steps is None:
+            steps = self.triax_steps
+        self.triax_wavelength = self.calibrations['wl_to_triax_steps'](steps)
+        return self.triax_wavelength
+
+
+    def go_to_triax_wavelength(self, wavelength: float, autoshutter=False):
+        '''Moves the triax spectrometer to the specified wavelength that would appear at pixel 50 (as per the calibration file).'''
+        try:
+            wavelength = float(wavelength)
+        except ValueError:
+            print('Invalid input')
+            return
+        
+        target_steps = self.calibrations['wl_to_triax_steps'](wavelength)
+        new_steps = target_steps - self.triax_steps
+        # return if no movement is required
+        if new_steps == 0:
+            return
+        
+        response = self.process_coms('g {}'.format(new_steps))
+        if response == 'o':
+            print('Triax moved to {} nm'.format(wavelength))
+            self.triax_steps = target_steps
+
+        else:
+            print('Triax move failed:')
+            print(response)
+
+        
     def home_motors_monochromator(self):
         response = self.process_coms('Bhome')
         return response
@@ -551,13 +624,12 @@ class Microscope:
         index = len([file for file in os.listdir(os.path.join(self.scriptDir, 'autocalibration')) if file.endswith('.json')])
         
         initial_pinhole_pos = int(self.pinhole)
-        self.close_pinhole(pinhole_size)
+        # self.close_pinhole(pinhole_size)
+        self.close_mono_shutter()
         
         for wl in wavelengths:
-            # self.close_pinhole_shutter()
-            self.go_to_laser_wavelength(wl, autoshutter=False)
-            self.go_to_grating_wavelength(wl, autoshutter=False)
-            # self.close_pinhole_shutter()
+            self.go_to_laser_wavelength(wl, autoshutter=True)
+            self.go_to_grating_wavelength(wl, autoshutter=True)
             scan_data = self.run_ldr0_scan()
             # Apply the conversion to ensure the data is serializable
             calibrationDict[float(wl)] = scan_data
@@ -608,11 +680,17 @@ class Microscope:
         print("LDR0:", ldr_value)
         return ldr_value
 
-    def move_grating_shutter(self, state):
-        if state == 'open' or state == 'o':
-            self.process_coms('gsh off')
-        elif state == 'close' or state == 'c':
-            self.process_coms('gsh on')
+    # def shutter_monochromator(self, state):
+    #     if state == 'open' or state == 'o':
+    #         self.process_coms('gsh off')
+    #     elif state == 'close' or state == 'c':
+    #         self.process_coms('gsh on')
+
+    def close_mono_shutter(self):
+        self.process_coms('gsh on')
+    
+    def open_mono_shutter(self):
+        self.process_coms('gsh off')
 
     def set_pinhole_pos(self, pos):
         try:
@@ -625,6 +703,8 @@ class Microscope:
         self.process_coms('setposb {},{},{},{}'.format(*grating_pos))
         self.pinhole = pos
         print('Pinhole position set to {}'.format(pos))
+
+        # [-1166.0, -1027.0, 0.0, 0.0]
 
     def move_pinhole(self, z):
         if self.pinhole is None:
@@ -781,13 +861,14 @@ class Microscope:
     def report_status(self):
         report = {
             'monochromator mode': self.monochromator_mode,
-            'laser l1, l2 lambda': self.current_laser_wavelength,
-            'g1 lambda': self.current_grating_wavelength,
-            'laser motor positions': self.get_laser_motor_positions(),
-            'grating motor positions': self.get_grating_motor_positions(),
+            'laser l1, l2 lambda': self.calculate_laser_position(),
+            'g1 lambda': self.calculate_grating_position(),
+            'TRIAX lambda': self.calculate_triax_position(),
+            'laser motor positions': self.laser_steps,
+            'grating motor positions': self.grating_steps,
             'laser wavenumber': self.current_laser_wavenumber,
-            'grating wavenumber': self.current_raman_wavenumber,
-            'Raman wavelength': self.current_raman_wavelength,
+            'grating wavenumber': self.current_grating_wavenumber,
+            # 'Raman wavelength': self.current_raman_wavelength,
             'Raman shift': self.current_shift,
             # 'pinhole': self.pinhole
         }
@@ -803,6 +884,8 @@ class Microscope:
             print('{}: {}'.format(key, value))
         print('-'*20)
 
+    def get_grating_wavelength(self):
+        return 
 
     @property
     def current_grating_wavelength(self):
@@ -814,17 +897,25 @@ class Microscope:
     
     @property
     def current_laser_wavenumber(self):
-        '''Takes the current raman shift and calculates the corresponding wavelength (i.e. for the detector calibration).'''
-        return 10_000_000/self.current_laser_wavelength[0]
+        '''Takes the current laser wavelength and calculates the absolute wavenumbers.'''
+        return 10_000_000/self.laser_wavelength[0]
+    
+    # def calculate_relative_shift(self, delta_lambda):
+    #     '''Calculates the '''
          
-    @property
-    def current_raman_wavelength(self):
-        '''Calculates the current wavelength that corresponds to the current Raman shift at this excitation wavelength.'''
-        return 10_000_000/self.current_raman_wavenumber
+    # @property
+    # def current_raman_wavelength(self):
+    #     '''Calculates the current wavelength that corresponds to the current Raman shift at this excitation wavelength.'''
+    #     return 10_000_000/self.self.current_grating_wavenumber
+
+    def calculate_raman_shift_wavelength(self, raman_shift):
+        '''Calculates the wavelength in nm that corresponds to the given raman shift at the current laser wavelength.'''
+        wavenumbers = self.current_laser_wavenumber - raman_shift
+        return 10_000_000/wavenumbers
 
     
     @property
-    def current_raman_wavenumber(self):
+    def current_grating_wavenumber(self):
         '''Takes the current laser wavenumber and calculates the absolute wavenumber for the current raman shift.'''
         return self.current_laser_wavenumber - self.current_shift
     
@@ -845,7 +936,7 @@ class Microscope:
         current_laser_pos = self.get_laser_motor_positions()
         current_laser_wavelength, l2_wavelength = self.calculate_laser_position(current_laser_pos)
         current_grating_pos = self.get_grating_motor_positions()
-        current_grating_wavenumber = self.current_raman_wavenumber
+        current_grating_wavenumber = self.self.current_grating_wavenumber
         # What the current wavelength should be at the detector
         current_detector_wavelength = self.wavenumber_to_wavelength(current_grating_wavenumber)
         print(current_detector_wavelength)
@@ -976,7 +1067,6 @@ class Microscope:
         
         print('Current laser pos: {}'.format(l1_pos))
         print('Current grating pos: {}'.format(g2_pos))
-        self.current_wavelength = l1_wavelength
 
         print('Current l1 wavelength: {}'.format(l1_wavelength))
         print('Current l2 wavelength: {}'.format(l2_wavelength))
@@ -985,10 +1075,7 @@ class Microscope:
         print('Current pinhole position: {}'.format(pin_pos))
 
         # TODO: Change to @property
-        # self.current_grating_wavelength = self.calculate_grating_position()
 
-        # print('Current laser wavelength: {}'.format(self.current_wavelength))
-        # print('Current grating wavelength: {}'.format(self.current_grating_wavelength))
 
         return 
         
@@ -1032,17 +1119,19 @@ class Microscope:
         else:
             current_laser_pos = current_pos
 
+        self.laser_steps = current_laser_pos
+
         l1_pos = current_laser_pos[0]
         l2_pos = current_laser_pos[1]
 
         l1_wavelength = self.calibrations.l1_to_wl(l1_pos)
         l2_wavelength = self.calibrations.l2_to_wl(l2_pos)
+
+        self.laser_wavelength = [l1_wavelength, l2_wavelength, 0, 0]
         
         # print('Current laser wavelength: {}'.format(l1_wavelength))
         return l1_wavelength, l2_wavelength
     
-
-
     def calculate_grating_position(self, current_pos=None):
         if current_pos is None:
             current_grating_pos = self.get_grating_motor_positions()
@@ -1053,11 +1142,15 @@ class Microscope:
         g2_pos = current_grating_pos[1]
         pin_pos = current_grating_pos[2]
 
+        self.grating_steps = current_grating_pos
+
         # if self.monochromator_mode == 'additive':
         #     g2_pos = g2_pos - self.to_addivite
 
         g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
         g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
+
+        self.grating_wavelength = [g1_wavelength, g2_wavelength, pin_pos, 0]
 
         return (g1_wavelength, g2_wavelength, pin_pos)
 
@@ -1067,26 +1160,25 @@ class Microscope:
         except ValueError:
             print('Invalid value for wavenumber - use a number')
             return
-        if self.current_wavelength is None:
+        if self.laser_wavelength is None:
             self.get_all_current_positions()
         
         # ;
-        # laser_wavenumber = 10_000_000/self.current_wavelength
         laser_wavenumber = self.current_laser_wavenumber
         # 
         wave = laser_wavenumber - wavenumber
         new_wavelength = 10_000_000/wave
         self.go_to_grating_wavelength(new_wavelength)
         self.current_shift = wavenumber
-        print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.current_wavelength))
+        print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.laser_wavelength[0]))
 
     def go_to_laser_wavelength(self, wavelength, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.
         Uses the calibrations to move the laser motors into position for a specified wavelength.'''
         # 
         if autoshutter is True:
-            # self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
-            self.close_pinhole(0)
+            # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+            self.close_mono_shutter()
 
         try:
             wavelength = float(wavelength)
@@ -1141,8 +1233,9 @@ class Microscope:
 
         print('Laser excitation at {}'.format(wavelength))
         if autoshutter is True:
+            self.laser_safety_check()
             # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
-            self.open_pinhole(self.save_pinhole)
+            self.open_mono_shutter()
 
     def close_pinhole(self, pos=0):
         self.save_pinhole = int(self.pinhole) # backs up last position
@@ -1160,19 +1253,6 @@ class Microscope:
         # breakpoint()
         print('Pinhole opened at {}'.format(pos))
 
-    # def close_pinhole_shutter(self):
-    #     response = self.process_coms('gsh on')
-    #     print('Pinhole g shutter closed')
-
-    # def open_pinhole_shutter(self):
-    #     response = self.process_coms('gsh off')
-    #     print('Pinhole g shutter opened')
-
-    # def pinhole_shutter(self, state):
-    #     if state == 'open':
-    #         self.open_pinhole_shutter()
-    #     elif state == 'closed':
-    #         self.close_pinhole_shutter()
 
     def go_to_laser_steps(self, laser_pos:list):
         '''Moves the laser motors to the specified position in steps.'''
@@ -1263,12 +1343,28 @@ class Microscope:
 
         print('Grating motors moved to position {}'.format(grating_pos))
 
+    def laser_safety_check(self, limit=20):
+        '''If the detector wavelength is within 20 wavenumbers of the laser wavelength, warn the user and prompt to overwrite or revert to a safe position.'''
+
+        # grating_wavelength = self.calculate_grating_position()[0]
+        if self.detector_safety is False:
+            return
+        
+        if self.current_laser_wavenumber + limit > self.current_grating_wavenumber < self.current_laser_wavenumber - limit:
+            print(f'Warning: Detection is within {limit} wavenumbers of the laser wavelength - press enter to revert to safety')
+            command = input()
+            if command == 'overwrite':
+                return
+            else:
+                pass
+            pass
+
     def go_to_grating_wavelength(self, wavelength, step=None, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''
 
         if autoshutter is True:
             # self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
-            self.close_pinhole(0)
+            self.close_mono_shutter()
 
         try:
             wavelength = float(wavelength)
@@ -1330,7 +1426,8 @@ class Microscope:
 
         if autoshutter is True:
             # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
-            self.open_pinhole(self.save_pinhole)
+            self.laser_safety_check()
+            self.open_mono_shutter()
 
 
             
@@ -1463,7 +1560,7 @@ class Microscope:
             gpb = gpb.split(',')
 
             laser_wavelength, l2_wavelength = self.calculate_laser_position()
-            grating_wavelength = self.current_raman_wavelength
+            grating_wavelength = self.grating_wavelength[0]
 
             
             with open(os.path.join(self.scriptDir, 'aapt.txt'), 'a') as f:
@@ -2111,7 +2208,7 @@ def discon():
     microscope.main()
 
 def cli():
-    microscope = Microscope(debug_skip=['laser', 'TRIAX'], unoCOM='COM10')
+    microscope = Microscope(debug_skip=['laser', 'TRIAX', 'camera'], unoCOM='COM10')
     # microscope.cli_commands()
     try:
         microscope.cli_commands()

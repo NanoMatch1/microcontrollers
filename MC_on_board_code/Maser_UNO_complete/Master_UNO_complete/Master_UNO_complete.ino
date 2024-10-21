@@ -91,13 +91,13 @@ void loop() {
 //   }
 // }
 
-void gShutter(String state) {
+void monoShutter(String state) {
   if (state == "on") {
-    digitalWrite(gShutPin, HIGH);
-    Serial.println("Shutter closed, LDR ready");
+    digitalWrite(gShutPin, LOW);
+    Serial.println("Shutter closed");
   }
   else if (state == "off") {
-    digitalWrite(gShutPin, LOW);
+    digitalWrite(gShutPin, HIGH);
     Serial.println("Shutter open");
   }
 }
@@ -293,7 +293,7 @@ void processCommand(String command) {
       return;
     }
     else if (com == "gsh") {
-      gShutter(comvalstring);
+      monoShutter(comvalstring);
       return;
     }
     else if (com == "ld0") {

@@ -38,10 +38,10 @@ void setup() {
   // pinMode(enablePinC, OUTPUT);
   // pinMode(enablePinD, OUTPUT);
 
-  stepperX.setMaxSpeed(2000);
-  stepperX.setAcceleration(100);
-  stepperY.setMaxSpeed(1000);
-  stepperY.setAcceleration(1000);
+  stepperX.setMaxSpeed(5000);
+  stepperX.setAcceleration(5000);
+  stepperY.setMaxSpeed(5000);
+  stepperY.setAcceleration(5000);
   stepperZ.setMaxSpeed(50);
   stepperZ.setAcceleration(200);
   stepperA.setMaxSpeed(1000);

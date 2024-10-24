@@ -1,23 +1,16 @@
-import os
-import numpy as np
-import serial
-import time
+import gpib_ctypes
 import pyvisa
+import time
+import serial
+import struct
 import threading
-import json
-import traceback
 import matplotlib.animation as animation
-import matplotlib.pyplot as plt
-import tkinter as tk
-
-from tkinter import ttk
-from tkinter import scrolledtext
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
+import json
+import sys
+import traceback
 from types import SimpleNamespace
 from dataclasses import dataclass
 from pixis_camera import PIXISCam
-
 
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
@@ -40,6 +33,15 @@ List of useful commands = {
 
 '''
 
+import tkinter as tk
+from tkinter import scrolledtext
+from tkinter import ttk
+import serial
+import threading
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+import numpy as np
+import os
 
 # def poly_sin_modulation_fit(x, a2, a1, a0, A, B, C, D):
 #     # Polynomial part
@@ -285,7 +287,7 @@ class Microscope:
     # Current grating wavelength: 802.7823897229985
     
 
-    def __init__(self, debug_skip=[], unoCOM='COM8'):
+    def __init__(self, debug_skip=['laser'], unoCOM='COM10'):
 
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
@@ -488,8 +490,8 @@ class Microscope:
             self.uno_serial = self.connect_to_UNO(unoCOM, baud=9600)
         if not 'laser' in debug_skip:
             self.laser_serial = self.connect_to_laser()
-        if not 'camera' in debug_skip:
-            self.camera = PIXISCam(self)
+        # if not 'camera' in debug_skip:
+        #     self.camera = PIXISCam(self)
             
         # if not 'APD' in debug_skip:
         #     self.apd_serial = self.connect_to_APD()
@@ -507,7 +509,7 @@ class Microscope:
         self.report_status()
 
         self.ammend_calibrations()
-        self.start_camera_ui()
+        # self.start_camera_ui()
         # self.process_coms('triax')
 
         # self.run_ldr0_scan()

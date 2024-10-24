@@ -6,13 +6,14 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
 import threading
 import time
+from drr_module import *
 
 
 class PIXISCam:
 
-    def __init__(self, Microscope=None):
+    def __init__(self):
         try:
-            self.microscope = Microscope
+            self.microscope = threading.Thread(target=Microscope).start()
             self.cam = PrincetonInstruments.PicamCamera()
             self.cam.set_attribute_value("Exposure Time", 100)
             self.cam.set_roi(0, 1024, 579, 579 + 35, 1, 35)
@@ -24,6 +25,10 @@ class PIXISCam:
         self.command_history = []  # List to store command history
         self.history_index = -1    # Index to track the current position in the history
         self.prompt_text = ">"  # Prompt text to indicate where the user types
+
+    def _debug(self):
+        print("Debugging")
+        breakpoint()
 
     def _initialise_ui(self):
         # Initialize the Tkinter window
@@ -171,11 +176,13 @@ class PIXISCam:
             if self.cam:
                 self.cam.close()
             self.root.quit()
+        elif command == 'debug':
+            self._debug()
         else:
             try:
-                threading.Thread(self.microscope.process_coms(command)).start()
+                self.microscope.process_coms(command)
             except Exception as e:
-                self.log_terminal(f"Error: {e}")
+                self.log_terminal(f"Error in main process command: {e}")
 
         self.write_prompt()  # Show the next prompt
 
@@ -220,3 +227,6 @@ class PIXISCam:
         # Start the Tkinter main loop
         self.root.mainloop()
 
+if __name__ == "__main__":
+    pc = PIXISCam()
+    pc.start_ui()

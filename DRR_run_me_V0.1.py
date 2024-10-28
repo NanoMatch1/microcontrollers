@@ -283,16 +283,32 @@ class Microscope:
     # standard positions:
     # Current laser wavelength: 802.7494779639835
     # Current grating wavelength: 802.7823897229985
+
+    ldr_scan_dict = {
+        'l2': {
+            'range': 150,
+            'resolution': 5,
+        },
+        'g1': {
+            'range': 150,
+            'resolution': 5,
+        },
+        'g2': {
+            'range': 150,
+            'resolution': 5,
+        }
+    }
     
 
     def __init__(self, debug_skip=[], unoCOM='COM8'):
 
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
-        if not os.path.exists(self.dataDir):
-            os.makedirs(self.dataDir)
+        self.transientDir = os.path.join(self.scriptDir, 'transient')
+        self.saveDir = os.path.join(self.dataDir, 'saved_data')
 
-        self.generate_calibrations(report=True)
+        self.__build_directories()
+        self.__generate_calibrations(report=True)
 
         self.scan_min = 800
         self.scan_max = 835
@@ -317,6 +333,7 @@ class Microscope:
         # self.to_addivite = -12990 -13108+39 
 
         self.acq_time = 1
+        self.current_filename = None
         self.centre_wavelength = 376886
 
         self.data = []
@@ -355,8 +372,11 @@ class Microscope:
             'calibrate': self.run_calibration,
             'gtgsteps': self.go_to_grating_steps,
             'homemono': self.home_motors_monochromator,
-            'camera': self.start_camera_ui,
+            'camera': self.start_camera_ui, # for testing
             'pixelcal': self.calibrate_triax_pixels,
+            'acquire': self.acquire_spectrum,
+            'run': self.continuous_acquire,
+            'stop': self.stop_continuous_acquire,
             # 'testacq': self.test_acquire_series,
 
             # 'changemode': self.change_monochromator_mode,
@@ -364,10 +384,6 @@ class Microscope:
             # additive reference at 220: [83, -13108...]
 
         }
-        
-        # -12858 (0 optically)
-        # -12973 (220 optically and 220 mechanically)
-
 
         # commands for controlling TRIAX spectrometer
         self.spectrometer_dict = {
@@ -446,10 +462,10 @@ class Microscope:
         # additive position: Y -12984, subtractive = 0
 
         self.acquisition_dict = {
-            'acq': 'acq', 
+            # 'acq': 'acq', 
             # 'run': 'run',
             'gsh': 'gsh',
-            # 'rldr0': 'ld0'
+            'rldr0': 'ld0'
 
 
         }
@@ -507,11 +523,21 @@ class Microscope:
         self.report_status()
 
         self.ammend_calibrations()
-        self.start_camera_ui()
+        # self.start_camera_ui()
         # self.process_coms('triax')
 
         # self.run_ldr0_scan()
         # self.run_calibration((800, 810), 5)
+
+    def __build_directories(self):
+        '''Builds all the directories required for the system to run.'''
+
+        if not os.path.exists(self.dataDir):
+            os.makedirs(self.dataDir)
+        if not os.path.exists(self.transientDir):
+            os.makedirs(self.transientDir)
+        if not os.path.exists(self.saveDir):
+            os.makedirs(self.saveDir)
 
     def go_to_wavelength_all(self, wavelength):
         self.go_to_laser_wavelength(wavelength)
@@ -580,9 +606,42 @@ class Microscope:
                 with open(os.path.join(os.path.join(self.scriptDir, 'triax_calibration'), f'{idx}_triax-calibration_{window}nm.json'), 'w') as f:
                     json.dump(frame, f)
         return data
+    
+    def write_data_transient(self, data, filename):
+        '''Writes the data to a file in the data directory for transient data.'''
 
 
-    def acquire_spectrum(self, raman_shift=250, window=12):
+    def acquire_spectrum(self):
+        '''Acquires a single spectrum and saves it in the saved_data directory.'''
+
+        data = self.camera.acquire_one_frame()
+        data = np.array(data, dtype=np.int32) # convert to numpy array for fast saving
+        file_index = len([x for x in os.listdir(self.saveDir) if x[:-4] == self.filename])
+        filename = os.path.join(self.saveDir, self.current_filename, f'_{file_index}.npy')
+        
+        while True:
+            try:
+                np.save(filename, data)
+                return data
+            except PermissionError:
+                print('File in use. Waiting 0.1 s...')
+                time.sleep(0.1)
+                continue
+
+    def continuous_acquire(self):
+        '''Runs the continuous acquisition of the camera and saves the data to the transient directory.'''
+        self.camera.start_continuous_acquisition() # threaded for non-blocking use
+        # self.camera.continuous_acquisition() # for debugging
+
+    def stop_continuous_acquire(self):
+        '''Stops the continuous acquisition of the camera.'''
+        self.camera.stop_continuous_acquisition()
+
+    # def save_transient_data(self, data):
+    #     np.save(os.path.join(self.transientDir, 'transient_data.npy'), data)
+
+
+    def acquire_spectrum_step_scan(self, raman_shift=250, window=12):
         '''Takes the number of spectra required to cover the specified raman_shift. Converts shifts to wavelength using the current laser position in order to compensate for the non-linear dispersed spectral window. i.e. longer wavelengths disperse more.'''
         starting_wavenumber = self.current_laser_wavenumber
         starting_wavelength = self.current_laser_wavelength
@@ -680,9 +739,9 @@ class Microscope:
         # breakpoint()
 
 
-    def run_calibration(self, wavelength_range: tuple, resolution: float, motor:str, pinhole_size=15):
-        if motor.lower() not in ['g1', 'g2']:
-            print("Invalid motor. Must be 'g1' or 'g2'")
+    def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5):
+        if motor.lower() not in ['g1', 'g2', 'l2']:
+            print("Invalid motor. Must be 'g1' or 'g2' or 'l2'")
             return
 
         def convert_to_serializable(obj):
@@ -714,14 +773,14 @@ class Microscope:
             return
         index = len([file for file in os.listdir(os.path.join(self.scriptDir, 'autocalibration')) if file.endswith('.json')])
         
-        initial_pinhole_pos = int(self.pinhole)
+        # initial_pinhole_pos = int(self.pinhole)
         # self.close_pinhole(pinhole_size)
         self.close_mono_shutter()
         
         for wl in wavelengths:
             self.go_to_laser_wavelength(wl, autoshutter=True)
             self.go_to_grating_wavelength(wl, autoshutter=True)
-            scan_data = self.run_ldr0_scan()
+            scan_data = self.run_ldr0_scan(motor)
             # Apply the conversion to ensure the data is serializable
             calibrationDict[float(wl)] = scan_data
 
@@ -737,18 +796,28 @@ class Microscope:
         self.go_to_laser_steps(initial_laser)
         self.go_to_grating_steps(initial_grating)
 
-        self.open_pinhole(initial_pinhole_pos)
+        # self.open_pinhole(initial_pinhole_pos)
     
     # def close_pinhole(self):
     #     self.
     
-    def run_ldr0_scan(self, search_length=25, resolution=1):
-        current_pos = self.grating_steps[0]
+    def run_ldr0_scan(self, motor, search_length=None, resolution=None):
+        if motor not in ['g1', 'g2', 'l2']:
+            print("Invalid motor. Must be 'g1', 'g2', or 'l2'")
+            return
+        if search_length is None:
+            search_length = self.ldr_scan_dict[motor]['range']
+        if resolution is None:
+            resolution = self.ldr_scan_dict[motor]['resolution']
+
+        # build a dictionary of motor positions
+        posDict = {'l1': self.laser_steps[0], 'l2': self.laser_steps[1], 'g1': self.grating_steps[0], 'g2': self.grating_steps[1]}
+        current_pos = posDict[motor]
         scan_data = []
         scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
 
         for idx, final_pos in enumerate(scan_points):
-            self.process_coms("g1 {}".format(final_pos - current_pos))
+            self.process_coms("{} {}".format(motor, final_pos - current_pos))
             if idx == 0:
                 # self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
                 self.wait_for_motors()
@@ -838,44 +907,50 @@ class Microscope:
         # breakpoint()
         print('Calibration locked. G2 is now a function of G1 at this position.')
 
-    def ammend_calibrations(self):
-        '''If an autocalibration has been performed, this function will update the current calibrations with the new data.'''
-        json_files = [f for f in os.listdir(self.scriptDir) if f.endswith('autocal.json')]
+    def ammend_calibrations(self, report=True):
+        '''If an autocalibration has been performed, this function will update the current calibrations with the new data. Loads individual files'''
+        json_files = [f for f in os.listdir(self.calibrationDir) if f.endswith('autocal.json')]
 
 
         if len(json_files) == 0:
             print('No autocalibration data found.')
             return
         
+        report_dict = {}
+
         for file in json_files:
 
-            with open(os.path.join(self.scriptDir, file), 'r') as f:
+            with open(os.path.join(self.calibrationDir, file), 'r') as f:
                 data = json.load(f)
 
             for name, calib in data.items():
-                print("Updating {} with autocalibration data".format(name))
+                # print("Updating {} with autocalibration data".format(name))
                 if len(calib) == 7:
-                    print("Loading {} as poly_sin".format(name))
+                    # print("Loading {} as poly_sin".format(name))
+                    report_dict[name] ='poly_sin'
                     self.calibrations.__setattr__(name, PolySinModulation(*calib))
                 elif len(calib) == 6:
-                    print("Loading {} as lin_sin".format(name))
+                    # print("Loading {} as lin_sin".format(name))
+                    report_dict[name] = 'lin_sin'
                     self.calibrations.__setattr__(name, LinSinModulation(*calib))
                 else:
-                    print("Loading {} as poly1d".format(name))
+                    # print("Loading {} as poly1d".format(name))
+                    report_dict[name] = 'poly1d'
                     self.calibrations.__setattr__(name, np.poly1d(calib))
 
+        if report:
+            for key, value in report_dict.items():
+                print(f'{key} updated as {value}')
         print('Calibrations updated with autocalibration data')
+        print('-'*20)
 
 
-    def generate_calibrations(self, report=False):
-        if os.path.exists(os.path.join(self.scriptDir, 'calibrations.json')):
-            with open(os.path.join(self.scriptDir, 'calibrations.json'), 'r') as f:
-                calibrations = json.load(f)
-                print('Calibrations loaded from file')
-        
-        else:
-            calibrations = Microscope.calibration_backup
-            print('Calibration file not found, using backup')
+    def __generate_calibrations(self, report=False):
+        self.calibrationDir = os.path.join(self.scriptDir, 'calibrations')
+
+        with open(os.path.join(self.calibrationDir, 'calibrations_main.json'), 'r') as f:
+            calibrations = json.load(f)
+            print('Calibrations loaded from file')
         
         self.all_calibrations = calibrations
         self.calibrations = SimpleNamespace()
@@ -1008,7 +1083,7 @@ class Microscope:
     # @property
     # def current_raman_wavelength(self):
     #     '''Calculates the current wavelength that corresponds to the current Raman shift at this excitation wavelength.'''
-    #     return 10_000_000/self.self.current_grating_wavenumber
+    #     return 10_000_000/self.current_grating_wavenumber
 
     def calculate_raman_shift_wavelength(self, raman_shift):
         '''Calculates the wavelength in nm that corresponds to the given raman shift at the current laser wavelength.'''
@@ -1038,7 +1113,7 @@ class Microscope:
         current_laser_pos = self.get_laser_motor_positions()
         current_laser_wavelength, l2_wavelength = self.calculate_laser_wavelength(current_laser_pos)
         current_grating_pos = self.get_grating_motor_positions()
-        current_grating_wavenumber = self.self.current_grating_wavenumber
+        current_grating_wavenumber = self.current_grating_wavenumber
         # What the current wavelength should be at the detector
         current_detector_wavelength = self.wavenumber_to_wavelength(current_grating_wavenumber)
         print(current_detector_wavelength)
@@ -1547,10 +1622,12 @@ class Microscope:
 
 
 
-    def reference_calibration(self, steps):
+    def reference_calibration(self, steps=None):
         '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
         # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
         # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
+        if steps is None:
+            steps = self.get_triax_steps()
         true_wavelength = self.calibrations.triax_steps_to_wl(float(steps))
         print('True wavelength: {}. Shifting motor positions to true wavelength'.format(true_wavelength))
         

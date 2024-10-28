@@ -298,7 +298,7 @@ void processCommand(String command) {
     }
     else if (com == "ld0") {
       int count = 0;
-      while (count < 5) {
+      while (count < 10) {
         ldr0value += analogRead(ldr0pin);
         count ++;
       }

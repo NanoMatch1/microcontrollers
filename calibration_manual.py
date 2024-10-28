@@ -280,9 +280,12 @@ class Calibration:
         sorted_data = cal_data_array[np.argsort(cal_data_array[:, 0])]
         sorted_data_grating = cal_data_array[np.argsort(cal_data_array[:, -1])]
 
+        # breakpoint()
+
         # cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
         # sort by grating wavelength
-        cal_data = {header: sorted_data_grating[:, idx] for idx, header in enumerate(headers)}
+        # cal_data = {header: sorted_data_grating[:, idx] for idx, header in enumerate(headers)}
+        cal_data = {header: sorted_data[:, idx] for idx, header in enumerate(headers)}
 
         self.laser_wavelength_axis = cal_data['laser_wl']
         self.grating_wavelength_axis = cal_data['grating_wl']
@@ -368,7 +371,8 @@ class Calibration:
             for key, value in data.items():
                 newDict[mode][key] = (value[0].__dict__, value[1])
 
-        with open(os.path.join(os.path.dirname(__file__), 'calibration_report.json'), 'w') as f:
+        calibrationDir = os.path.join(os.path.dirname(__file__), 'calibrations')
+        with open(os.path.join(calibrationDir, 'calibration_report.json'), 'w') as f:
             json.dump(newDict, f)
     
     def build_wavelength_axis(self, initial_wavelength_cal, l1_data):
@@ -386,10 +390,17 @@ class Calibration:
         print("Successfully saved TRIAX calibration data to 'TRIAX_calibration.json' file.")
 
     def save_all_calibrations(self):
-        with open(os.path.join(os.path.dirname(__file__), 'calibrations.json'), 'w') as f:
+        calibrationDir = os.path.join(os.path.dirname(__file__), 'calibrations')
+        with open(os.path.join(calibrationDir, 'calibrations_main.json'), 'w') as f:
             json.dump(calibration.calibrations, f)
 
-        print("Calibration complete: Successfully saved calibration data to 'calibrations.json' file.")
+        print("Calibration complete: Successfully saved calibration data to 'calibrations_main.json' file.")
+
+    def save_new_calibrations(self):
+        with open(os.path.join(os.path.dirname(__file__), 'c-new.json'), 'w') as f:
+            json.dump(self.calibrations, f)
+
+        print("temporary calibrations saved")
 
     def calculate_triax_steps(self, steps_and_pixels: tuple, wavelength_axis=None, calib_dict=None):
         '''Perparatory calculation. Calculates the correct number of steps for each wavelength in the calibration data to be at pixel 50 on the spectrometer'''
@@ -1262,12 +1273,13 @@ if __name__ == '__main__':
         calibration.wavelength_to_triax()
         calibration.triax_steps_to_wavelength()
     
-    def subtractive_calibrations(calibration, cal_data):
+    def subtractive_calibrations(calibration, cal_data, repeat=False):
         # cal_data, cal_data_array = calibration.load_eept_file()
-        calibration.wavelength_to_l1(cal_data['l1'], mode='subtractive')
-        calibration.l1_to_wavelength(cal_data['l1'], mode='subtractive')
-        calibration.wavelength_to_l2(cal_data['l2'], mode='subtractive')
-        calibration.l2_to_wavelength(cal_data['l2'], mode='subtractive')
+        if repeat is True:
+            calibration.wavelength_to_l1(cal_data['l1'], mode='subtractive')
+            calibration.l1_to_wavelength(cal_data['l1'], mode='subtractive')
+            calibration.wavelength_to_l2(cal_data['l2'], mode='subtractive')
+            calibration.l2_to_wavelength(cal_data['l2'], mode='subtractive')
         calibration.wavelength_to_g1(cal_data['g1'], mode='subtractive', show=False)
         calibration.g1_to_wavelength(cal_data['g1'], mode='subtractive', show=False)
         calibration.wavelength_to_g2(cal_data['g2'], mode='subtractive', show=False)
@@ -1275,8 +1287,19 @@ if __name__ == '__main__':
 
     # FEAT Make additive calibrations
 
-    def additive_calibrations(calibration, cal_data, repeat=False):
+    def additive_calibrations(calibration, cal_data, repeat=False, duplicate=False):
         # cal_data, cal_data_array = calibration.load_aapt_file()
+        if duplicate is True:
+            additive_dict = {}
+            for key, cal in calibration.calibrations.items():
+                if 'subtractive' in key:
+
+                    basename = key.split('_')[:-1]
+                    basename = '_'.join(basename)
+                    additive_dict['{}_additive'.format(basename)] = cal
+            calibration.calibrations.update(additive_dict)
+
+            return
         
         if repeat is True:
             # calibrate L1
@@ -1293,8 +1316,6 @@ if __name__ == '__main__':
         g1_steps = cal_data['g1']
         calibration.wavelength_to_g1(g1_steps, mode='additive')
         calibration.g1_to_wavelength(g1_steps, mode='additive')
-        # calibration.wavelength_to_g1_tester(g1_steps, mode='additive', show=True)
-        # calibration.g1_to_wavelength_tester(g1_steps, mode='additive', show=True)
 
         # calibrate G2
         g2_steps = cal_data['g2']
@@ -1307,11 +1328,14 @@ if __name__ == '__main__':
     triax_calibrations(calibration, cal_data)
     cal_data, cal_data_array = calibration.load_aapt_file()
     subtractive_calibrations(calibration, cal_data)
-    additive_calibrations(calibration, cal_data)
+    additive_calibrations(calibration, cal_data, duplicate=True)
+    
+    print(calibration.calibrations)
+    breakpoint()
     # TRIAX cal is absolute - only needs to be saved once
     # calibration.save_triax_calibrations()
-    calibration.save_all_calibrations()
-    calibration.save_report()
+    # calibration.save_all_calibrations()
+    # calibration.save_report()
     # review_report()
     # print(calibration.calibrations)
 

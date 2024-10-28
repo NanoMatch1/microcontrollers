@@ -6,6 +6,7 @@ from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 import tkinter as tk
 import threading
 import time
+import os
 
 
 class PIXISCam:
@@ -13,10 +14,13 @@ class PIXISCam:
     def __init__(self, Microscope=None):
         try:
             self.microscope = Microscope
+            self.transientDir = self.microscope.transientDir
+
             self.cam = PrincetonInstruments.PicamCamera()
             self.cam.set_attribute_value("Exposure Time", 100)
             self.cam.set_roi(0, 1024, 579, 579 + 35, 1, 35)
             self.camera_lock = threading.Lock()  # Initialize a lock
+            self.stop_flag = threading.Event() # Initialize a stop flag
         except Exception as e:
             print(f"Camera initialization failed: {e}")
             self.cam = None
@@ -37,7 +41,7 @@ class PIXISCam:
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
 
         # Variables for camera control
-        self.stop_flag = threading.Event()
+        # self.stop_flag = threading.Event()
 
         # Terminal display for command input/output
         self.terminal_display = tk.Text(self.root, height=20, width=50)
@@ -84,23 +88,32 @@ class PIXISCam:
         self.cam.clear_acquisition()
         if frame is None:
             return
-
-        data = self._update_plot(frame)
+        data = frame[0]
+        # data = self._update_plot(frame)
         return data
 
     def continuous_acquisition(self):
+        '''Acquires frames continuously until the stop flag is set. Saves the data to the transient file for plotting.'''
         self.stop_flag.clear()
         self.cam.setup_acquisition(mode='sequence', nframes=100)
         self.cam.start_acquisition()
+        self.write_dir = self.microscope.transientDir
 
         while not self.stop_flag.is_set():
             try:
                 with self.camera_lock:
+                    self.cam.wait_for_frame()
                     frame = self.cam.read_oldest_image()
-                data = self._update_plot(frame)
-                time.sleep(0.01)
+                # data = self._update_plot(frame)
+                if frame is None:
+                    continue
+
+                data = np.array(frame[0], dtype=np.int32)
+                np.save(os.path.join(self.transientDir, "transient_data.npy"), data)
+                time.sleep(0.001)
             except Exception as e:
-                self.log_terminal(f"Acquisition error: {e}")
+                # self.log_terminal(f"Acquisition error: {e}")
+                print(f"Acquisition error: {e}")
                 break
 
         self.cam.stop_acquisition()
@@ -109,8 +122,10 @@ class PIXISCam:
         acq_thread = threading.Thread(target=self.continuous_acquisition)
         acq_thread.daemon = True
         acq_thread.start()
+        print("Started continuous acquisition.")
 
     def stop_continuous_acquisition(self):
+        print("Stopping continuous acquisition.")
         self.stop_flag.set()
 
     def log_terminal(self, message):
@@ -172,10 +187,10 @@ class PIXISCam:
                 self.cam.close()
             self.root.quit()
         else:
-            try:
-                threading.Thread(self.microscope.process_coms(command)).start()
-            except Exception as e:
-                self.log_terminal(f"Error: {e}")
+            self.log_terminal(f"Error: {e}")
+            # try:
+                # threading.Thread(self.microscope.process_coms(command)).start()
+            # except Exception as e:
 
         self.write_prompt()  # Show the next prompt
 

@@ -159,7 +159,7 @@ class Peak:
 
 class AutoCalibration:
 
-    def __init__(self, showplots=True, exclude=[]):
+    def __init__(self, showplots=True, exclude=[], **kwargs):
         self.excluded = exclude
         self.data_mask_dict = {'l1': (710, 880), 'l2': (710, 880), 'g1': (710, 880), 'g2': (710, 880)}
         self.motor_calibrations = {
@@ -174,6 +174,7 @@ class AutoCalibration:
         self.calibrations = {}
         self.report_dict = {'initial': {}, 'subtractive': {}, 'additive': {}}
         self.autocal_dict = self.collect_autocalibration_files()
+        self.kwargs = kwargs
 
     def collect_autocalibration_files(self):
         '''Collect all calibration files from the calibration directory and sorts into the latest for each type.'''
@@ -197,15 +198,31 @@ class AutoCalibration:
         
         return autocal_dict
     
-    def autocalibrate_all(self):
+    def autocalibrate_all(self, manual=False):
         for motor_type, file in self.autocal_dict.items():
             if file is None or motor_type in self.excluded:
                 continue
-            dataSet = self.peakfit_autocal(file, motor_type)
+            dataSet = self.peakfit_autocal(file, motor_type, manual=manual)
             self.generate_autocal(motor_type, dataSet=dataSet)
+    
+    def autocalibrate_single(self, motor_type, manual=False, load=False, **kwargs):
+        file = self.autocal_dict.get(motor_type)
+        if file is None:
+            print(f'No calibration file found for {motor_type}.')
+            return
+        print("Calibrating motor type: {}".format(motor_type))
+        print(file)
+        if load is True:
+            filename = 'peakfit_autocal_{}'.format(motor_type)
+            dataSet = asp.DataSet(dataDir)
+            dataSet.load_database(filename)
+        else:
+            dataSet = self.peakfit_autocal(file, motor_type, manual=manual, **kwargs)
+        self.generate_autocal(motor_type, dataSet=dataSet, **kwargs)
 
 
-    def peakfit_autocal(self, file, motor_type):
+    def peakfit_autocal(self, file, motor_type, manual=False, **kwargs):
+        smoothing = self.kwargs.get('smoothing', 3)
         dataSet = asp.DataSet(dataDir, fileList=[file])
         data_mask = self.data_mask_dict[motor_type]
 
@@ -217,7 +234,7 @@ class AutoCalibration:
         for cal_obj in dataSet.dataDict.values():
             # cal_obj._invert_data()
             cal_obj._minimise_data()
-            cal_obj._apply_smoothing(window_length=3)
+            cal_obj._apply_smoothing(window_length=smoothing)
             # cal_obj._plot_individual()
         # dataSet.plot_current()
         
@@ -225,17 +242,17 @@ class AutoCalibration:
             'peak_list': [],
             'peak_type': 'voigt_pseudo',
             'peak_sign': 'positive',
-            'threshold': 0.01, # percentage of max intensity
+            'threshold': 0.01, # percentage of max intensity;
             'peak_detect': 'all',
             'copy_peaks': False,
-            'show_ui': False,
+            'show_ui': manual,
         } 
         dataSet._peakfit(peakfitting_info=peakfitting_info)
         # dataSet.plot_peaks()
-        dataSet.save_database(tagList='', seriesName=calibration_name)
+        dataSet.save_database(tagList='', seriesName='peakfit_autocal_{}'.format(motor_type))
         return dataSet
 
-    def generate_autocal(self, motor_type, dataSet=None):
+    def generate_autocal(self, motor_type, dataSet=None, poly_order=1):
         key_index = {
             'pos': 1,
             'amp': 2,
@@ -255,18 +272,16 @@ class AutoCalibration:
             peaks = peakdict['peaks']
             if len(peaks) == 0:
                 continue
-            # print(wave, peaks)
             for peak in peaks:
-                # breakpoint()
                 peak_list.append(Peak(*peak))
             if len(peak_list) > 1:
                 peak_list.sort(key=lambda x: x.amp)
-            peak = peak_list[0]
+            peak = peak_list[-1]
             calibration_peaks[wave] = peak
+            print(peak_list)
 
         for key, value in calibration_peaks.items():
             print(key, value)
-        # breakpoint()
 
         data = [(key, value.pos) for key, value in calibration_peaks.items()]
         data.sort(key=lambda x: x[0])
@@ -275,18 +290,13 @@ class AutoCalibration:
         self.data_array = data
         self.wavelength_axis = data[:, 0]
 
-        fit, fitmetrics1 = self.motor_calibrations[motor_type][0](mode='subtractive', show=True, model='poly', poly_order=2)
+        fit, fitmetrics1 = self.motor_calibrations[motor_type][0](mode='subtractive', show=True, model='poly', poly_order=poly_order)
         print(fit)
         print(fitmetrics1)
-        fit, fitmetrics2 = self.motor_calibrations[motor_type][1](mode='subtractive', show=True, model='poly', poly_order=2)
+        fit, fitmetrics2 = self.motor_calibrations[motor_type][1](mode='subtractive', show=True, model='poly', poly_order=poly_order)
         print(fit)
         print(fitmetrics2)
-        # fit, fitmetrics3 = calibration.wavelength_to_g1_test(mode='subtractive', show=True, poly_order=1)
-        # print(fit)
-        # print(fitmetrics3)
-        breakpoint()
         self.save_calibration('autocal_{}'.format(motor_type))
-        breakpoint()
             
 
     
@@ -312,7 +322,8 @@ class AutoCalibration:
     
 
     def save_calibration(self, filename):
-        with open(os.path.join(os.path.dirname(__file__), '{}_autocal.json'.format(filename)), 'w') as f:
+        self.calibrationDir = os.path.join(os.path.dirname(__file__), 'calibrations')
+        with open(os.path.join(self.calibrationDir, '{}_autocal.json'.format(filename)), 'w') as f:
             json.dump(self.calibrations, f)
 
         print("Calibration complete: Successfully saved calibration data to 'calibrations.json' file.")
@@ -323,11 +334,87 @@ class AutoCalibration:
     def l1_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
         pass
 
-    def wavelength_to_l2(self, poly_order=1, mode=None, show=False, model='poly'):
-        pass
+    def wavelength_to_l2(self, poly_order=2, mode=None, model='poly', show=False):
+        '''Calibration for using laser wavelength to calculate L2 steps.'''
 
-    def l2_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
-        pass
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        # if mode == 'subtractive':
+        #     wavelength_axis = self.laser_wavelength_axis
+        #     print('using laser wavelength axis')
+        # elif mode == 'additive':
+        #     wavelength_axis = self.grating_wavelength_axis
+        #     print('using grating wavelength axis')
+
+        wavelength_axis = self.wavelength_axis
+        l2_steps = self.data_array[:, 1]
+
+        fit_coeff_wavelength_to_l2 = np.polyfit(wavelength_axis, l2_steps, poly_order)
+        p_wavelength_to_l2 = np.poly1d(fit_coeff_wavelength_to_l2)
+
+        y_pred = p_wavelength_to_l2(wavelength_axis)
+        residuals = l2_steps - y_pred
+
+        # Fit quality metrics
+        fit_metrics = self.calculate_fit_metrics(l2_steps, y_pred)
+        self.report_dict[mode]['wl_to_l2'] = (fit_metrics, fit_coeff_wavelength_to_l2.tolist())
+
+        if show is True or self.showplots is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(wavelength_axis, l2_steps, label='L2 Steps')
+            ax[0].plot(wavelength_axis, p_wavelength_to_l2(wavelength_axis), label='L2 Steps fit', color='tab:purple')
+            residuals = l2_steps - p_wavelength_to_l2(wavelength_axis)
+            ax[1].plot(wavelength_axis, residuals, label='L2 Steps residuals', marker='o')
+            ax[0].set_title('Wavelength to L2 Steps')
+            ax[0].legend()
+            ax[1].legend()
+            plt.show()
+
+        self.calibration_metrics['wl_to_l2'] = fit_metrics
+        self.calibrations['wl_to_l2'] = fit_coeff_wavelength_to_l2.tolist()
+
+        return fit_coeff_wavelength_to_l2, fit_metrics
+        
+    def l2_to_wavelength(self, poly_order=2, mode=None, model='poly', show=False):
+        '''Reverse calibration for calculating laser wavelength from L2 steps.'''
+
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        # if mode == 'subtractive':
+        #     wavelength_axis = self.laser_wavelength_axis
+        #     print('using laser wavelength axis')
+        # elif mode == 'additive':
+        #     wavelength_axis = self.grating_wavelength_axis
+        #     print('using grating wavelength axis')
+
+        wavelength_axis = self.wavelength_axis
+        l2_steps = self.data_array[:, 1]
+
+        fit_coeff_l2_to_wavelength = np.polyfit(l2_steps, wavelength_axis, poly_order)
+        p_l2_to_wavelength = np.poly1d(fit_coeff_l2_to_wavelength)
+
+        y_pred = p_l2_to_wavelength(l2_steps)
+        residuals = wavelength_axis - y_pred
+
+        # Fit quality metrics
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
+        self.report_dict[mode]['l2_to_wl'] = (fit_metrics, fit_coeff_l2_to_wavelength.tolist())
+
+        if show is True or self.showplots is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(l2_steps, wavelength_axis, label='Wavelength')
+            ax[0].plot(l2_steps, p_l2_to_wavelength(l2_steps), label='Wavelength fit', color='tab:purple')
+            residuals = wavelength_axis - p_l2_to_wavelength(l2_steps)
+            ax[1].plot(l2_steps, residuals, label='Wavelength residuals', marker='o')
+            ax[0].set_title('L2 Steps to Wavelength')
+            ax[0].legend()
+            ax[1].legend()
+            plt.show()
+
+        self.calibration_metrics['l2_to_wl'] = fit_metrics
+        self.calibrations['l2_to_wl'] = fit_coeff_l2_to_wavelength.tolist()
+
+        return fit_coeff_l2_to_wavelength, fit_metrics
 
     def wavelength_to_g1(self, poly_order=1, mode=None, show=False, model='poly'):
         '''Calibration for using laser wavelength to calculate G1 steps.'''
@@ -733,81 +820,81 @@ def mask_data(dataDict, range:tuple):
     return newData
     
 
-def peakfit_autocal(scriptDir, dataDir, calibration_name):
-    working_calibration_file = get_latest_calibration_file(dataDir)
-    dataSet = asp.DataSet(dataDir, fileList=[working_calibration_file])
+# def peakfit_autocal(scriptDir, dataDir, calibration_name):
+#     working_calibration_file = get_latest_calibration_file(dataDir)
+#     dataSet = asp.DataSet(dataDir, fileList=[working_calibration_file])
 
-    fileObj = dataSet.dataDict.get(working_calibration_file)
-    dataSet.dataDict = fileObj.data
-    dataSet.dataDict = mask_data(dataSet.dataDict, (710, 880))
+#     fileObj = dataSet.dataDict.get(working_calibration_file)
+#     dataSet.dataDict = fileObj.data
+#     dataSet.dataDict = mask_data(dataSet.dataDict, (710, 880))
     
 
-    for cal_obj in dataSet.dataDict.values():
-        # cal_obj._invert_data()
-        cal_obj._minimise_data()
-        cal_obj._apply_smoothing(window_length=7)
-        # cal_obj._plot_individual()
+#     for cal_obj in dataSet.dataDict.values():
+#         # cal_obj._invert_data()
+#         cal_obj._minimise_data()
+#         cal_obj._apply_smoothing(window_length=7)
+#         # cal_obj._plot_individual()
     
-    dataSet.plot_current()
+#     dataSet.plot_current()
 
 
-    # dataSet.minimise_all()
-    # dataSet.baseline_all(show=False, lam=100, p=0.01)
+#     # dataSet.minimise_all()
+#     # dataSet.baseline_all(show=False, lam=100, p=0.01)
 
-    peakfitting_info = {
-        'peak_list': [],
-        'peak_type': 'voigt_pseudo',
-        'peak_sign': 'positive',
-        'threshold': 0.01, # percentage of max intensity
-        'peak_detect': 'all',
-        'copy_peaks': False,
-    } 
-    dataSet._peakfit(peakfitting_info=peakfitting_info)
-    dataSet.save_database(tagList='', seriesName=calibration_name)
+#     peakfitting_info = {
+#         'peak_list': [],
+#         'peak_type': 'voigt_pseudo',
+#         'peak_sign': 'positive',
+#         'threshold': 0.01, # percentage of max intensity
+#         'peak_detect': 'all',
+#         'copy_peaks': False,
+#     } 
+#     dataSet._peakfit(peakfitting_info=peakfitting_info)
+#     dataSet.save_database(tagList='', seriesName=calibration_name)
 
-def generate_autocal(scriptDir, dataDir, calibration_name):
-    key_index = {
-        'pos': 1,
-        'amp': 2,
-        'fwhm': 3,
-    }
-    dataSet = asp.DataSet(dataDir)
-    dataSet.load_database(calibration_name)
-    # dataSet.plot_peaks()
-    # dataSet.plot_current()
+# def generate_autocal(scriptDir, dataDir, calibration_name):
+#     key_index = {
+#         'pos': 1,
+#         'amp': 2,
+#         'fwhm': 3,
+#     }
+#     dataSet = asp.DataSet(dataDir)
+#     dataSet.load_database(calibration_name)
+#     # dataSet.plot_peaks()
+#     # dataSet.plot_current()
 
-    calibration_peaks = {}
+#     calibration_peaks = {}
 
-    for wave, peakdict in dataSet.peakfitDict.items():
-        peak_list = []
-        peaks = peakdict['peaks']
-        if len(peaks) == 0:
-            continue
-        # print(wave, peaks)
-        for peak in peaks:
-            # breakpoint()
-            peak_list.append(Peak(*peak))
-        if len(peak_list) > 1:
-            peak_list.sort(key=lambda x: x.amp)
-        peak = peak_list[0]
-        calibration_peaks[wave] = peak
+#     for wave, peakdict in dataSet.peakfitDict.items():
+#         peak_list = []
+#         peaks = peakdict['peaks']
+#         if len(peaks) == 0:
+#             continue
+#         # print(wave, peaks)
+#         for peak in peaks:
+#             # breakpoint()
+#             peak_list.append(Peak(*peak))
+#         if len(peak_list) > 1:
+#             peak_list.sort(key=lambda x: x.amp)
+#         peak = peak_list[0]
+#         calibration_peaks[wave] = peak
 
-    for key, value in calibration_peaks.items():
-        print(key, value)
-    # breakpoint()
-    calibration = Calibration(calibration_peaks, showplots=True)
-    fit, fitmetrics1 = calibration.wavelength_to_g1(mode='subtractive', show=True, model='poly', poly_order=1)
-    print(fit)
-    print(fitmetrics1)
-    fit, fitmetrics2 = calibration.g1_to_wavelength(mode='subtractive', show=True, model='poly', poly_order=1)
-    print(fit)
-    print(fitmetrics2)
-    # fit, fitmetrics3 = calibration.wavelength_to_g1_test(mode='subtractive', show=True, poly_order=1)
-    # print(fit)
-    # print(fitmetrics3)
-    breakpoint()
-    calibration.save_calibration(calibration_name)
-    breakpoint()
+#     for key, value in calibration_peaks.items():
+#         print(key, value)
+#     # breakpoint()
+#     calibration = Calibration(calibration_peaks, showplots=True)
+#     fit, fitmetrics1 = calibration.wavelength_to_g1(mode='subtractive', show=True, model='poly', poly_order=1)
+#     print(fit)
+#     print(fitmetrics1)
+#     fit, fitmetrics2 = calibration.g1_to_wavelength(mode='subtractive', show=True, model='poly', poly_order=1)
+#     print(fit)
+#     print(fitmetrics2)
+#     # fit, fitmetrics3 = calibration.wavelength_to_g1_test(mode='subtractive', show=True, poly_order=1)
+#     # print(fit)
+#     # print(fitmetrics3)
+#     breakpoint()
+#     calibration.save_calibration(calibration_name)
+#     breakpoint()
         
 
 
@@ -816,9 +903,12 @@ calibration_name = 'autocal_2'
 scriptDir = os.path.dirname(__file__)
 dataDir = os.path.join(scriptDir, 'autocalibration')
 
-autocal = AutoCalibration(showplots=True)
-autocal.autocalibrate_all()
-breakpoint()
+autocal = AutoCalibration(showplots=True, smoothing=1)
+# autocal.autocalibrate_all(manual=False)
+autocal.autocalibrate_single('g1', manual=True, poly_order=2, load=True)
 
-peakfit_autocal(scriptDir, dataDir, calibration_name)
-generate_autocal(scriptDir, dataDir, calibration_name)
+# TODO: create unit tests, create metric for quality assessment at a glance
+
+# OLD
+# peakfit_autocal(scriptDir, dataDir, calibration_name)
+# generate_autocal(scriptDir, dataDir, calibration_name)

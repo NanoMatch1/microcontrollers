@@ -539,9 +539,14 @@ class Microscope:
         if not os.path.exists(self.saveDir):
             os.makedirs(self.saveDir)
 
-    def go_to_wavelength_all(self, wavelength):
+    def go_to_wavelength_all(self, wavelength, shift=True):
         self.go_to_laser_wavelength(wavelength)
-        self.go_to_grating_wavelength(wavelength)
+        # raman_shift = self.calculate_raman_shift_wavelength(wavelength)
+        if shift is True:
+            breakpoint()
+            self.go_to_wavenumber(self.current_shift)
+        else:
+            self.go_to_grating_wavelength(wavelength)
         self.go_to_triax_wavelength(wavelength)
 
     def test_acquire_series(self):
@@ -559,6 +564,20 @@ class Microscope:
 
     def start_camera_ui(self):
         self.camera.start_ui()
+
+    def camera_set_acquisition_time(self, time):
+        self.acq_time = float(time)*1000 #ms
+        self.camera.cam.set_attribute_value("Exposure Time", self.acq_time)
+
+    def camera_set_roi(self, y1, y2):
+        '''Set the ROI assuming 2D binning across the whole chip (x_0 to x_1023).'''
+
+        if y2 <= y1:
+            print('Invalid ROI. y2 must be greater than y1.')
+            return
+        
+        self.camera.cam.set_roi(0, 1023, y1, y2, 1, y2-y1)
+
 
     def calibrate_triax_pixels(self, start=750, stop=960, window=12):
         start = float(start)
@@ -593,7 +612,7 @@ class Microscope:
         '''Used to calibrate the wavelength per pixel across the spectrum. Required for any data collection. Acquires two spectra at either end of the CCD range and saves them to a file. The window is the size of the shift in nm.'''
 
         # starting_wavenumber = self.current_laser_wavenumber
-        starting_wavelength = self.current_laser_wavelength[0]
+        # starting_wavelength = self.current_laser_wavelength[0]
         # limit_wavelength = self.calculate_raman_shift_wavelength(raman_shift)
         
         data = {starting_wavelength: {}}
@@ -656,7 +675,7 @@ class Microscope:
     def acquire_spectrum_step_scan(self, raman_shift=250, window=12):
         '''Takes the number of spectra required to cover the specified raman_shift. Converts shifts to wavelength using the current laser position in order to compensate for the non-linear dispersed spectral window. i.e. longer wavelengths disperse more.'''
         starting_wavenumber = self.current_laser_wavenumber
-        starting_wavelength = self.current_laser_wavelength
+        # starting_wavelength = self.current_laser_wavelength
         limit_wavelength = self.calculate_raman_shift_wavelength(raman_shift)
         
         data = []
@@ -1106,7 +1125,7 @@ class Microscope:
     @property
     def current_grating_wavenumber(self):
         '''Takes the current laser wavenumber and calculates the absolute wavenumber for the current raman shift.'''
-        return self.current_laser_wavenumber - self.current_shift
+        return 10_000_000/self.current_grating_wavelength[0]
     
     def wavenumber_to_wavelength(self, wavenumber):
         return 10_000_000/wavenumber
@@ -1437,6 +1456,8 @@ class Microscope:
             # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
             self.open_mono_shutter()
 
+        self.calculate_laser_wavelength(self.laser_steps)
+
     def close_pinhole(self, pos=0):
         self.save_pinhole = int(self.pinhole) # backs up last position
         # response = self.process_coms('pin {}'.format(pos))
@@ -1550,14 +1571,15 @@ class Microscope:
         if self.detector_safety is False:
             return
         
-        if self.current_laser_wavenumber + limit > self.current_grating_wavenumber < self.current_laser_wavenumber - limit:
+        if self.current_laser_wavenumber + limit > self.current_grating_wavenumber > self.current_laser_wavenumber - limit:
             print(f'Warning: Detection is within {limit} wavenumbers of the laser wavelength - press enter to revert to safety')
             command = input()
             if command == 'overwrite':
                 return
             else:
-                pass
-            pass
+                print('Moving to raman shift of 200 cm-1')
+                self.current_shift = 200
+                self.go_to_wavenumber(self.current_shift)
 
     def go_to_grating_wavelength(self, wavelength, step=None, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''
@@ -1629,7 +1651,7 @@ class Microscope:
             self.laser_safety_check()
             self.open_mono_shutter()
 
-
+        self.calculate_grating_wavelength(self.grating_steps)
             
 
 

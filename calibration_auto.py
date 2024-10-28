@@ -326,7 +326,7 @@ class AutoCalibration:
         with open(os.path.join(self.calibrationDir, '{}_autocal.json'.format(filename)), 'w') as f:
             json.dump(self.calibrations, f)
 
-        print("Calibration complete: Successfully saved calibration data to 'calibrations.json' file.")
+        print("Calibration complete: Successfully saved calibration data to '{}_autocal.json' file.".format(filename))
 
     def wavelength_to_l1(self, poly_order=1, mode=None, show=False, model='poly'):
         pass
@@ -518,10 +518,104 @@ class AutoCalibration:
         return fit_coeff_g1_to_wavelength, fit_metrics
     
     def wavelength_to_g2(self, poly_order=1, mode=None, show=False, model='poly'):
-        pass
+        '''Calibration for using laser wavelength to calculate G2 steps.'''
 
-    def g2_to_wavelength(self, poly_order=1, mode=None, show=False, model='poly'):
-        pass
+        wavelength_axis = self.wavelength_axis
+        g2_steps = self.data_array[:, 1]
+
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        if model == 'linsin':
+            print('Fitting with linsin')
+            initial_guess = [0.18298010826338804, -169155.69463447115, -64.6001908392166, 0.001218420554789506, 0.136231899401439, 0]
+            fit_coeff_g2_to_wavelength, pcov = opt.curve_fit(lin_sin_modulation_fit, g2_steps, wavelength_axis, p0=initial_guess)
+            p_g2_to_wavelength = lambda x: lin_sin_modulation_fit(x, *fit_coeff_g2_to_wavelength)
+
+        elif model == 'polysin':
+            print('Fitting with polysin')
+            # initial_guess = [0.01, 800, -1.53840861,  0.00463291, -1.04822887, -0.2]
+            # fit_coeff_g2_to_wavelength = poly_sin_modulation_fit(g2_steps, *initial_guess)
+            fit_coeff_g2_to_wavelength, pcov = opt.curve_fit(poly_sin_modulation_fit, g2_steps, wavelength_axis, p0=initial_guess)
+            p_g2_to_wavelength = lambda x: poly_sin_modulation_fit(x, *fit_coeff_g2_to_wavelength)
+        else:
+            print("Fitting with polynomial of order {}".format(poly_order))
+            fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, wavelength_axis, poly_order)
+            p_g2_to_wavelength = np.poly1d(fit_coeff_g2_to_wavelength)
+
+        y_pred = p_g2_to_wavelength(g2_steps)
+        residuals = wavelength_axis - y_pred
+
+        # Fit quality metrics
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
+        self.report_dict[mode]['g2_to_wl_{}'.format(mode)] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
+
+        if show is True or self.showplots is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(g2_steps, wavelength_axis, label='Wavelength')
+            ax[0].plot(g2_steps, p_g2_to_wavelength(g2_steps), label='Wavelength fit', color='tab:purple')
+            residuals = wavelength_axis - p_g2_to_wavelength(g2_steps)
+            ax[1].plot(g2_steps, residuals, label='Wavelength residuals', marker='o')
+            ax[0].set_title('G2 Steps to Wavelength')
+            ax[0].legend()
+            ax[1].legend()
+            plt.show()
+
+        self.calibration_metrics['g2_to_wl_{}'.format(mode)] = fit_metrics
+        self.calibrations['g2_to_wl_{}'.format(mode)] = fit_coeff_g2_to_wavelength.tolist()
+        
+        return fit_coeff_g2_to_wavelength, fit_metrics
+
+
+    def g2_to_wavelength(self, poly_order=1, mode=None, model='poly', show=False):
+        '''Reverse calibration for calculating laser wavelength from G2 steps.'''
+
+        assert mode in ['subtractive', 'additive'], 'Invalid mode. Must be either "subtractive" or "additive".'
+
+        wavelength_axis = self.wavelength_axis
+        g2_steps = self.data_array[:, 1]
+
+        initial_guess  = [0, 0.1, 800, 1, 0.005, 0, 0]
+
+        if model == 'linsin':
+            print('Fitting with linsin')
+            initial_guess = [0.18298010826338804, -169155.69463447115, -64.6001908392166, 0.001218420554789506, 0.136231899401439, 0]
+            # fit_coeff_g2_to_wavelength = poly_sin_modulation_fit(g2_steps, *initial_guess)
+            fit_coeff_g2_to_wavelength, pcov = opt.curve_fit(lin_sin_modulation_fit, g2_steps, wavelength_axis, p0=initial_guess)
+            p_g2_to_wavelength = lambda x: lin_sin_modulation_fit(x, *fit_coeff_g2_to_wavelength)
+
+        elif model == 'polysin':
+            print('Fitting with polysin')
+            # initial_guess = [0.01, 800, -1.53840861,  0.00463291, -1.04822887, -0.2]
+            # fit_coeff_g2_to_wavelength = poly_sin_modulation_fit(g2_steps, *initial_guess)
+            fit_coeff_g2_to_wavelength, pcov = opt.curve_fit(poly_sin_modulation_fit, g2_steps, wavelength_axis, p0=initial_guess)
+            p_g2_to_wavelength = lambda x: poly_sin_modulation_fit(x, *fit_coeff_g2_to_wavelength)
+        else:
+            print("Fitting with polynomial of order {}".format(poly_order))
+            fit_coeff_g2_to_wavelength = np.polyfit(g2_steps, wavelength_axis, poly_order)
+            p_g2_to_wavelength = np.poly1d(fit_coeff_g2_to_wavelength)
+
+        y_pred = p_g2_to_wavelength(g2_steps)
+        residuals = wavelength_axis - y_pred
+
+        # Fit quality metrics
+        fit_metrics = self.calculate_fit_metrics(wavelength_axis, y_pred)
+        self.report_dict[mode]['g2_to_wl_{}'.format(mode)] = (fit_metrics, fit_coeff_g2_to_wavelength.tolist())
+
+        if show is True or self.showplots is True:
+            fig, ax = plt.subplots(2, 1)
+            ax[0].scatter(g2_steps, wavelength_axis, label='Wavelength')
+            ax[0].plot(g2_steps, p_g2_to_wavelength(g2_steps), label='Wavelength fit', color='tab:purple')
+            residuals = wavelength_axis - p_g2_to_wavelength(g2_steps)
+            ax[1].plot(g2_steps, residuals, label='Wavelength residuals', marker='o')
+            ax[0].set_title('G2 Steps to Wavelength')
+            ax[0].legend()
+            ax[1].legend()
+            plt.show()
+
+        self.calibration_metrics['g2_to_wl_{}'.format(mode)] = fit_metrics
+        self.calibrations['g2_to_wl_{}'.format(mode)] = fit_coeff_g2_to_wavelength.tolist()
+        
+        return fit_coeff_g2_to_wavelength, fit_metrics
 
 
 
@@ -903,7 +997,7 @@ calibration_name = 'autocal_2'
 scriptDir = os.path.dirname(__file__)
 dataDir = os.path.join(scriptDir, 'autocalibration')
 
-autocal = AutoCalibration(showplots=True, smoothing=10)
+autocal = AutoCalibration(showplots=True, smoothing=1)
 # autocal.autocalibrate_all(manual=False)
 autocal.autocalibrate_single('g2', manual=True, poly_order=2, load=False)
 

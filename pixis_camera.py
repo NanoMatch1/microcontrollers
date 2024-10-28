@@ -17,8 +17,9 @@ class PIXISCam:
             self.transientDir = self.microscope.transientDir
 
             self.cam = PrincetonInstruments.PicamCamera()
-            self.cam.set_attribute_value("Exposure Time", 100)
-            self.cam.set_roi(0, 1024, 579, 579 + 35, 1, 35)
+            self.cam.set_attribute_value("Exposure Time", 1000)
+            # self.cam.set_roi(0, 1024, 579, 579 + 35, 1, 35)
+            self.cam.set_roi(0, 1024, 100, 100 + 900, 1, 900)
             self.camera_lock = threading.Lock()  # Initialize a lock
             self.stop_flag = threading.Event() # Initialize a stop flag
         except Exception as e:

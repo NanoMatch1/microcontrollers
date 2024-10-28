@@ -3,8 +3,8 @@
 
 const int countEnable = 13;     // Pin for resetting latch to LOW. Note Active-LOW
 const int counterClear = 12;  // Pin clearing the counter IC
-const int loadRegisterPin = 9; // Pin for loading counter values into the storage register
-const int lastDigit = 10;    // Pin for reading the last digit of the counters
+// const int loadRegisterPin = 9; // Pin for loading counter values into the storage register
+const int lastDigit = 11;    // Pin for reading the last digit of the counters
 
 const int picoRX = 2;  // Connect to TX of Pico
 const int picoTX = 3;  // Connect to RX of Pico
@@ -22,7 +22,7 @@ void setup() {
   digitalWrite(counterClear, LOW); // clear the counter initially. Active-LOW
   // digitalWrite(counterClear, HIGH); // HIGH keeps counter from clearing. 
 
-  digitalWrite(loadRegisterPin, LOW);
+  // digitalWrite(loadRegisterPin, LOW);
   Serial.println("Ready to receive commands:");
 }
 
@@ -146,6 +146,18 @@ void performCommand(String command, String value) {
     // Serial.print("Final:");
     // Serial.println(response);
   } 
+
+  else if (command == "run") {
+    float floatValue = value.toFloat();
+    int count_idx = 0;
+    while (count_idx < 30) {
+      String response = acquireData(floatValue);
+      count_idx = count_idx + 1;
+    // Serial.print("Final:");
+    // Serial.println(response);
+  }
+  }
+
   else if (command == "r") {
     sendToPico("echo");
     delay(100);

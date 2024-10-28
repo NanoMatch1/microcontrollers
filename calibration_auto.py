@@ -236,7 +236,7 @@ class AutoCalibration:
             cal_obj._minimise_data()
             cal_obj._apply_smoothing(window_length=smoothing)
             # cal_obj._plot_individual()
-        # dataSet.plot_current()
+        dataSet.plot_current()
         
         peakfitting_info = {
             'peak_list': [],
@@ -903,9 +903,9 @@ calibration_name = 'autocal_2'
 scriptDir = os.path.dirname(__file__)
 dataDir = os.path.join(scriptDir, 'autocalibration')
 
-autocal = AutoCalibration(showplots=True, smoothing=1)
+autocal = AutoCalibration(showplots=True, smoothing=10)
 # autocal.autocalibrate_all(manual=False)
-autocal.autocalibrate_single('g1', manual=True, poly_order=2, load=True)
+autocal.autocalibrate_single('g2', manual=True, poly_order=2, load=False)
 
 # TODO: create unit tests, create metric for quality assessment at a glance
 

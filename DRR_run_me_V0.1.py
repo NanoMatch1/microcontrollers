@@ -570,15 +570,27 @@ class Microscope:
         dataDict = {}
 
         for wl in scan_range:
+            self.go_to_triax_wavelength(wl)
             self.go_to_laser_wavelength(wl)
             self.go_to_grating_wavelength(wl)
-            self.go_to_triax_wavelength(wl)
             dataDict[wl] = self.acquire_calibrate_triax()
 
         self.pixelDict = dataDict
 
+    # def calculate_window_shift(self, working_wavelength, window_shift=12):
+    #     try:
+    #         working_wavelength = float(working_wavelength)
+    #         window_shift = float(window_shift)
+    #     except ValueError:
+    #         print('Invalid input')
+    #         return
+        
+        
+        
+
+
     def acquire_calibrate_triax(self, start=750, stop=960, window=12, save_files=True):
-        '''Takes the number of spectra required to cover the specified raman_shift. Converts shifts to wavelength using the current laser position in order to compensate for the non-linear dispersed spectral window. i.e. longer wavelengths disperse more.'''
+        '''Used to calibrate the wavelength per pixel across the spectrum. Required for any data collection. Acquires two spectra at either end of the CCD range and saves them to a file. The window is the size of the shift in nm.'''
 
         # starting_wavenumber = self.current_laser_wavenumber
         starting_wavelength = self.current_laser_wavelength[0]
@@ -594,7 +606,7 @@ class Microscope:
             self.go_to_triax_wavelength(current_wavelength)
             frame = self.camera.acquire_one_frame()
             data[starting_wavelength] = {current_wavelength: frame}
-            self.camera._update_plot(frame)
+            # self.camera._update_plot(frame)
             current_wavelength += window
             count += 1
             # current_wavenumber = round(10_000_000/current_wavelength, 2)

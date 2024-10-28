@@ -338,18 +338,18 @@ void processCommand(String command) {
 
     switch (device) {
       case 'A':
-        Serial.print("UNO>A:");
-        Serial.println(message);
+        // Serial.print("UNO>A:");
+        // Serial.println(message);
         sendI2C(message, SLAVE1_ADDRESS);
         break;
       case 'B':
-        Serial.print("UNO>B:");
-        Serial.println(message);
+        // Serial.print("UNO>B:");
+        // Serial.println(message);
         sendI2C(message, SLAVE2_ADDRESS);
         break;
       case 'C':
-        Serial.print("UNO>C:");
-        Serial.println(message);
+        // Serial.print("UNO>C:");
+        // Serial.println(message);
         sendI2C(message, SLAVE3_ADDRESS);
         break;
       // case 'D':
@@ -382,7 +382,7 @@ void sendI2C(String message, int address) {
   String response = "";
   while (Wire.available()) {
     char c = Wire.read();
-    Serial.print(c);  // Print the response from the slave
+    // Serial.print(c);  // Print the response from the slave
     if (c == '\n') {
       break;
     }
@@ -394,13 +394,13 @@ void sendI2C(String message, int address) {
   }
 
   if (address == 8) {
-    Serial.println("UI<UNO<A:" + response);
+    Serial.println("<A:" + response);
   }
   else if (address == 9) {
-    Serial.println("UI<UNO<B:" + response);
+    Serial.println("<B:" + response);
   }
   else if (address == 7) {
-    Serial.println("UI<UNO<C:" + response);
+    Serial.println("<C:" + response);
   }
   Serial.println("#CF");
 }

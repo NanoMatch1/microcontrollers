@@ -310,6 +310,8 @@ class Microscope:
         self.__build_directories()
         self.__generate_calibrations(report=True)
 
+        self.report = False
+
         self.scan_min = 800
         self.scan_max = 835
         self.scan_resolution = 0.5
@@ -337,6 +339,13 @@ class Microscope:
         self.centre_wavelength = 376886
 
         self.data = []
+
+        self.flag_dict = {
+            'S0': 'ok',
+            'R1': 'motors running',
+            'F0': 'invalid command',
+            '#CF': 'end of response',
+        }
 
         self.microscope_functions = {
             'scan': self.run_scan_spectrum,
@@ -519,7 +528,10 @@ class Microscope:
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
 
-        self.guess_mode()
+        self.calculate_grating_wavelength()
+        self.calculate_laser_wavelength()
+
+        self.guess_mode(self.grating_steps)
         self.report_status()
 
         self.ammend_calibrations()
@@ -528,6 +540,21 @@ class Microscope:
 
         # self.run_ldr0_scan()
         # self.run_calibration((800, 810), 5)
+
+    def wait_for_flag(self, flag=None):
+        """Wait for a specific flag to be received."""
+        if flag is not None:
+            flags = [flag]
+        else:
+            flags = self.flag_dict.keys()
+
+        while True:
+            response = self.read_command_from_uno()
+            response = response.splitlines()
+            for res in response:
+                if res in flags:
+                    return res
+            time.sleep(0.1)
 
     def __build_directories(self):
         '''Builds all the directories required for the system to run.'''
@@ -577,6 +604,8 @@ class Microscope:
             return
         
         self.camera.cam.set_roi(0, 1023, y1, y2, 1, y2-y1)
+
+    
 
 
     def calibrate_triax_pixels(self, start=750, stop=960, window=12):
@@ -997,9 +1026,9 @@ class Microscope:
                 print("Loading {} as poly1d".format(name))
                 self.calibrations.__setattr__(name, np.poly1d(calib))
 
-        print("defaulting to additive calibration for G1. Return to fix this later.")
-        self.calibrations.g1_to_wl = self.calibrations.g1_to_wl_additive
-        self.calibrations.wl_to_g1 = self.calibrations.wl_to_g1_additive
+        print("defaulting to subtractive calibration for G1. Return to fix this later.")
+        self.calibrations.g1_to_wl = self.calibrations.g1_to_wl_subtractive
+        self.calibrations.wl_to_g1 = self.calibrations.wl_to_g1_subtractive
 
         print("Calibrations successfully built.")
 
@@ -1012,8 +1041,17 @@ class Microscope:
         for key in self.microscope_functions:
             print(key)
 
-    def guess_mode(self):
-        current_grating_pos = self.get_grating_motor_positions()
+    def guess_mode(self, steps=None, default=True):
+        '''Guesses the mode based on the current G2 position. This has been redundant since the calibration files were updated. In the future, this will be used to automatically switch between modes once the configuration is finalised.'''
+        
+        if default is True:
+            self._switch_calibrations('subtractive', overwrite=True)
+            return
+        
+        if steps is None:
+            current_grating_pos = self.get_grating_motor_positions()
+        else:
+            current_grating_pos = steps
         if current_grating_pos[1] < -3000:
             self.monochromator_mode = 'additive'
             print('Guessed additive mode')
@@ -1302,8 +1340,7 @@ class Microscope:
         # print('entered get laser')
         try:
             response = self.process_coms('gpa')
-            print('got response')
-            positions = response[1].split(':')[1]
+            positions = response[0].split(':')[1]
             positions = positions.strip('<P>P')
             positions = positions.split(',')
             self.laser_steps = [float(x[1:]) for x in positions]
@@ -1319,7 +1356,7 @@ class Microscope:
     def get_grating_motor_positions(self):
         try:
             response = self.process_coms('gpb')
-            positions = response[1].split(':')[1]
+            positions = response[0].split(':')[1]
             positions = positions.strip('<P>P')
             positions = positions.split(',')
             self.grating_steps = [float(x[1:]) for x in positions]
@@ -1822,6 +1859,7 @@ class Microscope:
             time.sleep(0.1)
             # 
             response = self.read_from_serial_until()
+            # response = self.wait_for_flag()
             # print(response)
             return response
             # 
@@ -1938,14 +1976,14 @@ class Microscope:
         print('Scan Resolution: {}'.format(self.scan_resolution))
 
 
-    def read_from_serial_until(self, end_flag='#CF', report=False):
+    def read_from_serial_until(self, end_flag='#CF'):
         end_responses = []
         while True:
             response = self.read_command_from_uno()
             if response == '':
                 time.sleep(0.01)
                 continue
-            if report:
+            if self.report is True:
                 print(response)
             split_responses = response.split('\r\n')
             for item in split_responses:
@@ -1953,7 +1991,7 @@ class Microscope:
                     return end_responses
                 if item != '':
                     end_responses.append(item)
-                    print(item)
+                    # print(item)
             time.sleep(0.01)
             # else:
 

@@ -335,9 +335,8 @@ class Microscope:
         # self.to_addivite = -12990 -13108+39 
 
         self.acq_time = 1
-        self.current_filename = None
         self.centre_wavelength = 376886
-
+        self.filename = 'default'
         self.data = []
 
         self.flag_dict = {
@@ -386,6 +385,7 @@ class Microscope:
             'acquire': self.acquire_spectrum,
             'run': self.continuous_acquire,
             'stop': self.stop_continuous_acquire,
+            'filename': self.set_filename,
             # 'testacq': self.test_acquire_series,
 
             # 'changemode': self.change_monochromator_mode,
@@ -494,7 +494,7 @@ class Microscope:
 
         # Commands for handling the general state of the system
         self.general_dict = {
-            'triax': self.connect_to_spectrometer,
+            'triax': self.connect_to_triax,
             'laser': self.connect_to_laser,
             # 'camera': self.connect_to_camera,
         }
@@ -506,7 +506,7 @@ class Microscope:
         }
 
         if 'TRIAX' not in debug_skip:
-            self.spectrometer, self.state = self.connect_to_spectrometer()
+            self.spectrometer, self.state = self.connect_to_triax()
         # self.pico_marlin = self.connect_to_marlin()
         # self.apd_serial = self.connect_to_APD()
         if 'UNO' not in debug_skip:
@@ -527,12 +527,18 @@ class Microscope:
     # def connect_to_APD(self):
     #     APD_serial = serial.Serial('COM7', 9600, timeout=1)
     #     return APD_serial
+        self.guess_mode(default=True) # obtains the current steps
 
-        self.calculate_grating_wavelength()
+        self.calculate_grating_wavelength(self.grating_steps)
         self.calculate_laser_wavelength()
+        try:
+            self.calculate_triax_wavelength()
+        except AttributeError:
+            print("Triax not connected.")
+            self.triax_steps = 0
+            pass
 
-        self.guess_mode(self.grating_steps)
-        self.report_status()
+        self.report_status(initialise=True)
 
         self.ammend_calibrations()
         # self.start_camera_ui()
@@ -570,18 +576,12 @@ class Microscope:
         self.go_to_laser_wavelength(wavelength)
         # raman_shift = self.calculate_raman_shift_wavelength(wavelength)
         if shift is True:
-            breakpoint()
+            
             self.go_to_wavenumber(self.current_shift)
         else:
             self.go_to_grating_wavelength(wavelength)
         self.go_to_triax_wavelength(wavelength)
 
-    def test_acquire_series(self):
-        for _ in range(3):
-            frame = self.camera.acquire_one_frame()
-            time.sleep(1)
-        
-        print("finihsed")
 
     def stitch_spectrum(self, data, window):
         '''Takes a list of spectra in data and stitches them together in to one spectrum. The window is the size of the spectral shift in nm.'''
@@ -606,7 +606,9 @@ class Microscope:
         self.camera.cam.set_roi(0, 1023, y1, y2, 1, y2-y1)
 
     
-
+    def set_filename(self, filename):
+        self.filename = filename
+        print(f'Filename set to: "{filename}"')
 
     def calibrate_triax_pixels(self, start=750, stop=960, window=12):
         start = float(start)
@@ -641,7 +643,7 @@ class Microscope:
         '''Used to calibrate the wavelength per pixel across the spectrum. Required for any data collection. Acquires two spectra at either end of the CCD range and saves them to a file. The window is the size of the shift in nm.'''
 
         # starting_wavenumber = self.current_laser_wavenumber
-        # starting_wavelength = self.current_laser_wavelength[0]
+        starting_wavelength = self.current_laser_wavelength[0]
         # limit_wavelength = self.calculate_raman_shift_wavelength(raman_shift)
         
         data = {starting_wavelength: {}}
@@ -676,8 +678,8 @@ class Microscope:
 
         data = self.camera.acquire_one_frame()
         data = np.array(data, dtype=np.int32) # convert to numpy array for fast saving
-        file_index = len([x for x in os.listdir(self.saveDir) if x[:-4] == self.filename])
-        filename = os.path.join(self.saveDir, self.current_filename, f'_{file_index}.npy')
+        file_index = len([x for x in os.listdir(self.saveDir) if x.split('_')[0] == self.filename])
+        filename = os.path.join(self.saveDir, self.filename, f'_{file_index}.npy')
         
         while True:
             try:
@@ -746,7 +748,7 @@ class Microscope:
         triax_steps = self.get_triax_steps()
         
         target_steps = round(self.calibrations.wl_to_triax_steps(wavelength))
-        # breakpoint()
+        # 
         new_steps = target_steps - triax_steps
         # return if no movement is required
         if new_steps == 0:
@@ -796,7 +798,7 @@ class Microscope:
             time_overhead.append([val, (end-start)/10])
         
         print(time_overhead)
-        # breakpoint()
+        # 
 
 
     def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5):
@@ -893,6 +895,7 @@ class Microscope:
     def print_debug(self):
         print('Entering print debug')
         breakpoint()
+        
 
     def read_ldr0(self):
         response = self.process_coms('rldr0')
@@ -964,7 +967,7 @@ class Microscope:
         g2_calibration = [x for x in self.all_calibrations['wl_to_g1_subtractive']]
         g2_calibration[2] += g2_pos
         self.calibrations.__setattr__('wl_to_g2_subtractive', np.poly1d(g2_calibration))
-        # breakpoint()
+        # 
         print('Calibration locked. G2 is now a function of G1 at this position.')
 
     def ammend_calibrations(self, report=True):
@@ -1043,13 +1046,13 @@ class Microscope:
 
     def guess_mode(self, steps=None, default=True):
         '''Guesses the mode based on the current G2 position. This has been redundant since the calibration files were updated. In the future, this will be used to automatically switch between modes once the configuration is finalised.'''
-        
+
+        if steps is None:
+            current_grating_pos = self.get_grating_motor_positions()
         if default is True:
             self._switch_calibrations('subtractive', overwrite=True)
             return
         
-        if steps is None:
-            current_grating_pos = self.get_grating_motor_positions()
         else:
             current_grating_pos = steps
         if current_grating_pos[1] < -3000:
@@ -1093,14 +1096,17 @@ class Microscope:
             # self.to_addivite = -12990
 
 
-    def report_status(self):
-        if self.triax_steps is None:
-            dummy_triax = 407225
-            self.triax_steps = dummy_triax
-        else:
-            self.triax_steps = self.get_triax_steps()
-        self.laser_steps = self.get_laser_motor_positions()
-        self.grating_steps = self.get_grating_motor_positions()
+    def report_status(self, initialise=False):
+        '''Prints the current status of the system. If initialise is True, the function will recalculate all parameters. If False, it will use the current values obtained from the initialisation.'''
+
+        if initialise is False:
+            # recalculate all parameters
+            self.laser_steps = self.get_laser_motor_positions()
+            self.grating_steps = self.get_grating_motor_positions()
+            try:
+                self.triax_steps = self.get_triax_steps()
+            except AttributeError:
+                self.triax_steps = 0
 
         report = {
             'monochromator mode': self.monochromator_mode,
@@ -1115,12 +1121,13 @@ class Microscope:
             'Raman shift': self.current_shift,
             # 'pinhole': self.pinhole
         }
+        
 
         if  report['g1 lambda'][0] < 500 or report['g1 lambda'][0] > 2000:
             print('Grating wavelength out of range - please check monochromator mode')
 
-        self.pinhole = report['grating motor positions'][2]
-        report['pinhole'] = self.pinhole
+        # self.pinhole = report['grating motor positions'][2]
+        # report['pinhole'] = self.pinhole
 
         print('-'*20)
         for key, value in report.items():
@@ -1135,7 +1142,7 @@ class Microscope:
 
     @property
     def current_grating_wavelength(self):
-        return self.calculate_grating_wavelength()
+        return self.calculate_grating_wavelength(self.grating_steps)
 
     @property
     def current_laser_wavelength(self):
@@ -1177,7 +1184,7 @@ class Microscope:
         if raman_shift is not None:
             self.current_shift = float(raman_shift)
 
-        # breakpoint()
+        # 
         
         current_laser_pos = self.get_laser_motor_positions()
         current_laser_wavelength, l2_wavelength = self.calculate_laser_wavelength(current_laser_pos)
@@ -1308,8 +1315,10 @@ class Microscope:
         g1_wavelength = round(b_positions[0], 2)
         g2_wavelength = round(b_positions[1], 2)
         # pin_pos = b_positions[2]
-        g2_pos = self.get_grating_motor_positions()
-        l1_pos = self.get_laser_motor_positions()
+        # g2_pos = self.get_grating_motor_positions()
+        # l1_pos = self.get_laser_motor_positions()
+        g2_pos = self.grating_steps
+        l1_pos = self.laser_steps
         try:
             triax_pos = self.get_triax_steps()
             triax_wavelength = self.calculate_triax_wavelength(steps=triax_pos)
@@ -1388,11 +1397,11 @@ class Microscope:
         # print('Current laser wavelength: {}'.format(l1_wavelength))
         return l1_wavelength, l2_wavelength
     
-    def calculate_grating_wavelength(self, current_pos=None):
-        if current_pos is None:
+    def calculate_grating_wavelength(self, steps=None):
+        if steps is None:
             current_grating_pos = self.get_grating_motor_positions()
         else:
-            current_grating_pos = current_pos
+            current_grating_pos = steps
 
         g1_pos = current_grating_pos[0]
         g2_pos = current_grating_pos[1]
@@ -1508,7 +1517,7 @@ class Microscope:
         self.move_pinhole(pos)
         self.wait_for_motors()
 
-        # breakpoint()
+        # 
         print('Pinhole opened at {}'.format(pos))
 
 
@@ -1708,7 +1717,7 @@ class Microscope:
         g1_target = round(self.calibrations.wl_to_g1(true_wavelength))
         g2_target = round(self.calibrations.wl_to_g2(true_wavelength))
 
-        # breakpoint() #378617
+        #  #378617
 
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
         self.set_absolute_positions_B(f'{g1_target},{g2_target},{self.pinhole},0')
@@ -2114,7 +2123,7 @@ class Microscope:
             intensity = float(data[0])
             # print('{}:{}'.format(scan_pos, intensity))
             add_data_point([steps, intensity])
-            # breakpoint()
+            # 
             scan_results = np.vstack((scan_results, [steps, data[0], data[1]]))
 
         self.results = np.array(scan_results).astype(float)
@@ -2211,7 +2220,7 @@ class Microscope:
             intensity = float(data[0])
             # print('{}:{}'.format(scan_pos, intensity))
             add_data_point([target, intensity])
-            # breakpoint()
+            # 
             scan_results = np.vstack((scan_results, [target, data[0], data[1]]))
 
         self.results = np.array(scan_results).astype(float)
@@ -2383,7 +2392,7 @@ class Microscope:
             print('RES:', response)
         return response
 
-    def connect_to_spectrometer(self):
+    def connect_to_triax(self):
         # Open a connection to the instrument
         rm = pyvisa.ResourceManager()
         rm.list_resources()
@@ -2394,6 +2403,8 @@ class Microscope:
         self.state = self.spectrometer.read()
         print(self.state)
         # 
+        self.get_triax_steps()
+
         return self.spectrometer, self.state
 
 
@@ -2488,9 +2499,9 @@ if __name__ == '__main__':
 # class Spectrometer:
 
     def __init__(self):
-        self.spectrometer, spectrometer_state = self.connect_to_spectrometer()
+        self.spectrometer, spectrometer_state = self.connect_to_triax()
 
-    def connect_to_spectrometer(self):
+    def connect_to_triax(self):
         # Open a connection to the instrument
         rm = pyvisa.ResourceManager()
         rm.list_resources()

@@ -26,6 +26,7 @@ class PIXISCam:
             print(f"Camera initialization failed: {e}")
             self.cam = None
 
+        self.is_running = False
         self.command_history = []  # List to store command history
         self.history_index = -1    # Index to track the current position in the history
         self.prompt_text = ">"  # Prompt text to indicate where the user types
@@ -124,10 +125,12 @@ class PIXISCam:
         acq_thread.daemon = True
         acq_thread.start()
         print("Started continuous acquisition.")
+        self.is_running = True
 
     def stop_continuous_acquisition(self):
         print("Stopping continuous acquisition.")
         self.stop_flag.set()
+        self.is_running = False
 
     def log_terminal(self, message):
         """Append messages to the terminal display and write a new prompt."""

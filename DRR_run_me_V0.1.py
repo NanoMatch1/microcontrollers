@@ -18,7 +18,8 @@ from types import SimpleNamespace
 from dataclasses import dataclass
 from pixis_camera import PIXISCam
 
-
+# 806.45
+# 806.4
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 # Polyfit calibration 24/08/27: [-1.28255101e-02 -4.23233709e+01  4.22414334e+04]
@@ -385,13 +386,19 @@ class Microscope:
             'acquire': self.acquire_spectrum,
             'run': self.continuous_acquire,
             'stop': self.stop_continuous_acquire,
-            'filename': self.set_filename,
+
             # 'testacq': self.test_acquire_series,
 
             # 'changemode': self.change_monochromator_mode,
             # 'setpos': self.set_absolute_positions
             # additive reference at 220: [83, -13108...]
 
+        }
+
+        self.camera_dict = {
+            'filename': self.set_filename,
+            'acqtime': self.camera_set_acquisition_time,
+            'roi': self.camera_set_roi,
         }
 
         # commands for controlling TRIAX spectrometer
@@ -580,6 +587,7 @@ class Microscope:
             self.go_to_wavenumber(self.current_shift)
         else:
             self.go_to_grating_wavelength(wavelength)
+
         self.go_to_triax_wavelength(wavelength)
 
 
@@ -599,6 +607,9 @@ class Microscope:
     def camera_set_roi(self, y1, y2):
         '''Set the ROI assuming 2D binning across the whole chip (x_0 to x_1023).'''
 
+        y1 = int(y1)
+        y2 = int(y2)
+
         if y2 <= y1:
             print('Invalid ROI. y2 must be greater than y1.')
             return
@@ -606,23 +617,46 @@ class Microscope:
         self.camera.cam.set_roi(0, 1023, y1, y2, 1, y2-y1)
 
     
-    def set_filename(self, filename):
+    def set_filename(self, filename):   
         self.filename = filename
         print(f'Filename set to: "{filename}"')
 
-    def calibrate_triax_pixels(self, start=750, stop=960, window=12):
-        start = float(start)
-        stop = float(stop)
+    def calibrate_triax_pixels(self, scan_range=(750, 960), window=12):
+        # delete files in the directory
+        # confirm with user
+        files = os.listdir(os.path.join(self.scriptDir, 'triax_calibration'))
+        if len(files) > 0:
+            print("Files in directory: ")
+            for file in files:
+                print(file)
+            confirm = input("Delete files? (y/n): ")
+            if confirm.lower() == 'y':
+                for file in files:
+                    os.remove(os.path.join(self.scriptDir, 'triax_calibration', file))
+            else:
+                return
+        # 
+        if isinstance(scan_range, str):
+            scan_range = scan_range.split(',') 
+        start = float(scan_range[0])
+        stop = float(scan_range[1])
         window = float(window)
 
         scan_range = np.arange(start, stop, window)
+        print("scan_range: ", scan_range)
+        confirm = input("Continue? (y/n): ")
+        if confirm.lower() == 'n':
+            return
+        
+        print("Calibrating triax pixels...")
 
         dataDict = {}
 
         for wl in scan_range:
-            self.go_to_triax_wavelength(wl)
-            self.go_to_laser_wavelength(wl)
-            self.go_to_grating_wavelength(wl)
+            # self.go_to_triax_wavelength(wl)
+            # self.go_to_laser_wavelength(wl)
+            # self.go_to_grating_wavelength(wl)
+            self.go_to_wavelength_all(wl, shift=True)
             dataDict[wl] = self.acquire_calibrate_triax()
 
         self.pixelDict = dataDict
@@ -639,51 +673,54 @@ class Microscope:
         
 
 
-    def acquire_calibrate_triax(self, start=750, stop=960, window=12, save_files=True):
+    def acquire_calibrate_triax(self, window=12, save_files=True):
         '''Used to calibrate the wavelength per pixel across the spectrum. Required for any data collection. Acquires two spectra at either end of the CCD range and saves them to a file. The window is the size of the shift in nm.'''
 
-        # starting_wavenumber = self.current_laser_wavenumber
-        starting_wavelength = self.current_laser_wavelength[0]
-        # limit_wavelength = self.calculate_raman_shift_wavelength(raman_shift)
-        
-        data = {starting_wavelength: {}}
-        # current_wavenumber = round(float(starting_wavenumber), 2)
-        current_wavelength = float(starting_wavelength)
+        current_wavelength = round(self.current_laser_wavelength[0], 3)
+        initial_wavelength = float(current_wavelength)
+
+        data = {}
 
         count = 0
-
         while count < 2:
             self.go_to_triax_wavelength(current_wavelength)
-            frame = self.camera.acquire_one_frame()
-            data[starting_wavelength] = {current_wavelength: frame}
-            # self.camera._update_plot(frame)
-            current_wavelength += window
+            frame = self.acquire_spectrum(save=False)
+            # 
+            listData = [int(x) for x in frame]
+            data[current_wavelength] = listData
+            current_wavelength -= window
             count += 1
-            # current_wavenumber = round(10_000_000/current_wavelength, 2)
 
-        # self.latest_data = self.stitch_spectrum(raman_shift)
-        # while 
         if save_files is True:
-            for idx, frame in enumerate(data):
-                with open(os.path.join(os.path.join(self.scriptDir, 'triax_calibration'), f'{idx}_triax-calibration_{window}nm.json'), 'w') as f:
-                    json.dump(frame, f)
+            # np.save(os.path.join(self.scriptDir, f'{initial_wavelength}_triax-calibration.npy', )
+            # )
+            json.dump(data, open(os.path.join(self.scriptDir, 'triax_calibration', f'{initial_wavelength}_triax-calibration.json'), 'w'))
+
         return data
-    
+
     def write_data_transient(self, data, filename):
         '''Writes the data to a file in the data directory for transient data.'''
 
 
-    def acquire_spectrum(self):
+    def acquire_spectrum(self, overwrite=False, save=True):
         '''Acquires a single spectrum and saves it in the saved_data directory.'''
 
+        print("Acquiring...")
         data = self.camera.acquire_one_frame()
+        np.save(os.path.join(self.transientDir, "transient_data.npy"), data) # save to transient dir for immediate plotting/viewing
+
         data = np.array(data, dtype=np.int32) # convert to numpy array for fast saving
-        file_index = len([x for x in os.listdir(self.saveDir) if x.split('_')[0] == self.filename])
-        filename = os.path.join(self.saveDir, self.filename, f'_{file_index}.npy')
+        if overwrite is False:
+            file_index = len([x for x in os.listdir(self.saveDir) if x.split('_')[0] == self.filename])
+        else:
+            file_index = 0
+
+        filename = os.path.join(self.saveDir, f'{self.filename}_{file_index}.npy')
         
         while True:
             try:
-                np.save(filename, data)
+                if save is True:
+                    np.save(filename, data)
                 return data
             except PermissionError:
                 print('File in use. Waiting 0.1 s...')
@@ -1223,7 +1260,7 @@ class Microscope:
 
 
     def extract_coms_message(self, message):
-        return message[1].split(':')[1].strip(' ')
+        return message[0].split(':')[1].strip(' ')
 
     def wait_for_motors(self, delay=0.1):
         '''Waits for the motors to finish moving by polling the motors until they are no longer running.'''
@@ -1234,6 +1271,7 @@ class Microscope:
 
             if running_A is True:
                 response = self.process_coms('Aisrun')
+                # 
                 # res = response[0].split(':')[0]
                 res1 = self.extract_coms_message(response)
                 # 
@@ -1241,7 +1279,7 @@ class Microscope:
                     running_A = False
                 # elif res1 == 'R1':
                 else:
-                    print("A running")
+                    # print("A running")
                     time.sleep(delay)
                     continue
 
@@ -1253,7 +1291,7 @@ class Microscope:
                 # elif res2 == 'R1':
                 else:
                     time.sleep(delay)
-                    print("B running")
+                    # print("B running")
                     continue
                 
             if count > 0:
@@ -1338,6 +1376,7 @@ class Microscope:
         print('l2 wavelength: {}'.format(l2_wavelength))
         print('g1 wavelength: {}'.format(g1_wavelength))
         print('g2 wavelength: {}'.format(g2_wavelength))
+        print('Raman shift: {}'.format(self.current_shift))
         # print('Current pinhole position: {}'.format(pin_pos))
 
         # TODO: Change to @property
@@ -1435,15 +1474,16 @@ class Microscope:
         new_wavelength = 10_000_000/wave
         self.go_to_grating_wavelength(new_wavelength)
         self.current_shift = wavenumber
+        
         print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.laser_wavelength[0]))
 
     def go_to_laser_wavelength(self, wavelength, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.
         Uses the calibrations to move the laser motors into position for a specified wavelength.'''
         # 
-        if autoshutter is True:
-            # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
-            self.close_mono_shutter()
+        # if autoshutter is True:
+        #     # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
+        self.close_mono_shutter()
 
         try:
             wavelength = float(wavelength)
@@ -1497,10 +1537,10 @@ class Microscope:
         self.laser_steps[1] = l2_target
 
         print('Laser excitation at {}'.format(wavelength))
-        if autoshutter is True:
-            self.laser_safety_check()
+        # if autoshutter is True:
+        self.laser_safety_check()
             # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
-            self.open_mono_shutter()
+        self.open_mono_shutter()
 
         self.calculate_laser_wavelength(self.laser_steps)
 
@@ -1610,7 +1650,7 @@ class Microscope:
 
         print('Grating motors moved to position {}'.format(grating_pos))
 
-    def laser_safety_check(self, limit=20):
+    def laser_safety_check(self, limit=50):
         '''If the detector wavelength is within 20 wavenumbers of the laser wavelength, warn the user and prompt to overwrite or revert to a safe position.'''
 
         # grating_wavelength = self.calculate_grating_wavelength()[0]
@@ -1623,16 +1663,15 @@ class Microscope:
             if command == 'overwrite':
                 return
             else:
-                print('Moving to raman shift of 200 cm-1')
-                self.current_shift = 200
+                print(f'Moving to raman shift of {limit} cm-1')
+                self.current_shift = limit + 25
                 self.go_to_wavenumber(self.current_shift)
 
     def go_to_grating_wavelength(self, wavelength, step=None, autoshutter=True):
         '''Currently operating as movements in relative mode. Add feature in the future to move in absolute mode.'''
 
-        if autoshutter is True:
-            # self.close_pinhole_shutter() # every time the laser moves the shutter should close. A final check for light on the LDR should be added before opening the shutter to minimise chances of laser damage on detector #TODO: Add this check
-            self.close_mono_shutter()
+
+        self.close_mono_shutter()
 
         try:
             wavelength = float(wavelength)
@@ -1692,32 +1731,36 @@ class Microscope:
         print('Grating detection at {}'.format(wavelength))
         # self.current_grating_positions = [g1_target, g2_target]
 
-        if autoshutter is True:
-            # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
-            self.laser_safety_check()
-            self.open_mono_shutter()
+        self.laser_safety_check()
+        self.open_mono_shutter()
 
         self.calculate_grating_wavelength(self.grating_steps)
             
 
-
-
-    def reference_calibration(self, steps=None):
+    def reference_calibration(self, steps=None, shift=True):
         '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
         # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
         # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
         if steps is None:
             steps = self.get_triax_steps()
-        true_wavelength = self.calibrations.triax_steps_to_wl(float(steps))
-        print('True wavelength: {}. Shifting motor positions to true wavelength'.format(true_wavelength))
+        true_wavelength_laser = self.calibrations.triax_steps_to_wl(float(steps))
+        print('True wavelength: {}. Shifting motor positions to true wavelength'.format(true_wavelength_laser))
         
-        
-        l1_target = round(self.calibrations.wl_to_l1(true_wavelength))
-        l2_target = round(self.calibrations.wl_to_l2(true_wavelength))
-        g1_target = round(self.calibrations.wl_to_g1(true_wavelength))
-        g2_target = round(self.calibrations.wl_to_g2(true_wavelength))
+        # correct for current Raman shift (usually zero, but might be different if performing Raman measurements)
+        if shift is True:
+            grating_wavelength = self.current_laser_wavenumber - self.current_shift
+            true_wavelength_grating = 10_000_000/grating_wavelength
+        else:
+            true_wavelength_grating = true_wavelength_laser
+
+
+        l1_target = round(self.calibrations.wl_to_l1(true_wavelength_laser))
+        l2_target = round(self.calibrations.wl_to_l2(true_wavelength_laser))
+        g1_target = round(self.calibrations.wl_to_g1(true_wavelength_grating))
+        g2_target = round(self.calibrations.wl_to_g2(true_wavelength_grating))
 
         #  #378617
+
 
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
         self.set_absolute_positions_B(f'{g1_target},{g2_target},{self.pinhole},0')
@@ -1892,6 +1935,21 @@ class Microscope:
 
             return response
 
+        elif com[0] in self.camera_dict.keys():
+            # automaticaly stop the camera if it is running to edit these settings
+            reset = False
+            if self.camera.is_running is True:
+                reset = True
+                self.stop_continuous_acquire()
+            if len(com) > 1:
+                self.camera_dict[com[0]](*com[1:])
+            else:
+                self.camera_dict[com[0]]()
+            
+            if reset is True:
+                self.continuous_acquire()
+
+            return response
 
         elif com[0] in self.spectrometer_dict.keys():
             if len(com) > 1:
@@ -2005,22 +2063,27 @@ class Microscope:
             # else:
 
     def extract_data(self, response):
-        if type(response) == float: # TODO: change this to detect data type better
+        try:
+            if type(response) == float: # TODO: change this to detect data type better
+                return response
+            new_data = []
+            if isinstance(response, int):
+                return response
+            for item in response:
+                if item.startswith("COUNTS:"):
+                    try:
+                        value = item[item.index(':')+2:item.index('/')]
+                        timestamp = item[item.index('/')+1:]
+                        new_data = [float(value), float(timestamp)]
+                    except Exception as e:
+                        traceback.print_exc()
+                        print('Error processing data')
+                        print(e)
+            return new_data
+        except Exception as e:
+            print(e)
+            print('Error extracting data - returning raw response. Automate this later.')
             return response
-        new_data = []
-        if isinstance(response, int):
-            return response
-        for item in response:
-            if item.startswith("COUNTS:"):
-                try:
-                    value = item[item.index(':')+2:item.index('/')]
-                    timestamp = item[item.index('/')+1:]
-                    new_data = [float(value), float(timestamp)]
-                except Exception as e:
-                    traceback.print_exc()
-                    print('Error processing data')
-                    print(e)
-        return new_data
 
     def get_grating_position(self):
         response = self.send_command_to_spectrometer('H0')

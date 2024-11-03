@@ -29,6 +29,10 @@ import os
 import sys
 import numpy as np
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.dirname(__file__)), 'analysis-spectroscopy','analysis_spectroscopy'))
+
+from analysis_spectroscopy import dataset_analysis as asp
+
 calibration_records = {
     'date': '2024-08-27'
     ,
@@ -292,7 +296,85 @@ class Calibration:
 
         return cal_data, sorted_data
 
+    def load_pixel_calibration(self):
+        pixel_cal_dir = os.path.join(os.path.dirname(__file__), 'triax_calibration')
+        files = [file for file in os.listdir(pixel_cal_dir) if file.endswith('.json')]
+        plt.close()
 
+        cal_dict = {}
+        for file in files:
+            with open(os.path.join(pixel_cal_dir, file), 'r') as f:
+                data = json.load(f)
+                ex_lambda = float(file.split('_')[0])
+                for wl, spectrum in data.items():
+                    if spectrum[0] == 0:
+                        spectrum[0] = spectrum[1]
+
+                # breakpoint()
+
+                cal_dict[ex_lambda] = data
+                    # plt.plot(spectrum, label=f'{wl} nm')
+
+        # print(data)
+        # ordering = [x for x in cal_dict.keys()]
+        # ordering.sort()
+        # ordering = sorted(ordering, key=lambda x: float(x.split('_')[0]))
+
+        # for excitation in ordering:
+
+        #     # print(excitation)
+        #     data = cal_dict[excitation]
+        #     for triax_wavelength, spectrum in data.items():
+        #         if spectrum[0] == 0:
+        #             spectrum[0] = spectrum[1]
+        #         # print(triax_wavelength)
+        #         # print(spectrum) 
+        #         # plt.plot(spectrum, label=f'{triax_wavelength} nm')
+        #     # plt.legend()
+        #     # plt.title(f'Excitation: {excitation} nm')
+        #     # plt.show()
+        # breakpoint()
+
+        return cal_dict
+
+    def triax_pixel_calibration(self, show=True, manual=True):
+        # pixel_dict = self.load_pixel_calibration()  
+        plt.close()
+        pixel_cal_dir = os.path.join(os.path.dirname(__file__), 'triax_calibration')
+        files = [file for file in os.listdir(pixel_cal_dir) if file.endswith('.json')]
+        
+        # for excitation, data in pixel_dict.items():
+        for file in files:
+            dataSet = asp.DataSet(pixel_cal_dir, [file])
+
+            fileObj = dataSet.dataDict.get(file)
+            # note: DataSet class is designed to work on a set of files, but the calibration dataset contains one file with a set of data. The following line is a workaround to access the data.
+            dataSet.dataDict = fileObj.data
+            # dataSet.dataDict = mask_data(dataSet.dataDict, data_mask) # mask data to select only the wavelengths of interest. Ranges specified in the data_mask_dict
+
+            for cal_obj in dataSet.dataDict.values():
+                cal_obj._fix_zero_pixel()
+                # cal_obj._invert_data()
+                cal_obj._minimise_data()
+                # cal_obj._apply_smoothing(window_length=smoothing)
+                # cal_obj._plot_individual()
+            # dataSet.plot_current()
+            
+            peakfitting_info = {
+                'peak_list': [],
+                'peak_type': 'voigt_pseudo',
+                'peak_sign': 'positive',
+                'threshold': 0.05, # percentage of max intensity;
+                'peak_detect': 'all',
+                'copy_peaks': False,
+                'show_ui': False,
+            } 
+            dataSet._peakfit(peakfitting_info=peakfitting_info)
+            # dataSet.plot_peaks()
+            # dataSet.save_database(tagList='', seriesName='peakfit_autocal_{}'.format(motor_type))
+            breakpoint()
+        return dataSet
+    
     def calculate_fit_metrics(self, actual, model):
         # Fit quality metrics
         r2 = r_squared(actual, model)
@@ -1324,8 +1406,10 @@ if __name__ == '__main__':
         # calibration.wavelength_to_g2_tester(g2_steps, mode='additive', show=True)
         # calibration.g2_to_wavelength_tester(g2_steps, mode='additive', show=True)
 
-    calibration, cal_data = initialise(showplots=True)
+    calibration, cal_data = initialise(showplots=False)
     triax_calibrations(calibration, cal_data)
+    calibration.triax_pixel_calibration()
+    breakpoint()
     cal_data, cal_data_array = calibration.load_aapt_file()
     subtractive_calibrations(calibration, cal_data)
     additive_calibrations(calibration, cal_data, duplicate=True)

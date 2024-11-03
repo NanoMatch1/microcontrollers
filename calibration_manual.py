@@ -340,39 +340,86 @@ class Calibration:
     def triax_pixel_calibration(self, show=True, manual=True):
         # pixel_dict = self.load_pixel_calibration()  
         plt.close()
-        pixel_cal_dir = os.path.join(os.path.dirname(__file__), 'triax_calibration')
-        files = [file for file in os.listdir(pixel_cal_dir) if file.endswith('.json')]
-        
-        # for excitation, data in pixel_dict.items():
-        for file in files:
-            dataSet = asp.DataSet(pixel_cal_dir, [file])
 
-            fileObj = dataSet.dataDict.get(file)
-            # note: DataSet class is designed to work on a set of files, but the calibration dataset contains one file with a set of data. The following line is a workaround to access the data.
-            dataSet.dataDict = fileObj.data
-            # dataSet.dataDict = mask_data(dataSet.dataDict, data_mask) # mask data to select only the wavelengths of interest. Ranges specified in the data_mask_dict
-
-            for cal_obj in dataSet.dataDict.values():
-                cal_obj._fix_zero_pixel()
-                # cal_obj._invert_data()
-                cal_obj._minimise_data()
-                # cal_obj._apply_smoothing(window_length=smoothing)
-                # cal_obj._plot_individual()
-            # dataSet.plot_current()
+        def pixel_peakfit():
+            pixel_cal_dir = os.path.join(os.path.dirname(__file__), 'triax_calibration')
+            files = [file for file in os.listdir(pixel_cal_dir) if file.endswith('.json')]
             
-            peakfitting_info = {
-                'peak_list': [],
-                'peak_type': 'voigt_pseudo',
-                'peak_sign': 'positive',
-                'threshold': 0.05, # percentage of max intensity;
-                'peak_detect': 'all',
-                'copy_peaks': False,
-                'show_ui': False,
-            } 
-            dataSet._peakfit(peakfitting_info=peakfitting_info)
-            # dataSet.plot_peaks()
-            # dataSet.save_database(tagList='', seriesName='peakfit_autocal_{}'.format(motor_type))
-            breakpoint()
+            # for excitation, data in pixel_dict.items():
+            pixel_peak_dict = {}
+            for file in files:
+                dataSet = asp.DataSet(pixel_cal_dir, [file])
+
+                fileObj = dataSet.dataDict.get(file)
+                # note: DataSet class is designed to work on a set of files, but the calibration dataset contains one file with a set of data. The following line is a workaround to access the data.
+                dataSet.dataDict = fileObj.data
+                # dataSet.dataDict = mask_data(dataSet.dataDict, data_mask) # mask data to select only the wavelengths of interest. Ranges specified in the data_mask_dict
+
+                for cal_obj in dataSet.dataDict.values():
+                    cal_obj._fix_zero_pixel()
+                    # cal_obj._invert_data()
+                    cal_obj._minimise_data()
+                    # cal_obj._apply_smoothing(window_length=smoothing)
+                    # cal_obj._plot_individual()
+                # dataSet.plot_current()
+
+                dataSet.baseline_all()
+                
+                peakfitting_info = {
+                    'peak_list': [],
+                    'peak_type': 'voigt_pseudo',
+                    'peak_sign': 'positive',
+                    'threshold': 0.5, # percentage of max intensity;
+                    'peak_detect': 'all',
+                    'copy_peaks': False,
+                    'show_ui': True,
+                } 
+                dataSet._peakfit(peakfitting_info=peakfitting_info)
+                # dataSet.plot_peaks()
+                # dataSet.save_database(tagList='', seriesName='peakfit_autocal_{}'.format(motor_type))
+                peakList = []
+                for triax_wl, peakDict in dataSet.peakfitDict.items():
+                    # breakpoint()
+                    peaks = peakDict['peaks']
+                    if peaks is None or len(peaks) == 0:
+                        continue
+                    if len(peaks) == 1:
+                        # breakpoint()
+                        peak = peaks[0][1]
+                        peakList.append([triax_wl, peak])
+                    else:
+                        # breakpo
+                        # peakList = sorted(peakList, key=lambda x: x[2])
+                        peaks = sorted(peaks, key=lambda x: x[2])
+                        # breakpoint()
+                        peakList.append([triax_wl, peaks[-1][1]])
+
+
+                # breakpoint()
+                pixel_peak_dict[file.split('_')[0]] = peakList
+            with open(os.path.join(os.path.dirname(__file__), 'pixel_cpeak_dict.json'), 'w') as f:
+                json.dump(pixel_peak_dict, f)
+
+        def load_pixel_peak_dict():
+            with open(os.path.join(os.path.dirname(__file__), 'pixel_cpeak_dict.json'), 'r') as f:
+                data = json.load(f)
+            return data
+        
+        pixel_peakfit()
+        data = load_pixel_peak_dict()
+        newArray = []
+
+        for excitation, data in data.items():
+            delta_pixel = data[1][1] - data[0][1]
+            print(delta_pixel)
+            # data = np.array(data)
+            newArray.append([float(excitation), delta_pixel])
+            # plt.plot(data[:, 0], data[:, 1], label=f'{excitation} nm')
+
+        newArray = np.array(newArray).astype(float)
+        plt.plot(newArray[:, 0], newArray[:, 1], marker='o')
+        plt.show()
+        breakpoint()
         return dataSet
     
     def calculate_fit_metrics(self, actual, model):

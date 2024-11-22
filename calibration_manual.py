@@ -363,16 +363,16 @@ class Calibration:
                     # cal_obj._plot_individual()
                 # dataSet.plot_current()
 
-                dataSet.baseline_all()
+                dataSet.baseline_all(show=False)
                 
                 peakfitting_info = {
                     'peak_list': [],
                     'peak_type': 'voigt_pseudo',
                     'peak_sign': 'positive',
-                    'threshold': 0.5, # percentage of max intensity;
+                    'threshold': 0.4, # percentage of max intensity;
                     'peak_detect': 'all',
                     'copy_peaks': False,
-                    'show_ui': True,
+                    'show_ui': False,
                 } 
                 dataSet._peakfit(peakfitting_info=peakfitting_info)
                 # dataSet.plot_peaks()
@@ -405,20 +405,110 @@ class Calibration:
                 data = json.load(f)
             return data
         
-        pixel_peakfit()
+        # pixel_peakfit()
         data = load_pixel_peak_dict()
         newArray = []
+        steps_array = []
 
-        for excitation, data in data.items():
-            delta_pixel = data[1][1] - data[0][1]
-            print(delta_pixel)
+        p_wl_to_triax_steps = np.poly1d(self.calibrations['wl_to_triax_steps'])
+
+        for excitation, datapoints in data.items():
+            delta_pixel = datapoints[1][1] - datapoints[0][1]
+
+
+            # print(delta_pixel)
             # data = np.array(data)
             newArray.append([float(excitation), delta_pixel])
+            steps_array.append([p_wl_to_triax_steps(float(excitation)), delta_pixel]) 
             # plt.plot(data[:, 0], data[:, 1], label=f'{excitation} nm')
 
         newArray = np.array(newArray).astype(float)
-        plt.plot(newArray[:, 0], newArray[:, 1], marker='o')
+        steps_array = np.array(steps_array).astype(float)
+        fix, ax = plt.subplots(2, 1)
+        ax[0].plot(newArray[:, 0], newArray[:, 1], marker='o')
+
+        ax[1].plot(steps_array[:, 0], steps_array[:, 1], marker='o')
         plt.show()
+
+        with open(os.path.join(os.path.dirname(__file__), 'dump_calibrations.json'), 'r') as f:
+            calibrations = json.load(f)
+
+        excitation_axis = newArray[:, 0]
+        pixel_axis = newArray[:, 1]
+        p_wl_to_triax_steps = np.poly1d(calibrations['wl_to_triax_steps'])
+        setA = np.column_stack((excitation_axis, p_wl_to_triax_steps(excitation_axis)))
+        stepDiff = []
+        setA_data = setA[:, 1]
+        for idx, x in enumerate(setA):
+            if idx == len(setA)-1:
+                continue
+            steps = setA_data[idx+1] - setA_data[idx]
+            # print(steps)
+            stepDiff.append(steps)
+
+        pixeldiff = []
+        for idx, x in enumerate(newArray):
+            if idx == len(newArray)-1:
+                continue
+            diff = newArray[idx+1][1] - newArray[idx][1]
+            pixeldiff.append(diff)
+        
+
+        plt.plot(list(range(len(pixeldiff))), pixeldiff, label='pixeldiff', marker='o')
+        plt.legend()
+        plt.show()
+
+
+        
+        plt.plot(list(range(len(stepDiff))), stepDiff, label='stepdiff', marker='o')
+        plt.legend()
+        plt.show()
+        
+        p_wl_to_l1 = np.poly1d(calibrations['wl_to_l1'])
+        setB = np.column_stack((excitation_axis, p_wl_to_l1(excitation_axis)))
+
+        plt.plot(setB[:, 0], setB[:, 1], marker='o', label='l1 steps')
+        plt.legend()
+        plt.show()
+
+        l1_diff = []
+        setB_data = setB[:, 1]
+        for idx, x in enumerate(setB):
+            if idx == len(setB)-1:
+                continue
+            steps = setB_data[idx+1] - setB_data[idx]
+            l1_diff.append(steps)
+
+        l1_prime_diff = []
+        for idx, x in enumerate(l1_diff):
+            if idx == len(l1_diff)-1:
+                continue
+            diff = l1_diff[idx+1] - l1_diff[idx]
+            l1_prime_diff.append(diff)
+
+        plt.plot(list(range(len(l1_diff))), l1_diff, label='l1_diff', marker='o')
+        plt.legend()
+        plt.show()
+
+        fix, ax = plt.subplots(2, 1)
+        ax[0].plot(list(range(len(pixeldiff))), pixeldiff, label='pixeldiff', marker='o')
+        ax[0].legend()
+        ax[1].plot(list(range(len(l1_prime_diff))), l1_prime_diff, label='l1_prime_diff', marker='o')
+
+        plt.show()
+        
+        plt.legend()
+        plt.show()
+
+        fix, ax = plt.subplots(2, 1)
+        ax[0].plot(excitation_axis, p_wl_to_triax_steps(excitation_axis), label='wl to triax steps')
+        ax[0].legend()
+        ax[1].plot(newArray[:, 0], newArray[:, 1], marker='o', label='pixel diff')
+        ax[1].legend()
+        plt.show()
+
+
+
         breakpoint()
         return dataSet
     
@@ -1402,17 +1492,17 @@ if __name__ == '__main__':
         calibration.wavelength_to_triax()
         calibration.triax_steps_to_wavelength()
     
-    def subtractive_calibrations(calibration, cal_data, repeat=False):
+    def subtractive_calibrations(calibration, cal_data, repeat=False, show_plots=False):
         # cal_data, cal_data_array = calibration.load_eept_file()
         if repeat is True:
             calibration.wavelength_to_l1(cal_data['l1'], mode='subtractive')
             calibration.l1_to_wavelength(cal_data['l1'], mode='subtractive')
             calibration.wavelength_to_l2(cal_data['l2'], mode='subtractive')
             calibration.l2_to_wavelength(cal_data['l2'], mode='subtractive')
-        calibration.wavelength_to_g1(cal_data['g1'], mode='subtractive', show=False)
-        calibration.g1_to_wavelength(cal_data['g1'], mode='subtractive', show=False)
-        calibration.wavelength_to_g2(cal_data['g2'], mode='subtractive', show=False)
-        calibration.g2_to_wavelength(cal_data['g2'], mode='subtractive', show=False)
+        calibration.wavelength_to_g1(cal_data['g1'], mode='subtractive', show=show_plots)
+        calibration.g1_to_wavelength(cal_data['g1'], mode='subtractive', show=show_plots)
+        calibration.wavelength_to_g2(cal_data['g2'], mode='subtractive', show=show_plots)
+        calibration.g2_to_wavelength(cal_data['g2'], mode='subtractive', show=show_plots)
 
     # FEAT Make additive calibrations
 
@@ -1455,11 +1545,11 @@ if __name__ == '__main__':
 
     calibration, cal_data = initialise(showplots=False)
     triax_calibrations(calibration, cal_data)
-    calibration.triax_pixel_calibration()
-    breakpoint()
+    # calibration.triax_pixel_calibration()
+    # breakpoint()
     cal_data, cal_data_array = calibration.load_aapt_file()
-    subtractive_calibrations(calibration, cal_data)
-    additive_calibrations(calibration, cal_data, duplicate=True)
+    subtractive_calibrations(calibration, cal_data, show_plots=True)
+    additive_calibrations(calibration, cal_data, duplicate=True, show_plots=False)
     
     print(calibration.calibrations)
     breakpoint()

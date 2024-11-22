@@ -16,3 +16,6 @@ for file in os.listdir(scritDir):
         new_file_path = os.path.join(scritDir, file)
         with open(new_file_path, 'w') as f:
             json.dump(data, f)
+        
+    
+    

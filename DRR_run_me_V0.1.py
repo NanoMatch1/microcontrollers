@@ -360,7 +360,7 @@ class Microscope:
             'sall': self.go_to_wavelength_all,
             # 'shift': self.go_to_grating_wavelength,
             'wai': self.get_all_current_positions,
-            'reference': self.reference_calibration,
+            'reference': self.reference_calibration, # TODO: Bug where multiple calls are needed to refresh. Looks like grating motors are one step behind.
             'shift': self.go_to_wavenumber,
             'calshift': self.simple_calibration_shift,
             'isrun': self.wait_for_motors,
@@ -590,6 +590,11 @@ class Microscope:
 
         self.go_to_triax_wavelength(wavelength)
 
+    def dump_calibrations(self):
+        '''Dumps the current calibration data to a file.'''
+        with open(os.path.join(self.scriptDir, 'dump_calibrations.json'), 'w') as f:
+            json.dump(self.all_calibrations, f)
+
 
     def stitch_spectrum(self, data, window):
         '''Takes a list of spectra in data and stitches them together in to one spectrum. The window is the size of the spectral shift in nm.'''
@@ -697,10 +702,12 @@ class Microscope:
             json.dump(data, open(os.path.join(self.scriptDir, 'triax_calibration', f'{initial_wavelength}_triax-calibration.json'), 'w'))
 
         return data
+    
+
 
     def write_data_transient(self, data, filename):
         '''Writes the data to a file in the data directory for transient data.'''
-
+        pass
 
     def acquire_spectrum(self, overwrite=False, save=True):
         '''Acquires a single spectrum and saves it in the saved_data directory.'''
@@ -838,10 +845,15 @@ class Microscope:
         # 
 
 
-    def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5):
+    def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5, safety=False):
         if motor.lower() not in ['g1', 'g2', 'l2']:
             print("Invalid motor. Must be 'g1' or 'g2' or 'l2'")
             return
+        
+        if safety is True:
+            self.detector_safety = True
+        else:
+            self.detector_safety = False
 
         def convert_to_serializable(obj):
             if isinstance(obj, np.ndarray):
@@ -890,6 +902,7 @@ class Microscope:
 
         print(f"{motor.lower()} Scan complete. Data saved to autocal_{index}_{motor}.json")
 
+        self.detector_safety = True
         # self.open_pinhole_shutter()
         print("Returning to initial position")
         self.go_to_laser_steps(initial_laser)
@@ -1028,14 +1041,17 @@ class Microscope:
                 if len(calib) == 7:
                     # print("Loading {} as poly_sin".format(name))
                     report_dict[name] ='poly_sin'
+                    self.all_calibrations[name] = calib
                     self.calibrations.__setattr__(name, PolySinModulation(*calib))
                 elif len(calib) == 6:
                     # print("Loading {} as lin_sin".format(name))
                     report_dict[name] = 'lin_sin'
+                    self.all_calibrations[name] = calib
                     self.calibrations.__setattr__(name, LinSinModulation(*calib))
                 else:
                     # print("Loading {} as poly1d".format(name))
                     report_dict[name] = 'poly1d'
+                    self.all_calibrations[name] = calib
                     self.calibrations.__setattr__(name, np.poly1d(calib))
 
         if report:
@@ -1506,6 +1522,9 @@ class Microscope:
         # print("l2 target: {}".format(l2_target))
         print('Current laser position: {}'.format(current_pos))
         print('Target laser position: {}'.format([l1_target, l2_target]))
+        if l1_target == current_pos[0] and l2_target == current_pos[1]:
+            print('Laser already at target position')
+            return
         move_l1 = l1_target - current_pos[0]
         move_l2 = l2_target - current_pos[1]
         print("moving l1 by {}".format(move_l1))
@@ -1679,7 +1698,7 @@ class Microscope:
             print('Invalid value for wavelength - use a number')
             return
         
-        if not 600 < wavelength < 1200:
+        if not 400 < wavelength < 1200:
             print('Wavelength out of range. Pick a wavelength between 600 and 1200 nm')
             return
 
@@ -1761,9 +1780,8 @@ class Microscope:
 
         #  #378617
 
-
         self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
-        self.set_absolute_positions_B(f'{g1_target},{g2_target},{self.pinhole},0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
 
         laser_pos = self.get_laser_motor_positions()
         grating_pos = self.get_grating_motor_positions()
@@ -1857,7 +1875,7 @@ class Microscope:
             response = self.read_from_serial_until()
             # print(response)
             # 
-            gpa = response[1].split('<P')[1]
+            gpa = response[0].split('<P')[1]
             gpa = gpa.split('P>')[0]
             gpa = gpa.split(',')
 
@@ -1868,7 +1886,7 @@ class Microscope:
             # 
             response = self.read_from_serial_until()
             # print(response)
-            gpb = response[1].split('<P')[1]
+            gpb = response[0].split('<P')[1]
             gpb = gpb.split('P>')[0]
             gpb = gpb.split(',')
 

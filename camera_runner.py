@@ -35,33 +35,21 @@ class DataCollection:
         self.runtime = float(runtime)
 
     def acquire_for_some_time(self):
-        '''Acquires data for a specified time in seconds.'''
-
+        '''Acquires data for a specified time in seconds. Blocks until acquisition is complete.'''
 
         start_time = time.time()
-        # self.acquire_timestamp()
         while time.time() - start_time < self.runtime:
             timestamp = time.time() - start_time
             data = self.camera.acquire_one_frame()
             np.save(os.path.join(self.transientDir, "transient_data.npy"), data)  # save to transient dir for immediate plotting/viewing
 
             data = np.array(data, dtype=np.int32)  # convert to numpy array for fast saving
-            if not overwrite:
-                file_index = len([x for x in os.listdir(self.saveDir) if x.split('_')[0] == self.filename])
-            else:
-                file_index = 0
+            filename = os.path.join(self.saveDir, f'{self.filename}_{timestamp:.2f}.npy')
+            np.save(filename, data)
 
-
-        while True:
-            try:
-                if save:
-                    filename = os.path.join(self.saveDir, f'{self.filename}_{file_index}.npy')
-                    np.save(filename, data)
         self.stop_continuous_acquire()
-        # self.acquiring = True
-        # self.acquire_thread = threading.Thread(target=self._timestamp_acquisition_loop)
-        # self.acquire_thread.daemon = True  # Ensures the thread stops when the main program exits
-        # self.acquire_thread.start()
+        print("Acquisition complete.")
+
 
     def camera_set_acquisition_time(self, time):
         restart = False

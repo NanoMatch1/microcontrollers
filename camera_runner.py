@@ -4,6 +4,125 @@ from pixis_camera import PIXISCam
 import time
 import threading
 
+def rename_files(fileDir, oldKey: str, newKey: str, extension='.txt'):
+    '''rename files in dir that contain oldKey. Replaces oldKey with newKey in the filename.'''
+
+    files_in_dir = [file for file in os.listdir(fileDir) if file.endswith(extension)]
+    if len(files_in_dir) > 0:
+
+        for file in files_in_dir:
+            newFile = file.replace(oldKey, newKey)
+            os.rename(os.path.join(fileDir, file), os.path.join(fileDir, newFile))
+        
+        print(f'{len(files_in_dir)} files renamed in {fileDir}.')
+    
+    else:
+        folders = [file for file in os.listdir(fileDir)]
+        if oldKey is not None:
+            oldKeyList = [oldKey]*len(folders)
+        else:
+            oldKeyList = [x for x in folders]
+        if newKey is not None:
+            newKeyList = [newKey]*len(folders)
+        else:
+            newKeyList = [str(x+1) for x in range(len(folders))]
+
+        for idx, folder in enumerate(folders):
+            workingDir = os.path.join(fileDir, folder)
+            fileList = [file for file in os.listdir(workingDir)]
+            for file in fileList:
+                newFile = file.replace(oldKeyList[idx], newKeyList[idx])
+                os.rename(os.path.join(workingDir, file), os.path.join(workingDir, newFile))
+            
+            print(f'{len(fileList)} files renamed in {workingDir}.')
+        
+        print(f'{len(folders)} folders renamed in {fileDir}.')
+        # breakpoint()
+
+class SpectrumObject:
+
+    dataType = 'spectrum'
+
+    def __init__(self, dataDict, basename):
+        self.basename = basename
+        self.dataDict = dataDict
+
+    def __repr__(self):
+        return f"SpectrumObject({self.basename})"
+
+class SeriesObject:
+
+    '''Takes a dataDict containing data objects (e.g. SpectrumObject) and the basename for the series..'''
+
+    dataType = 'series'
+
+    def __init__(self, dataDict, basename):
+        self.basename = basename
+        self.seriesDict = dataDict
+
+    def __repr__(self):
+        return f"SeriesObject()"
+
+class DataProcessing:
+
+    '''Overall class for processing data from the camera. Operates on a dictionary of SeriesObjects containing spectrum objects.'''
+
+    def __init__(self, saveDir):
+        self.fileDir = saveDir
+        self.dataDict = {}
+
+        self.load_files()
+        self.sort_files()
+        breakpoint()
+        self.process_data()
+
+    def load_files(self):
+        try:
+            self.files = [file for file in os.listdir(self.fileDir) if file.lower().endswith('.npy')]
+        except FileNotFoundError:
+            self.fileDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), self.fileDir)
+            self.files = [file for file in os.listdir(self.fileDir) if file.lower().endswith('.npy')]
+
+        for file in self.files:
+            filepath = os.path.join(self.fileDir, file)
+            data = np.load(filepath)
+            self.dataDict[file] = data
+        return self.dataDict
+
+    def parse_filename(self, filename, indexA="_", indexB="_"):
+        '''Parses the filename to extract the relevant information between indexA and indexB.'''
+        basename = filename.split(indexA)[0]
+        substring = filename.split(indexA)[1]
+        substring = substring.split(indexB)[0]
+        return substring, basename
+    
+    def parse_timestamp(self, filename):
+        '''Parses the filename to extract the timestamp.'''
+        return self.parse_filename(filename, indexA='_', indexB='.npy')
+    
+    def process_data(self):
+        newDict = {}
+        # for filename, data in self.dataDict.items():
+        #     data = np.array(data).astype(float)
+        #     # timestamp = self.parse_timestamp(filename)
+        #     newDict[timestamp] = data
+        
+        self.dataDict = newDict
+        return self.dataDict
+    
+    def sort_files(self):
+        seriesDict = {}
+        for filename, data in self.dataDict.items():
+            # sorted_filenames = sorted(self.files, key=lambda x: float(self.parse_timestamp(x)))
+            basename, extra = self.parse_filename(filename)
+            if basename not in seriesDict:
+                seriesDict[basename] = {extra: data}
+            else:
+                seriesDict[basename][extra] = data
+        print(seriesDict)
+        breakpoint()
+
+    
 
 class DataCollection:
 
@@ -185,5 +304,6 @@ if __name__ == '__main__':
     saveDir = 'spectroscopy_saved_data'
     transientDir = 'transient'
     filename = 'test_data'
-    dataCollection = DataCollection(saveDir, transientDir, filename)
-    dataCollection.main()
+    # dataCollection = DataCollection(saveDir, transientDir, filename)
+    # dataCollection.main()
+    dataProcessing = DataProcessing(saveDir)

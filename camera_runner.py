@@ -3,11 +3,13 @@ import numpy as np
 from pixis_camera import PIXISCam
 import time
 import threading
+import matplotlib.pyplot as plt
 
 def rename_files(fileDir, oldKey: str, newKey: str, extension='.txt'):
     '''rename files in dir that contain oldKey. Replaces oldKey with newKey in the filename.'''
 
-    files_in_dir = [file for file in os.listdir(fileDir) if file.endswith(extension)]
+    files_in_dir = [file for file in os.listdir(fileDir) if oldKey in file]
+    # breakpoint()
     if len(files_in_dir) > 0:
 
         for file in files_in_dir:
@@ -16,28 +18,6 @@ def rename_files(fileDir, oldKey: str, newKey: str, extension='.txt'):
         
         print(f'{len(files_in_dir)} files renamed in {fileDir}.')
     
-    else:
-        folders = [file for file in os.listdir(fileDir)]
-        if oldKey is not None:
-            oldKeyList = [oldKey]*len(folders)
-        else:
-            oldKeyList = [x for x in folders]
-        if newKey is not None:
-            newKeyList = [newKey]*len(folders)
-        else:
-            newKeyList = [str(x+1) for x in range(len(folders))]
-
-        for idx, folder in enumerate(folders):
-            workingDir = os.path.join(fileDir, folder)
-            fileList = [file for file in os.listdir(workingDir)]
-            for file in fileList:
-                newFile = file.replace(oldKeyList[idx], newKeyList[idx])
-                os.rename(os.path.join(workingDir, file), os.path.join(workingDir, newFile))
-            
-            print(f'{len(fileList)} files renamed in {workingDir}.')
-        
-        print(f'{len(folders)} folders renamed in {fileDir}.')
-        # breakpoint()
 
 class SpectrumObject:
 
@@ -70,11 +50,26 @@ class DataProcessing:
     def __init__(self, saveDir):
         self.fileDir = saveDir
         self.dataDict = {}
+        self.peakData = None
 
         self.load_files()
-        self.sort_files()
-        breakpoint()
+        self.load_wavelength_reference('wavelengths.csv')
         self.process_data()
+
+    def load_wavelength_reference(self, filename):
+        '''Loads the data with the wavelength reference.'''
+
+        with open(os.path.join(self.fileDir, filename), 'r') as file:
+            data = file.readlines()
+            # data = data.split(r'\n')
+            # data = data.strip('\n, \t')
+        data = [x.strip('\n, \t') for x in data]
+        data = [x.split(',') for x in data]
+        data = np.array(data).astype(float)
+        self.wavelength = data[:, 0]
+
+        return self.wavelength
+
 
     def load_files(self):
         try:
@@ -94,7 +89,8 @@ class DataProcessing:
         basename = filename.split(indexA)[0]
         substring = filename.split(indexA)[1]
         substring = substring.split(indexB)[0]
-        return substring, basename
+
+        return basename, substring
     
     def parse_timestamp(self, filename):
         '''Parses the filename to extract the timestamp.'''
@@ -102,13 +98,198 @@ class DataProcessing:
     
     def process_data(self):
         newDict = {}
+        seriesDict = self.sort_files()
+        self.dataDict = self.process_timestamps(seriesDict)
+
+
+
+
         # for filename, data in self.dataDict.items():
         #     data = np.array(data).astype(float)
         #     # timestamp = self.parse_timestamp(filename)
         #     newDict[timestamp] = data
         
-        self.dataDict = newDict
-        return self.dataDict
+
+        return 
+    
+    def extract_peaks(self):
+
+        self.peak_label_dict = {
+            'p1': {'peak': 864.046, 'width': 2},
+            'p2': {'peak': 869.772, 'width': 2},
+            'p3': {'peak': 888.305, 'width': 2},
+            'p4': {'peak': 900.526, 'width': 2},
+            'v1': {'peak': 879.313, 'width': 2}
+
+            # 'p2': 869.772,
+            # 'p3': 888.305,
+            # 'p4': 900.526,
+            # 'v1': 879.313
+
+        }
+
+        indexDict = {}
+
+        for series, dataDict in self.dataDict.items():
+            if series not in indexDict.keys():
+                indexDict[series] = {}
+            for timestamp, data in dataDict.items():
+                dataY = data[:, 1]
+                dataX = data[:, 0]
+                if timestamp not in indexDict[series].keys():
+                    indexDict[series][timestamp] = {}
+                for key, params in self.peak_label_dict.items():
+                    value = params['peak']
+                    width = params['width']
+                    index = np.abs(dataX - value).argmin()
+                    peak_average = np.mean(dataY[index-width:index+width])
+                    indexDict[series][timestamp][key] = peak_average
+
+
+        self.peakData = indexDict
+
+    def generate_ratio_series(self, a='p1', b='p2'):
+        if self.peakData is None:
+            self.extract_peaks()
+        
+        ratio_dict = {series: [] for series in self.peakData.keys()}
+        for series, dataDict in self.peakData.items():
+            newArray = []
+            for timestamp, data in dataDict.items():
+                # breakpoint()
+                ratio = data[a]/data[b]
+                newArray.append([timestamp, ratio])
+
+            newArray.sort(key=lambda x: x[0])
+
+            newArray = np.array(newArray).astype(float)
+            ratio_dict[series] = newArray
+
+        self.ratioDict = ratio_dict
+
+    def plot_ratio_series_simple(self):
+        '''Create an interactive plot that loads the full spectrum when the user clicks on a point in the scatter graphs.'''
+
+        fig, ax = plt.subplots(len(self.ratioDict), 1)
+        for index, (series, data) in enumerate(self.ratioDict.items()):
+            ax[index].scatter(data[:, 0], data[:, 1], label=series)
+            ax[index].legend()
+        plt.show()
+
+    def plot_ratio_series(self):
+        """
+        Create an interactive plot that loads the full spectrum when the user
+        clicks on a point in the scatter graphs.
+        """
+        # Create a figure with two subplots
+        fig, axs = plt.subplots(len(self.ratioDict), 1, figsize=(8, len(self.ratioDict) * 3))
+        if len(self.ratioDict) == 1:  # Ensure axs is iterable for a single subplot
+            axs = [axs]
+        
+        # Store scatter plot data and mapping
+        scatter_plots = []
+        scatter_data = []  # To map click events to scatter points and series
+        
+        # Plot scatter plots for each series
+        for index, (series, data) in enumerate(self.ratioDict.items()):
+            scatter = axs[index].scatter(data[:, 0], data[:, 1], label=series, picker=True)
+            axs[index].legend()
+            axs[index].set_title(series)
+            scatter_plots.append(scatter)
+            scatter_data.append((series, data))
+        
+        # Create a new figure for displaying the spectrum
+        spectrum_fig, spectrum_ax = plt.subplots(figsize=(8, 6))
+        spectrum_ax.set_title("Selected Spectrum")
+        spectrum_ax.set_xlabel("Wavelength")
+        spectrum_ax.set_ylabel("Intensity")
+        
+        def on_click(event):
+            # Check if the click is on a scatter point
+            for i, scatter in enumerate(scatter_plots):
+                if event.inaxes == scatter.axes:  # Ensure we're in the right subplot
+                    series, data = scatter_data[i]
+                    mouse_x, mouse_y = event.xdata, event.ydata
+                    
+                    # Find the nearest point
+                    distances = np.sqrt((data[:, 0] - mouse_x)**2 + (data[:, 1] - mouse_y)**2)
+                    nearest_idx = np.argmin(distances)
+                    
+                    # Retrieve the corresponding timestamp and load the spectrum
+                    timestamp = data[nearest_idx, 0]
+                    spectrum = self.dataDict[series][timestamp]  # Assuming dataDict holds original spectra
+                    
+                    # Plot the spectrum in the second figure
+                    spectrum_ax.clear()
+                    spectrum_ax.plot(spectrum[:, 0], spectrum[:, 1], label=f"Timestamp: {timestamp}")
+                    spectrum_ax.legend()
+                    spectrum_ax.set_title(f"{series} Spectrum at Timestamp {timestamp}")
+                    spectrum_fig.canvas.draw_idle()
+                    break
+
+        # Connect the click event
+        fig.canvas.mpl_connect("button_press_event", on_click)
+        
+        # Show the plots
+        plt.show()
+
+    def check_peak_calculations(self):
+        '''Run to check that the peak averages extracted match the actual spectral data. Randomly selects 6 spectra and adds the peak positions and values with labels as markers on the graphs.FIX:not yet implemented.'''
+        
+        series = next(iter(self.dataDict.keys()))
+        timeList = list(self.dataDict[series].keys())
+        timeList = np.random.choice(timeList, 6)
+
+        for series, dataDict in self.dataDict.items():
+            for timestamp, data in dataDict.items():
+                if timestamp in timeList:
+                    plt.plot(data[:, 0], data[:, 1], label=timestamp)
+                    for key, value in self.peakData[series][timestamp].items():
+                        plt.plot(value, data[np.abs(data[:, 0] - value).argmin(), 1], 'ro', label=key)
+            peakDict = self.peakData[series]
+            # breakpoint()
+
+            for timestamp, peaks in peakDict.items():
+                if timestamp in timeList:
+                    for key, value in peaks.items():
+                        peak_pos = self.peak_label_dict[key]['peak']
+
+                        plt.scatter([peak_pos], [value], 'ro', marker='x')
+
+                        # create a text label for the peak
+                        plt.text(peak_pos, value, key, fontsize=9)
+
+            
+
+
+                # plt.plot(peak, value, 'ro', label=peak)
+                    
+            plt.legend()
+            plt.show()
+
+
+    
+    def export_data(self, basename=None, exportDir=None):
+
+        '''exports the data to a format that can be handled by other scripts'''
+
+        if exportDir is None:
+            exportDir = os.path.join(self.fileDir, 'exported')
+        if not os.path.exists(exportDir):
+            os.makedirs(exportDir)
+
+        for seriesName, dataDict in self.dataDict.items():
+            if not os.path.exists(os.path.join(exportDir, seriesName)):
+                os.makedirs(os.path.join(exportDir, seriesName))
+            if basename is None:
+                basename = seriesName
+            for timestamp, data in dataDict.items():
+                new_filename = f'{basename}_{timestamp}_{seriesName}.txt'
+                
+                filePath = os.path.join(exportDir, seriesName, new_filename)
+                np.savetxt(filePath, data, delimiter=',')
+
+            print(f'{seriesName} exported to {os.path.join(exportDir, seriesName)}.')
     
     def sort_files(self):
         seriesDict = {}
@@ -119,8 +300,23 @@ class DataProcessing:
                 seriesDict[basename] = {extra: data}
             else:
                 seriesDict[basename][extra] = data
-        print(seriesDict)
-        breakpoint()
+
+        return seriesDict
+
+    def process_timestamps(self, seriesDict):
+        newDict = {}
+        for seriesName, dataDict in seriesDict.items():
+            if seriesName not in newDict.keys():
+                newDict[seriesName] = {}
+            for info, data in dataDict.items():
+                timestamp = info.split('.npy')[0]
+                timestamp = float(timestamp)
+                newData = np.column_stack((self.wavelength, data))
+                newDict[seriesName][timestamp] = newData
+
+        self.dataDict = newDict
+        return self.dataDict
+        
 
     
 
@@ -250,7 +446,7 @@ class DataCollection:
                 print('File in use. Waiting 0.1 s...')
                 time.sleep(0.1)
                 continue
-        
+
 
     def continuous_acquire(self):
         '''Starts continuous acquisition in a separate thread.'''
@@ -302,8 +498,17 @@ class DataCollection:
 
 if __name__ == '__main__':
     saveDir = 'spectroscopy_saved_data'
+    saveDir = r'C:\Users\sjbrooke\OneDrive - The University of Melbourne\Data\Maria\spectroscopy_saved_data'
     transientDir = 'transient'
     filename = 'test_data'
+    saveDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), saveDir)
+    # rename_files(saveDir, "0.2C-NDNC0.5C_", "0.2C-NDNC0.5C-A_")
+    # rename_files(saveDir, "NR_", "NR-")
     # dataCollection = DataCollection(saveDir, transientDir, filename)
     # dataCollection.main()
     dataProcessing = DataProcessing(saveDir)
+    dataProcessing.generate_ratio_series()
+    dataProcessing.plot_ratio_series()  
+    # dataProcessing.check_peak_calculations()
+    breakpoint()
+    # dataProcessing.export_data(basename="LnNP")

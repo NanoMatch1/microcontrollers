@@ -115,11 +115,11 @@ class DataProcessing:
     def extract_peaks(self):
 
         self.peak_label_dict = {
-            'p1': {'peak': 864.046, 'width': 2},
-            'p2': {'peak': 869.772, 'width': 2},
-            'p3': {'peak': 888.305, 'width': 2},
-            'p4': {'peak': 900.526, 'width': 2},
-            'v1': {'peak': 879.313, 'width': 2}
+            'p1': {'peak': 864.046, 'width': 10},
+            'p2': {'peak': 869.772, 'width': 10},
+            'p3': {'peak': 888.305, 'width': 10},
+            'p4': {'peak': 900.526, 'width': 10},
+            'v1': {'peak': 879.313, 'width': 10}
 
             # 'p2': 869.772,
             # 'p3': 888.305,
@@ -148,6 +148,20 @@ class DataProcessing:
 
         self.peakData = indexDict
 
+    def plot_single(self):
+        '''Plots a single spectrum from the dataDict.'''
+
+        series = next(iter(self.dataDict.keys()))
+        timeList = list(self.dataDict[series].keys())
+        timeList = np.random.choice(timeList, 1)
+
+        for series, dataDict in self.dataDict.items():
+            for timestamp, data in dataDict.items():
+                if timestamp in timeList:
+                    plt.plot(data[:, 0], data[:, 1], label=timestamp)
+            plt.legend()
+            plt.show()
+
     def generate_ratio_series(self, a='p1', b='p2'):
         if self.peakData is None:
             self.extract_peaks()
@@ -174,6 +188,58 @@ class DataProcessing:
         for index, (series, data) in enumerate(self.ratioDict.items()):
             ax[index].scatter(data[:, 0], data[:, 1], label=series)
             ax[index].legend()
+        plt.show()
+
+    def plot_all_peak_ratios(self):
+        import itertools
+        """
+        Generate and plot all combinations of peak ratios from self.peak_label_dict.
+        Each ratio series is plotted in a grid of subplots.
+        """
+        # Check if peak data is available
+        if self.peakData is None:
+            self.extract_peaks()
+        # Generate all combinations of peak ratios
+        peak_keys = list(self.peak_label_dict.keys())
+        ratio_combinations = list(itertools.combinations(peak_keys, 2))
+
+
+        # Prepare a grid of subplots
+        n_ratios = len(ratio_combinations)
+        grid_size = int(np.ceil(np.sqrt(n_ratios)))
+        fig, axs = plt.subplots(grid_size, grid_size, figsize=(15, 15))
+        axs = axs.flatten()
+
+        # Plot each ratio combination
+        for idx, (peak_a, peak_b) in enumerate(ratio_combinations):
+            ax = axs[idx]
+            for series, dataDict in self.peakData.items():
+                timestamps = []
+                ratios = []
+                for timestamp, data in dataDict.items():
+                    ratio = data[peak_a] / data[peak_b]
+                    timestamps.append(timestamp)
+                    ratios.append(ratio)
+                
+                # Sort data by timestamp for better plotting
+                sorted_indices = np.argsort(timestamps)
+                timestamps = np.array(timestamps)[sorted_indices]
+                ratios = np.array(ratios)[sorted_indices]
+
+                # Scatter plot
+                ax.scatter(timestamps, ratios, label=series)
+                ax.set_title(f"Ratio: {peak_a}/{peak_b}")
+                ax.set_xlabel("Timestamp")
+                ax.set_ylabel("Ratio")
+                ax.legend()
+
+        # Hide unused subplots
+        for idx in range(len(ratio_combinations), len(axs)):
+            axs[idx].axis("off")
+
+        plt.tight_layout(h_pad=5, w_pad=1)
+        # not tight layout
+
         plt.show()
 
     def plot_ratio_series(self):
@@ -507,8 +573,10 @@ if __name__ == '__main__':
     # dataCollection = DataCollection(saveDir, transientDir, filename)
     # dataCollection.main()
     dataProcessing = DataProcessing(saveDir)
-    dataProcessing.generate_ratio_series()
-    dataProcessing.plot_ratio_series()  
-    # dataProcessing.check_peak_calculations()
-    breakpoint()
+    # dataProcessing.plot_single()    
+    dataProcessing.plot_all_peak_ratios()
+    ## single peak ratio
+    # dataProcessing.generate_ratio_series(a='p2', b='v1')
+    # dataProcessing.plot_ratio_series()  
+
     # dataProcessing.export_data(basename="LnNP")

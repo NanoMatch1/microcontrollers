@@ -325,6 +325,7 @@ class Microscope:
         self.laser_wavelength = None
         self.triax_steps = None
         self.triax_wavelength = None
+        self.motorList = ['g1', 'g2', 'l2', 'l3']
 
         self.current_wavelength = None
         self.current_shift = 0
@@ -462,6 +463,7 @@ class Microscope:
             'g2': 'BY',
             'l1' : 'AX',
             'l2' : 'AY',
+            'l3' : 'AZ',
             'setposa': 'Asetpos',
             'setposb' : 'Bsetpos',
             'aisrun': 'Aisrun',
@@ -846,8 +848,9 @@ class Microscope:
 
 
     def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5, safety=False):
-        if motor.lower() not in ['g1', 'g2', 'l2']:
-            print("Invalid motor. Must be 'g1' or 'g2' or 'l2'")
+       
+        if motor.lower() not in self.motorList:
+            print("Invalid motor. Must be one of: ", self.motorList)
             return
         
         if safety is True:

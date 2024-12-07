@@ -18,7 +18,7 @@ from ars_gui import SpectrometerGUI
 
 class AngleResolvedSpectrometer:
 
-    def __init__(self, serial_port='COM7', working_dir=None):
+    def __init__(self, serial_port='COM4', working_dir=None):
         self.uno_serial = serial.Serial(serial_port, 9600)
         time.sleep(2)
         print(self.read_command_from_uno())
@@ -29,21 +29,24 @@ class AngleResolvedSpectrometer:
 
         # Calibration data (based on your provided calibration info)
         self.steps_per_degree = {
-            'X': (9680*2)/160,  # Steps per degree for X axis
-            'Y': (9680*2)/160,  # Steps per degree for Y axis
+            'X': (9584)/180,  # Steps per degree for X axis
+            'Y': (9584)/180,  # Steps per degree for Y axis
         }
 
         # Store current positions in steps (start at home position, 0 degrees)
         self.current_position = {'X': 0, 'Y': 0}  # Steps
         self.current_angle = {'X': 0, 'Y': 0}  # Degrees
 
-        self.x_home = -10720
-        self.y_home = -10252
+        self.x_home = -4673
+        self.y_home = -5006
+
+        self.soft_limit = 10 # degrees
+        # ive changed things
 
         self.hard_limits = {
             # 'X': ((self.angle_to_steps("X", 15)), 10720),
-            'X': ((self.angle_to_steps("X", 15)), self.angle_to_steps("X", 75)),
-            'Y': ((self.angle_to_steps("Y", 15)), 10252),
+            'X': (self.angle_to_steps("X", self.soft_limit), self.angle_to_steps("X", 90)),
+            'Y': (self.angle_to_steps("Y", self.soft_limit), self.angle_to_steps("Y", 90)),
         }
 
         self.measure_mode = 'specular'
@@ -122,8 +125,20 @@ class AngleResolvedSpectrometer:
     #     print("Finished getting motor positions.")
     #     return current_steps
 
+    # <P-4674,-4942,0P>
 
-    def home_motors(self, soft_limit=15):
+
+    def home_partial(self):
+        self.send_command_to_UNO('home')
+        time.sleep(0.1)
+        responses = self.read_from_serial_until()
+        print(responses)
+
+
+    def home_motors(self, soft_limit=None):
+        if soft_limit is None:
+            soft_limit = self.soft_limit
+            
         # print("Homing motors...")
 
         self.send_command_to_UNO('home')
@@ -163,9 +178,9 @@ class AngleResolvedSpectrometer:
             print("Motor positions set successfully.")
 
 
-    def angle_to_steps(self, axis, angle):
+    def angle_to_steps(self, axis, angle, motor_sign=1):
         """Convert angle to steps for the given axis."""
-        steps = int(angle * self.steps_per_degree[axis])
+        steps = int(angle * self.steps_per_degree[axis]) * motor_sign #flip the sign to match the motor direction
         return steps
 
     def steps_to_angle(self, axis, steps):
@@ -366,7 +381,7 @@ class AngleResolvedSpectrometer:
                 continue
 
 # Instantiate the spectrometer
-ars = AngleResolvedSpectrometer()
+ars = AngleResolvedSpectrometer(serial_port="COM9")
 app = SpectrometerGUI(ars)
 app.mainloop()
 

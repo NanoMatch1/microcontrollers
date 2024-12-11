@@ -18,6 +18,7 @@ class PIXISCam:
 
             self.cam = PrincetonInstruments.PicamCamera()
             self.cam.set_attribute_value("Exposure Time", 1000)
+            self.acqtime = 1000
             # self.cam.set_roi(0, 1024, 579, 579 + 35, 1, 35)
             self.cam.set_roi(0, 1024, 0, 1024, 1, 1024)
             self.camera_lock = threading.Lock()  # Initialize a lock

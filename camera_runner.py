@@ -48,9 +48,11 @@ class DataProcessing:
     '''Overall class for processing data from the camera. Operates on a dictionary of SeriesObjects containing spectrum objects.'''
 
     def __init__(self, saveDir):
+        self.scriptDir = os.path.dirname(__file__)
         self.fileDir = saveDir
         self.dataDict = {}
         self.peakData = None
+        self.referenceDir = os.path.join(self.fileDir, "reference_data")
 
         self.load_files()
         self.load_wavelength_reference('wavelengths.csv')
@@ -59,7 +61,7 @@ class DataProcessing:
     def load_wavelength_reference(self, filename):
         '''Loads the data with the wavelength reference.'''
 
-        with open(os.path.join(self.fileDir, filename), 'r') as file:
+        with open(os.path.join(self.referenceDir, filename), 'r') as file:
             data = file.readlines()
             # data = data.split(r'\n')
             # data = data.strip('\n, \t')
@@ -392,6 +394,7 @@ class DataCollection:
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.saveDir = saveDir
         self.transientDir = transientDir
+        self.referenceDir = os.path.join(self.saveDir, "reference_data")
         self.filename = filename
         self.acquiring = False
         self.acquire_thread = None
@@ -406,7 +409,8 @@ class DataCollection:
             'acqtime': self.camera_set_acquisition_time,
             'go': self.acquire_timestamp,
             'gofix': self.acquire_for_some_time,
-            'runtime': self.set_runtime
+            'runtime': self.set_runtime,
+            'tempseries': self.run_temperature_series
         }
 
         self.initialise()
@@ -431,19 +435,87 @@ class DataCollection:
         self.stop_continuous_acquire()
         print("Acquisition complete.")
 
+    def run_temperature_series(self, acqtime=None, wait_time=30, cycle_time=90, loadfile=False):
+        wait_time = float(wait_time)
+        acqtime = float(acqtime)
+        cycle_time = float(cycle_time)
 
-    def camera_set_acquisition_time(self, time):
+        if acqtime is not None:
+            self.camera_set_acquisition_time(acqtime)
+        else:
+            acqtime = self.camera.cam.get_attribute_value("Exposure Time")/1000
+        if loadfile == True:
+            with open(os.path.join(self.referenceDir, "temperature_set.txt"), 'r') as tempfile:
+                temperatures = tempfile.read()
+            temperatures = temperatures.split(',')
+            temperatures = [x for x in temperatures if x != '']
+        
+        if acqtime > cycle_time-(2*wait_time):
+            print("Timing error - acquisition time is greater than the time available at that temperature. Please make acqtime or wait_time smaller, or cycle_time larger.")
+            return
+        
+        print("Shortening acquisition time by 20% to account for overhead")
+        acqtime = acqtime*0.8
+        print("New acquisition time is {} seconds".format(acqtime))
+
+
+        while True:
+            temperatures = input("Please enter all temperatures to run, separated by comma (e.g. 25,30,35,40...):\n")
+            try:
+                temperatures = temperatures.strip(' ').split(',')
+            except Exception as e:
+                print('Error splitting values, please use "," to separate temperature values')
+            try:
+                temperatures = [float(x) for x in temperatures]
+            except ValueError:
+                print('Error getting numbers for temperatures - please make sure each temperature is a number.')
+            break
+        
+
+        replicates = int(np.floor(cycle_time-(wait_time*2)/acqtime))
+        basename = str(self.filename)
+        print("Filename: ", self.filename)
+        print("sequence is as follows:")
+        print("go to temp")
+        print("    -> wait {}".format(wait_time))
+        print('    -> acquire {} s x {} spectra'.format(acqtime, replicates))
+        print('    -> wait {}'.format(wait_time))
+        print('^ repeat')
+        response = input("if happy with sequence, press <Enter> to begin acquring. Enter any value to exit.\nRemember to synchronise <Enter> with the start of the temperature ramp!")
+        if response != '':
+            print('exiting')
+            return
+        
+        for temp in temperatures:
+            print('going to {} degrees'.format(temp))
+            time.sleep(wait_time)
+            for index in range(replicates):
+                self.filename = '{}_{}_{}'.format(basename, temp, index)
+                self.acquire_spectrum()
+            time.sleep(wait_time)
+
+
+        print("temperature series complete.")
+
+
+
+    def camera_set_acquisition_time(self, acqtime):
         restart = False
         if self.acquiring:
             self.stop_continuous_acquire()
             restart = True
-        self.acq_time = float(time) * 1000  # ms
+        try:
+            self.acq_time = float(acqtime) * 1000  # ms
+        except ValueError:
+            print("Acqtime needs to be a number. Acqtime is defaulting to {}".format(self.camera.cam.get_attribute_value("Exposure Time")))
         self.camera.cam.set_attribute_value("Exposure Time", self.acq_time)
         if restart:
             self.continuous_acquire()
+        print("Set acquisition time to {} seconds".format(acqtime))
 
     def set_filename(self, filename):
         self.filename = filename
+        print('set filename to "{}"'.format(self.filename))
 
     def initialise(self):
         self.saveDir = os.path.join(self.scriptDir, self.saveDir)
@@ -564,13 +636,23 @@ class DataCollection:
 
 if __name__ == '__main__':
     saveDir = 'spectroscopy_saved_data'
-    saveDir = r'C:\Users\sjbrooke\OneDrive - The University of Melbourne\Data\Maria\spectroscopy_saved_data'
+    # saveDir = r'C:\Users\sjbrooke\OneDrive - The University of Melbourne\Data\Maria\spectroscopy_saved_data'
     transientDir = 'transient'
     filename = 'test_data'
+    referenceDir = 'reference_data'
     saveDir = os.path.join(os.path.dirname(os.path.realpath(__file__)), saveDir)
+
+    # with open(os.path.join(saveDir, "temperature_set.txt"), 'w') as savefile:
+    #     file = np.arange(24, 102, 2)
+    #     file = [str(x) for x in file]
+    #     for line in file:
+    #         savefile.write("{},".format(line))
     # rename_files(saveDir, "0.2C-NDNC0.5C_", "0.2C-NDNC0.5C-A_")
     # rename_files(saveDir, "NR_", "NR-")
-    # dataCollection = DataCollection(saveDir, transientDir, filename)
+    dataCollection = DataCollection(saveDir, transientDir, filename)
+    dataCollection.main()
+    # dataCollection.run_temperature_series(acqtime=1, wait_time=2, cycle_time=10, loadfile=False)
+    breakpoint()
     # dataCollection.main()
     dataProcessing = DataProcessing(saveDir)
     # dataProcessing.plot_single()    

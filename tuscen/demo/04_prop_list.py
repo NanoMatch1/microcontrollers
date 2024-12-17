@@ -12,6 +12,15 @@ from enum import Enum
 import time
 
 class Tucam():
+
+    propertyDict = {
+        'gain': TUCAM_IDPROP.TUIDP_GLOBALGAIN.value,
+    }
+
+    capaDict = {
+        'resolution': TUCAM_IDCAPA.TUIDC_RESOLUTION.value,
+    }
+
     def __init__(self):
         self.Path = './'
         self.TUCAMINIT = TUCAM_INIT(0, self.Path.encode('utf-8'))
@@ -47,6 +56,102 @@ class Tucam():
     def UnInitApi(self):
         # ch:反初始化相机 | en:Uninitial Cameras
         TUCAM_Api_Uninit()
+
+    def PrintCameraCapabilityList(self):
+        value = c_int32(0)
+        valText = TUCAM_VALUE_TEXT()
+
+        nums = range(TUCAM_IDCAPA.TUIDC_RESOLUTION.value, TUCAM_IDCAPA.TUIDC_ENDCAPABILITY.value)
+        # ch:获取相机性能信息列表 | en:Get capability information list
+        print('Get capability information list')
+        for num in nums:
+            capa = TUCAM_CAPA_ATTR()
+            capa.idCapa = num
+            try:
+                result = TUCAM_Capa_GetAttr(self.TUCAMOPEN.hIdxTUCam, pointer(capa))
+                if num == TUCAM_IDCAPA.TUIDC_RESOLUTION.value:
+                    cnt = capa.nValMax - capa.nValMin + 1
+                    szRes = (c_char * 64)()
+                    for j in range(cnt):
+                        valText.nID = num
+                        valText.dbValue = j
+                        valText.nTextSize = 64
+                        valText.pText = cast(szRes, c_char_p)
+                        TUCAM_Capa_GetValueText(self.TUCAMOPEN.hIdxTUCam, pointer(valText))
+                        print('%#d, Resolution =%#s'%(j,valText.pText))
+
+                print('CapaID=%#d Min=%#d Max=%#d Dft=%#d Step=%#d' %(capa.idCapa, capa.nValMin, capa.nValMax, capa.nValDft, capa.nValStep))
+            except Exception:
+                #print('CapaID=%#d Not support' %(num))
+                continue
+
+        # ch:设置相机性能默认值 | en:Set capability default value
+        print('Set capability default value')
+        for num in nums:
+            capa = TUCAM_CAPA_ATTR()
+            capa.idCapa = num
+            try:
+                result = TUCAM_Capa_GetAttr(self.TUCAMOPEN.hIdxTUCam, pointer(capa))
+                TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, capa.idCapa, capa.nValDft)
+                print('CapaID=%#d Set default value %#d success'%(capa.idCapa, capa.nValDft))
+            except Exception:
+                continue
+
+        # ch:获取相机性能当前值 | en:Get capability default value
+        print('Get capability current value')
+        for num in nums:
+            try:
+                result = TUCAM_Capa_GetValue(self.TUCAMOPEN.hIdxTUCam, num, pointer(value))
+                print("CapaID=", num, "The current value is=", value)
+            except Exception:
+                continue
+
+
+    def test_for_property(self, key='', newValue=0):
+
+        idProp = self.propertyDict.get(key, None)
+        if idProp is None:
+            print('Property key not found')
+            return
+        value = c_double(0)
+        prop = TUCAM_PROP_ATTR()
+        # prop.idProp = TUCAM_IDPROP.TUIDP_GLOBALGAIN.value
+        prop.idProp = idProp
+        prop.nIdxChn = 0
+        # ch:获取相机属性信息 | en:Get property information
+        print('Get property information')
+        try:
+            result = TUCAM_Prop_GetAttr(self.TUCAMOPEN.hIdxTUCam, pointer(prop))
+            print('PropID=%#d Min=%#d Max=%#d Dft=%#d Step=%#d' %(prop.idProp, prop.dbValMin, prop.dbValMax, prop.dbValDft, prop.dbValStep))
+        except Exception as e:
+            print(e)
+            print('PropID=%#d Not support' %(prop.idProp))
+
+
+        # ch:设置相机属性值 | en:Set property value
+
+        # breakpoint()
+
+        print('Set property value')
+        try:
+            result = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, prop.idProp, newValue, 0)
+            print('Set PropID=%#d Value=%#d' %(prop.idProp, newValue))
+        except Exception as e:
+            print(e)
+            print('Set PropID=%#d Value=%#d Failure' %(prop.idProp, newValue))
+
+        # ch:获取相机属性当前值 | en:Get property current value
+        print('Get property current value')
+        try:
+            # result = TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, prop.idProp, pointer(value), 0)
+
+            breakpoint()
+            
+            result = TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, prop.idProp, pointer(value), 0)
+            print("PropID=", prop.idProp, "The current value is=", value)
+        except Exception as e:
+            print(e)
+            print('PropID=%#d Not support' %(prop.idProp))
 
     def PrintCameraPropertyList(self):
         value = c_double(0)
@@ -111,5 +216,13 @@ if __name__ == '__main__':
     demo.OpenCamera(0)
     if demo.TUCAMOPEN.hIdxTUCam != 0:
         demo.PrintCameraPropertyList()
+        # demo.test_for_property()
+        while True:
+            try:
+                demo.test_for_property(key='gain', newValue=1)
+            except Exception as e:
+                print(e)
+                
+            breakpoint()
         demo.CloseCamera()
     demo.UnInitApi()

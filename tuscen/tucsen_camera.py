@@ -12,18 +12,62 @@ from enum import Enum
 import time
 import numpy as np
 import os
+import threading
 
-class Tucam():
-    def __init__(self):
+class Tucam:
+    def __init__(self, Microscope=None):
         self.scriptDir = os.path.dirname(os.path.abspath(__file__))
-        print(self.scriptDir)
+        self.microscope = Microscope
+        self.transientDir = self.microscope.transientDir if self.microscope else self.scriptDir
         self.TUCAMINIT = TUCAM_INIT(0, self.scriptDir.encode('utf-8'))
         self.TUCAMOPEN = TUCAM_OPEN(0, 0)
         self.handle = self.TUCAMOPEN.hIdxTUCam
         TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
-        print(self.TUCAMINIT.uiCamCount)
-        print(self.TUCAMINIT.pstrConfigPath)
-        print('Connect %d camera' %self.TUCAMINIT.uiCamCount)
+        self.camera_lock = threading.Lock()
+        self.stop_flag = threading.Event()
+        self.is_running = False
+
+    def acquire_one_frame(self):
+        self.OpenCamera(0)
+        self.SetROI()
+        self.SetExposure(200)
+        dataDict = self.WaitForImageData(nframes=1)
+        self.CloseCamera()
+        return dataDict[0] if dataDict else None
+
+    def continuous_acquisition(self):
+        self.stop_flag.clear()
+        self.OpenCamera(0)
+        self.SetROI()
+        self.SetExposure(200)
+        self.write_dir = self.transientDir
+
+        while not self.stop_flag.is_set():
+            try:
+                with self.camera_lock:
+                    dataDict = self.WaitForImageData(nframes=1)
+                if not dataDict:
+                    continue
+                data = dataDict[0]
+                np.save(os.path.join(self.transientDir, "transient_data.npy"), data)
+                time.sleep(0.001)
+            except Exception as e:
+                print(f"Acquisition error: {e}")
+                break
+
+        self.CloseCamera()
+
+    def start_continuous_acquisition(self):
+        acq_thread = threading.Thread(target=self.continuous_acquisition)
+        acq_thread.daemon = True
+        acq_thread.start()
+        print("Started continuous acquisition.")
+        self.is_running = True
+
+    def stop_continuous_acquisition(self):
+        print("Stopping continuous acquisition.")
+        self.stop_flag.set()
+        self.is_running = False
 
     def OpenCamera(self, Idx):
 
@@ -142,7 +186,7 @@ class Tucam():
         TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ATEXPOSURE.value, 0)
         TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, value, 0);
         print("Set exposure:", value)
-        self.ShowAverageGray()
+        # self.ShowAverageGray()
 
     def get_camera_info(self):
         from TUCam import get_camera_gain_attributes
@@ -211,7 +255,7 @@ def refresh_camera():
     print("refreshing camera")
     demo = Tucam()
     demo.OpenCamera(0)
-    demo.get_camera_info()
+    # demo.get_camera_info()
     demo.CloseCamera()
     demo.UnInitApi()
 
@@ -219,11 +263,11 @@ if __name__ == '__main__':
     def run_cam(set_ROI=(0, 0, 2048, 2048)):
         demo = Tucam()
         demo.OpenCamera(0)
-        demo.get_camera_info()
-        breakpoint()
+        # demo.get_camera_info()
+        # breakpoint()
         if demo.TUCAMOPEN.hIdxTUCam != 0:
             demo.SetROI(set_ROI=set_ROI)
-            demo.SetExposure(200)
+            demo.SetExposure(500)
             dataDict = demo.WaitForImageData()
             for key, value in dataDict.items():
                 # plot_image(value)

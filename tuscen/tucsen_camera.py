@@ -16,8 +16,10 @@ import os
 class Tucam():
     def __init__(self):
         self.scriptDir = os.path.dirname(os.path.abspath(__file__))
+        print(self.scriptDir)
         self.TUCAMINIT = TUCAM_INIT(0, self.scriptDir.encode('utf-8'))
         self.TUCAMOPEN = TUCAM_OPEN(0, 0)
+        self.handle = self.TUCAMOPEN.hIdxTUCam
         TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
         print(self.TUCAMINIT.uiCamCount)
         print(self.TUCAMINIT.pstrConfigPath)
@@ -81,7 +83,7 @@ class Tucam():
         # return buffer_list
 
     # ch:获取相机数据流 | en:Get camera stream
-    def WaitForImageData(self):
+    def WaitForImageData(self, nframes=10):
         dataDict = {}
         m_frame = TUCAM_FRAME()
         m_format = TUIMG_FORMATS
@@ -95,8 +97,7 @@ class Tucam():
         TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame))
         TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, m_capmode.TUCCM_SEQUENCE.value)
 
-        nTimes = 10
-        for i in range(nTimes):
+        for i in range(nframes):
             try:
                 result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), 1000)
 
@@ -126,15 +127,29 @@ class Tucam():
 
         return dataDict
     
-    def export_data(self, data, filename='default'):
+    def export_data(self, data, filename='default', spectrum=False):
         self.save_dir = os.path.join(self.scriptDir, 'data')
         if not os.path.exists(self.save_dir):
             os.makedirs(self.save_dir)
-        
+    
+            # plt.plot(data[:, 0], data[:, 1])
         filepath = os.path.join(self.save_dir, filename)
         np.save(filepath, data)
         print('Data saved to %s' % filepath)
 
+    def SetExposure(self, value):
+
+        TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ATEXPOSURE.value, 0)
+        TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, value, 0);
+        print("Set exposure:", value)
+        self.ShowAverageGray()
+
+    def get_camera_info(self):
+        from TUCam import get_camera_gain_attributes
+
+        gain = get_camera_gain_attributes(self.handle)
+        print(gain)
+        self.gain = gain
 # def numpy_to_image(data):
 #     import cv2
 #     cv2.imshow('image', data)
@@ -142,11 +157,14 @@ class Tucam():
 #     cv2.destroyAllWindows()
 class Plotter:
     def __init__(self, dataDir=None):
+        # import matplotlib.pyplot as plt
         self.scriptDir = os.path.dirname(os.path.abspath(__file__))
         if dataDir is None:
             self.dataDir = os.path.join(self.scriptDir, 'data')
         else:
             self.dataDir = dataDir
+
+        self.dataDict = self.load_all_data()
         
     def load_data(self, filename):
         filepath = os.path.join(self.dataDir, filename)
@@ -159,11 +177,19 @@ class Plotter:
             data = self.load_data(filename)
             dataDict[filename] = data
         return dataDict
+    
+    def plot_spectra(self):
+        for key, value in self.dataDict.items():
+            dataA = value[:, :, 0]
+            dataB = value[:, :, 1]
+            plot_image((dataA, dataB))
 
-    def plot_image(self, data):
-        import matplotlib.pyplot as plt
-        plt.imshow(data)
-        plt.show()
+
+
+    # def plot_image(self, data):
+    #     import matplotlib.pyplot as plt
+    #     plt.imshow(data)
+    #     plt.show()
 
 def load_data(filepath):
     return np.load(filepath)
@@ -175,14 +201,29 @@ def plot_image(data: tuple):
         ax[idx].imshow(spectrum)
     plt.show()
 
+def plot_spectrum(data):
+    import matplotlib.pyplot as plt
+    plt.plot(data)
+    plt.show()
 
+
+def refresh_camera():
+    print("refreshing camera")
+    demo = Tucam()
+    demo.OpenCamera(0)
+    demo.get_camera_info()
+    demo.CloseCamera()
+    demo.UnInitApi()
 
 if __name__ == '__main__':
     def run_cam(set_ROI=(0, 0, 2048, 2048)):
         demo = Tucam()
         demo.OpenCamera(0)
+        demo.get_camera_info()
+        breakpoint()
         if demo.TUCAMOPEN.hIdxTUCam != 0:
             demo.SetROI(set_ROI=set_ROI)
+            demo.SetExposure(200)
             dataDict = demo.WaitForImageData()
             for key, value in dataDict.items():
                 # plot_image(value)
@@ -193,11 +234,12 @@ if __name__ == '__main__':
     
     def plot_data():
         plotter = Plotter()
-        dataDict = plotter.load_all_data()
-        for key, value in dataDict.items():
+        # dataDict = plotter.load_all_data()
+        for key, value in plotter.dataDict.items():
             dataA = value[:, :, 0]
             dataB = value[:, :, 1]
             plot_image((dataA, dataB))
         
-    run_cam(set_ROI=(0, 0, 2048, 2048))
+    refresh_camera()
+    run_cam(set_ROI=(0, 1100, 2048, 400))
     plot_data()

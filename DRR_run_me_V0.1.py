@@ -20,6 +20,7 @@ from pixis_camera import PIXISCam
 
 # 806.45
 # 806.4
+# new 700 = 92167
 
 '''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
 # Polyfit calibration 24/08/27: [-1.28255101e-02 -4.23233709e+01  4.22414334e+04]

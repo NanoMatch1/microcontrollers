@@ -104,7 +104,7 @@ class DataProcessing:
 
 
 
-        # for filename, data in self.dataDict.items():
+        # for filename, data in self.dataDict.items(): 
         #     data = np.array(data).astype(float)
         #     # timestamp = self.parse_timestamp(filename)
         #     newDict[timestamp] = data
@@ -148,7 +148,7 @@ class DataProcessing:
 
         self.peakData = indexDict
 
-    def plot_single(self):
+    def plot_single(self, number=10):
         '''Plots a single spectrum from the dataDict.'''
 
         series = next(iter(self.dataDict.keys()))
@@ -573,7 +573,7 @@ if __name__ == '__main__':
     # dataCollection = DataCollection(saveDir, transientDir, filename)
     # dataCollection.main()
     dataProcessing = DataProcessing(saveDir)
-    # dataProcessing.plot_single()    
+    dataProcessing.plot_single()    
     dataProcessing.plot_all_peak_ratios()
     ## single peak ratio
     # dataProcessing.generate_ratio_series(a='p2', b='v1')

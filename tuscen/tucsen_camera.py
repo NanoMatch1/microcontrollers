@@ -200,6 +200,9 @@ class Tucam:
 #     cv2.waitKey(0)
 #     cv2.destroyAllWindows()
 class Plotter:
+    # import os
+
+
     def __init__(self, dataDir=None):
         # import matplotlib.pyplot as plt
         self.scriptDir = os.path.dirname(os.path.abspath(__file__))
@@ -216,17 +219,76 @@ class Plotter:
     
     def load_all_data(self, tag="tucsen_data"):
         dataDict = {}
-        files = [file for file in os.listdir(self.dataDir) if tag in file]
+        # files = [file for file in os.listdir(self.dataDir) if tag in file]
+        files = [file for file in os.listdir(self.dataDir)]
+
         for filename in files:
-            data = self.load_data(filename)
-            dataDict[filename] = data
+            # breakpoint()
+            filepath = os.path.join(self.dataDir, filename)
+            try:
+                if filename.endswith('.npy'):
+                    data = self.load_data(filepath)
+                elif filename.endswith('.tif'):
+                    data = self.load_tif_as_numpy(filepath)
+                else:
+                    print('File format not supported {}'.format(filename))
+                    continue
+                dataDict[filename] = data
+                print('Data loaded from {}'.format(filename))
+            except Exception as e:
+                print(e)
+                print('Failed to load data from {}'.format(filename))
         return dataDict
     
-    def plot_spectra(self):
+    def load_tif_as_numpy(self, filepath):
+        from PIL import Image
+        with Image.open(filepath) as img:
+            np_array = np.array(img)
+        return np_array
+    
+    def plot_images(self):
         for key, value in self.dataDict.items():
-            dataA = value[:, :, 0]
-            dataB = value[:, :, 1]
-            plot_image((dataA, dataB))
+            if value.ndim == 3:
+                plot_image_SDK(value)
+            elif value.ndim == 2:
+                plot_image_tucsen(value)
+
+    def crop_data(self, crop_range):
+        newDict = {}
+        for key, value in self.dataDict.items():
+            data = value[crop_range[0]:crop_range[1], :]
+
+            newDict[key] = data
+        self.dataDict = newDict
+        return newDict
+
+
+    def plot_spectrum(self, data, binSize=2):
+        import matplotlib.pyplot as plt
+
+        dataY = np.sum(data, axis=0)
+        dataY = np.add.reduceat(dataY, np.arange(0, dataY.size, binSize)) 
+        # breakpoint()
+        # dataY = np.sum(data, axis=0)
+        dataX = np.arange(dataY.size)
+        # dataX = np.arange(len(data[0, :]))
+        # dataY = data[100, :]
+        # dataX = np.arange(data.size)
+        # dataY = data
+        # breakpoint()
+        
+        plt.plot(dataX, dataY)
+        plt.show()
+
+    def plot_all_spectra(self, binSize=1):
+        for key, value in self.dataDict.items():
+            self.plot_spectrum(value, binSize=binSize)
+    
+    # def plot_spectra(self):
+    #     for key, value in self.dataDict.items():
+    #         dataA = value[:, :, 0]
+    #         dataB = value[:, :, 1]
+            # plot_image((dataA, dataB))
 
 
 
@@ -238,11 +300,16 @@ class Plotter:
 def load_data(filepath):
     return np.load(filepath)
 
-def plot_image(data: tuple):
+def plot_image_SDK(data: tuple):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(len(data), 1)
     for idx, spectrum in enumerate(data):
         ax[idx].imshow(spectrum)
+    plt.show()
+
+def plot_image_tucsen(data: np.ndarray):
+    import matplotlib.pyplot as plt
+    plt.imshow(data)
     plt.show()
 
 def plot_spectrum(data):
@@ -284,6 +351,6 @@ if __name__ == '__main__':
             dataB = value[:, :, 1]
             plot_image((dataA, dataB))
         
-    refresh_camera()
-    run_cam(set_ROI=(0, 1100, 2048, 400))
-    plot_data()
+    # refresh_camera()
+    # run_cam(set_ROI=(0, 1100, 2048, 400))
+    # plot_data()

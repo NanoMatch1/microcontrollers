@@ -42,8 +42,8 @@ void setup() {
   stepperX.setAcceleration(5000);
   stepperY.setMaxSpeed(5000);
   stepperY.setAcceleration(5000);
-  stepperZ.setMaxSpeed(50);
-  stepperZ.setAcceleration(200);
+  stepperZ.setMaxSpeed(5000);
+  stepperZ.setAcceleration(5000);
   stepperA.setMaxSpeed(1000);
   stepperA.setAcceleration(1000);
 }

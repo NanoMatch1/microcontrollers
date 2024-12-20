@@ -240,6 +240,40 @@ class Plotter:
                 print('Failed to load data from {}'.format(filename))
         return dataDict
     
+    def organise_data(self):
+        '''Initial organisation functions for the data. Takes the sample and background data and places in a dictionary'''
+        self.bgDict = {}
+        sampleDict = {}
+
+        for filename, data in self.dataDict.items():
+            if 'BG' in filename:
+                self.bgDict[filename] = data
+            else:
+                sampleDict[filename] = data
+
+        self.dataDict = sampleDict
+
+        return self.bgDict, sampleDict
+    
+    def average_all_data(self):
+        '''Averages data with the same basename'''
+
+        basenames = [file.split('-')[0] for file in self.dataDict.keys()]
+        
+        unique_basenames = list(set(basenames))
+
+        newDict = {}
+        for basename in unique_basenames:
+            data = [value for key, value in self.dataDict.items() if basename in key]
+            newData = data[0]
+            for i in range(1, len(data)):
+                newData = np.add(newData, data[i])
+                newData = newData / len(data)
+            newDict[basename] = newData
+
+        self.dataDict = newDict
+
+    
     def load_tif_as_numpy(self, filepath):
         from PIL import Image
         with Image.open(filepath) as img:
@@ -281,8 +315,10 @@ class Plotter:
         plt.show()
 
     def plot_all_spectra(self, binSize=1):
-        for key, value in self.dataDict.items():
-            self.plot_spectrum(value, binSize=binSize)
+        from matplotlib import pyplot as plt
+        fig, ax = plt.subplots(1)
+        # for key, value in self.dataDict.items():
+        #     self.plot_spectrum(value, binSize=binSize)
     
     # def plot_spectra(self):
     #     for key, value in self.dataDict.items():

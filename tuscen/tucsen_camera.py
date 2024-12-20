@@ -252,6 +252,7 @@ class Plotter:
                 sampleDict[filename] = data
 
         self.dataDict = sampleDict
+        # if len(self.bgDict) > 0:
 
         return self.bgDict, sampleDict
     
@@ -314,9 +315,36 @@ class Plotter:
         plt.plot(dataX, dataY)
         plt.show()
 
+    def image_to_spectrum_all(self):
+        for key, value in self.dataDict.items():
+            dataY = np.sum(value, axis=0)
+            self.dataDict[key] = dataY
+            # breakpoint()
+        
+
+
+    def image_to_spectrum(self, data):
+        dataY = np.sum(data, axis=0)
+        return dataY
+    
+    def subtract_BG(self):
+        if len(self.bgDict) > 1:
+            assert "Error multiple BG files"
+        for filename, data in self.dataDict.items():
+
+
+
     def plot_all_spectra(self, binSize=1):
         from matplotlib import pyplot as plt
         fig, ax = plt.subplots(1)
+        for filename, data in self.dataDict.items():
+            # breakpoint()
+            dataY = np.add.reduceat(data, np.arange(0, data.size, binSize)) 
+            dataX = np.arange(0, len(dataY), 1)
+            # dataY = data
+            ax.plot(dataX, dataY, label = filename)
+        ax.legend()
+        plt.show()
         # for key, value in self.dataDict.items():
         #     self.plot_spectrum(value, binSize=binSize)
     

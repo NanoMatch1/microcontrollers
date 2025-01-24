@@ -1850,9 +1850,9 @@ class Microscope:
                     return end_responses
                 if item != '':
                     end_responses.append(item)
-                    # print(item)
+
             time.sleep(0.01)
-            # else:
+
 
     def extract_data(self, response):
         try:

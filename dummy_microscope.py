@@ -1,40 +1,6 @@
 import os
 
-from commands import MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
-
-class CommandHandler:
-
-    def __init__(self):
-        self.handle_microscope = MicroscopeCommand()
-        self.handle_camera = CameraCommand()
-        self.handle_spectrometer = SpectrometerCommand()
-        self.handle_stage = StageCommand()
-        self.handle_monochromator = MonochromatorCommand()
-
-    def __call__(self, *args, **kwds):
-        return self.parse_command()
-
-    def extract_tokens(self, command):
-        tokens = [item.lower() for item in command.split(' ')]
-        return tokens
-
-    def parse_command(self, command):
-        tokens = self.extract_tokens(command)
-        keyword = tokens[0]
-
-        if keyword in self.handle_microscope.command_functions.keys():
-            return self.handle_microscope(tokens)
-        elif self.command in self.camera_dict:
-            return self.handle_camera(tokens)
-        elif self.command in self.spectrometer_dict:
-            return self.handle_spectrometer(tokens)
-        elif self.command in self.stage_dict:
-            return self.handle_stage(tokens)
-        elif self.command in self.monochromator_dict:
-            return self.handle_monochromator(tokens)
-        else:
-            return None
-        
+from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
 class DummyMicroscope:
 

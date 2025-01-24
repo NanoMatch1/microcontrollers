@@ -9,6 +9,42 @@ def ui_callable(func):
     func.is_ui_process_callable = True
     return func
 
+
+class CommandHandler:
+
+    def __init__(self):
+        self.handle_microscope = MicroscopeCommand()
+        self.handle_camera = CameraCommand()
+        self.handle_spectrometer = SpectrometerCommand()
+        self.handle_stage = StageCommand()
+        self.handle_monochromator = MonochromatorCommand()
+
+    def __call__(self, *args, **kwds):
+        return self.parse_command()
+
+    def extract_tokens(self, command):
+        tokens = [item.lower() for item in command.split(' ')]
+        return tokens
+
+    def parse_command(self, command):
+        tokens = self.extract_tokens(command)
+        keyword = tokens[0]
+
+        if keyword in self.handle_microscope.command_functions.keys():
+            return self.handle_microscope(tokens)
+        elif self.command in self.camera_dict:
+            return self.handle_camera(tokens)
+        elif self.command in self.spectrometer_dict:
+            return self.handle_spectrometer(tokens)
+        elif self.command in self.stage_dict:
+            return self.handle_stage(tokens)
+        elif self.command in self.monochromator_dict:
+            return self.handle_monochromator(tokens)
+        else:
+            return None
+        
+
+
 class Command(ABC):
     def __init__(self):
         self.command_functions = {}
@@ -119,12 +155,12 @@ class MicroscopeCommand(Command):
     @ui_callable
     def run_scan_spectrum(self):
         print('Scanning spectrum...')
-        return False
+        return True
     
     @ui_callable
     def get_grating_position(self):
         print('Getting grating position...')
-        return str(356465)
+        return 356465
 
     @ui_callable
     def set_scan_min(self):

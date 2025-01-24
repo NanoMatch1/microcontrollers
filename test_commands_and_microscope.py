@@ -1,6 +1,6 @@
 
 import unittest
-from commands import MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
+from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 from dummy_microscope import DummyMicroscope
 
 class TestMicroscopeCommand(unittest.TestCase):

@@ -13,9 +13,9 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import scrolledtext
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
 from types import SimpleNamespace
 from dataclasses import dataclass
+
 from pixis_camera import PIXISCam
 
 # 806.45

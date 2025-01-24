@@ -119,10 +119,12 @@ class MicroscopeCommand(Command):
     @ui_callable
     def run_scan_spectrum(self):
         print('Scanning spectrum...')
+        return False
     
     @ui_callable
     def get_grating_position(self):
         print('Getting grating position...')
+        return str(356465)
 
     @ui_callable
     def set_scan_min(self):

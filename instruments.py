@@ -11,51 +11,10 @@ def ui_callable(func):
 
 
 
-class CommandHandler:
 
-    def __init__(self):
-        self.handle_microscope = MicroscopeCommand()
-        self.handle_camera = CameraCommand()
-        self.handle_spectrometer = SpectrometerCommand()
-        self.handle_stage = StageCommand()
-        self.handle_monochromator = MonochromatorCommand()
-
-    def __call__(self, *args, **kwds):
-        return self.parse_command()
-
-    def extract_tokens(self, command):
-        tokens = [item.lower() for item in command.split(' ')]
-        return tokens
-
-    def parse_command(self, command):
-        tokens = self.extract_tokens(command)
-        keyword = tokens[0]
-
-        if keyword in self.handle_microscope.command_functions.keys():
-            return self.handle_microscope(tokens)
-        elif self.command in self.camera_dict:
-            return self.handle_camera(tokens)
-        elif self.command in self.spectrometer_dict:
-            return self.handle_spectrometer(tokens)
-        elif self.command in self.stage_dict:
-            return self.handle_stage(tokens)
-        elif self.command in self.monochromator_dict:
-            return self.handle_monochromator(tokens)
-        else:
-            return None
-        
-
-
-class Command(ABC):
+class Instrument(ABC):
     def __init__(self):
         self.command_functions = {}
-
-    @abstractmethod
-    def __call__(self, *args, **kwargs):
-        """
-        Subclasses handle how commands are invoked.
-        """
-        pass
 
     def _integrity_checker(self):
         """
@@ -98,7 +57,8 @@ class Command(ABC):
 
 
 
-class MicroscopeCommand(Command):
+class Microscope(Instrument):
+
 
 
         # 'scan_min': self.set_scan_min,
@@ -167,7 +127,7 @@ class MicroscopeCommand(Command):
     def set_scan_min(self):
         print('Setting scan minimum...')
 
-class CameraCommand(Command):
+class Camera(Instrument):
     def __init__(self):
         super().__init__()
         self.command_functions = {
@@ -185,7 +145,7 @@ class CameraCommand(Command):
     def capture_frame(self):
         print("Capturing a frame from the camera.")
 
-class SpectrometerCommand(Command):
+class Spectrometer(Instrument):
     def __init__(self):
         super().__init__()
         self.command_functions = {
@@ -208,7 +168,7 @@ class SpectrometerCommand(Command):
     def calibrate_spectrometer(self):
         print("Calibrating the spectrometer.")
 
-class StageCommand(Command):
+class StageControl(Instrument):
     def __init__(self):
         super().__init__()
         self.command_functions = {
@@ -232,7 +192,7 @@ class StageCommand(Command):
         print("Homing the stage.")
 
 
-class MonochromatorCommand(Command):
+class Monochromator(Instrument):
     def __init__(self):
         super().__init__()
         self.command_functions = {

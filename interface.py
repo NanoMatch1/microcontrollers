@@ -1,8 +1,8 @@
 import os
 
 from functools import wraps
-from instruments import Microscope, Camera, Spectrometer, Stage, Monochromator
-from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
+from instruments import Instrument, Microscope, Camera, Spectrometer, StageControl, Monochromator
+# from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
 def simulate(expected_value=None):
     def decorator(func):
@@ -14,6 +14,17 @@ def simulate(expected_value=None):
         return wrapper
     return decorator
 
+def cli(instrument):
+    while True:
+        command = input("Enter a command: ")
+        if command == 'exit':
+            break
+        if command == 'help':
+            print("Available commands:")
+            # for 
+            breakpoint()
+        result = instrument._command_handler(*instrument._command_parser(command))
+        print(result)
 
 class InstrumentMediator:
 
@@ -27,26 +38,31 @@ class InstrumentMediator:
         self.microscope = Microscope()
         self.camera = Camera()
         self.spectrometer = Spectrometer()
-        self.stage = Stage()
+        self.stage = StageControl()
         self.monochromator = Monochromator()
-        
-        self.function_map = {
-            'microscope': self.microscope.command_functions.keys(),
-            'camera': self.camera.command_functions.keys(),
-            'spectrometer': self.spectrometer.command_functions.keys(),
-            'stage': self.stage.command_functions.keys(),
-            'monochromator': self.monochromator.command_functions.keys()           
-        }
 
+        self.command_map = self._generate_command_map()
 
         self._integrity_checker()
 
+    def _generate_command_map(self):
+        '''Dynamically generate a command map from the instruments declared in __init__'''
+        instruments = [self.__getattribute__(attribute) for attribute in dir(self) if isinstance(self.__getattribute__(attribute), Instrument)]
+        command_map = {
+            funct: (instrument, method)
+            for instrument in instruments
+            for funct, method in instrument.command_functions.items()
+        }
+        return command_map
+
     def _command_handler(self, funct, args):
-        for instrument, commands in self.function_map.items():
-            if funct in commands:
-                response = self.__getattribute__(instrument).command_functions[funct](*(args or []))
-                return response
-        # * operator unpacks the list - since an empty list has nothing to unpack, nothing is passed to the function. This avoids a TypeError
+        if funct in self.command_map:
+            _, method = self.command_map[funct]
+            result = method(*(args or []))
+            return result
+        print(f"Unknown command: {funct}")
+
+        # Detail: * operator unpacks the list - since an empty list has nothing to unpack, nothing is passed to the function. This avoids a TypeError
     
     def _command_parser(self, command:str):
         tokens = [item.lower() for item in command.split(' ') if item != '']
@@ -65,4 +81,4 @@ class InstrumentMediator:
 
 if __name__ == '__main__':
     instrument = InstrumentMediator(simulate=True)
-    breakpoint()
+    cli(instrument)

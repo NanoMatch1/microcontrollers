@@ -1,4 +1,6 @@
 import inspect
+import serial
+import time
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -8,7 +10,7 @@ def simulate(expected_value=None):
     def decorator(func):
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            if self.simulated:
+            if self.simulate:
                 return expected_value
             return func(self, *args, **kwargs)
         return wrapper
@@ -31,8 +33,14 @@ class MotorPositions:
 
 
 class Instrument(ABC):
-    def __init__(self):
+    def __init__(self, simulate=False):
+        self.simulate = simulate
         self.command_functions = {}
+
+    # @abstractmethod
+    def connect(self):
+        pass
+
 
     def _integrity_checker(self):
         """
@@ -115,9 +123,10 @@ class Microscope(Instrument):
         # 'run': self.continuous_acquire,
         # 'stop': self.stop_continuous_acquire,
 
-    def __init__(self):
+    def __init__(self, simulate=False, unoCOM='COM8', baud=9600):
         super().__init__()
-        # Suppose you have two UI-callable methods below.
+        self.simulate = simulate
+
         self.command_functions = {
             'scan': self.run_scan_spectrum,
             'get_grating_position': self.get_grating_position,
@@ -134,9 +143,21 @@ class Microscope(Instrument):
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
 
-    @simulated
-    def connect(self):
+    def connect_to_UNO(self, unoCOM, baud):
+        UNO_serial = serial.Serial(unoCOM, baud, timeout=1)
+        while UNO_serial.in_waiting == 0:
+            time.sleep(0.1)
+        while UNO_serial.in_waiting > 0:
+            response = UNO_serial.readline().decode().strip()
+            print(response)
+        return UNO_serial
+
+    @simulate(expected_value=serial.Serial)
+    def connect(self, unoCOM=None, baud=None):
         print('Connecting to microscope controller...')
+        self.serial = self.connect_to_UNO(unoCOM, baud)
+        print('Connected to microscope controller.')
+        return self.serial.__class__
 
     @ui_callable
     def run_scan_spectrum(self):
@@ -153,8 +174,9 @@ class Microscope(Instrument):
         print('Setting scan minimum...')
 
 class Camera(Instrument):
-    def __init__(self):
+    def __init__(self, simulate=False):
         super().__init__()
+        self.simulate = simulate
         self.command_functions = {
             'capture': self.capture_frame
         }
@@ -168,6 +190,14 @@ class Camera(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown camera command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+    
+    def connect(self):
+        print("Connecting to the camera.")
+        self.serial = self.connect_to_camera()
+
+    @simulate(expected_value=serial.Serial)
+    def connect_to_camera(self):
+        return serial.Serial
 
     @ui_callable
     def capture_frame(self):
@@ -175,8 +205,9 @@ class Camera(Instrument):
         print("Capturing a frame from the camera.")
 
 class Spectrometer(Instrument):
-    def __init__(self):
+    def __init__(self, simulate=False):
         super().__init__()
+        self.simulate = simulate
         self.command_functions = {
             'acquire': self.acquire_spectrum,
             'calibrate': self.calibrate_spectrometer
@@ -191,6 +222,8 @@ class Spectrometer(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown spectrometer command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+    
+
 
     @ui_callable
     def acquire_spectrum(self):
@@ -201,8 +234,9 @@ class Spectrometer(Instrument):
         print("Calibrating the spectrometer.")
 
 class StageControl(Instrument):
-    def __init__(self):
+    def __init__(self, simulate=False):
         super().__init__()
+        self.simulate = simulate
         self.command_functions = {
             'move': self.move_stage,
             'home': self.home_stage
@@ -228,8 +262,9 @@ class StageControl(Instrument):
 
 
 class Monochromator(Instrument):
-    def __init__(self):
+    def __init__(self, simulate=False):
         super().__init__()
+        self.simulate = simulate
         self.command_functions = {
             'set_wavelength': self.set_wavelength,
             'get_wavelength': self.get_wavelength
@@ -254,8 +289,9 @@ class Monochromator(Instrument):
         print("Getting the monochromator wavelength.")
 
 class Laser(Instrument):
-    def __init__(self):
+    def __init__(self, simulate=False):
         super().__init__()
+        self.simulate = simulate
         self.command_functions = {
             'set_power': self.set_power,
             'get_power': self.get_power

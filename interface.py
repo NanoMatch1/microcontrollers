@@ -27,6 +27,10 @@ def cli(instrument):
                 for command in commands:
                     print(f"   {command}")
             continue
+    
+        if command == 'debug':
+            print("Debugging")
+            breakpoint()
             
         result = instrument._command_handler(command)
         print(result)
@@ -40,12 +44,12 @@ class InstrumentMediator:
         self.transientDir = os.path.join(self.scriptDir, 'transient')
         self.saveDir = os.path.join(self.dataDir, 'saved_data')
 
-        self.microscope = Microscope()
-        self.camera = Camera()
-        self.spectrometer = Spectrometer()
-        self.stage = StageControl()
-        self.monochromator = Monochromator()
-        self.laser = Laser()
+        self.microscope = Microscope(simulate=simulate)
+        self.camera = Camera(simulate=simulate)
+        self.spectrometer = Spectrometer(simulate=simulate)
+        self.stage = StageControl(simulate=simulate)
+        self.monochromator = Monochromator(simulate=simulate)
+        self.laser = Laser(simulate=simulate)
 
         self.command_map = self._generate_command_map()
 
@@ -77,14 +81,14 @@ class InstrumentMediator:
         }
 
         if 'TRIAX' not in debug_skip:
-            self.spectrometer, self.state = self.connect_to_triax()
+            self.spectrometer.connect()
         if 'UNO' not in debug_skip:
-            self.uno_serial = self.connect_to_UNO(unoCOM, baud=9600)
+            self.microscope.connect(unoCOM, baud=9600)
         if not 'laser' in debug_skip:
-            self.laser_serial = self.connect_to_laser()
+            self.laser.connect()
         if not 'camera' in debug_skip:
             # self.camera = PIXISCam(self)
-            self.camera = Camera()
+            self.camera.connect()
             pass
 
         self._integrity_checker()
@@ -142,5 +146,5 @@ class InstrumentMediator:
 
 
 if __name__ == '__main__':
-    instrument = InstrumentMediator(simulate=True, debug_skip=['TRIAX', 'camera', 'laser'])
+    instrument = InstrumentMediator(simulate=True, unoCOM='COM10', debug_skip=['TRIAX', 'camera', 'laser'])
     cli(instrument)

@@ -1634,7 +1634,7 @@ class Microscope:
             
             # sulfur REF: 210 sd (220 peak)
         
-        # REF: 900 pixels (~ 1 window) ~= 250 cm-1 ~= 13 nm
+    # REF: 900 pixels (~ 1 window) ~= 250 cm-1 ~= 13 nm
 
         if com[0] == 'aapt': # puts the current positions of the motors into a file. Uses laser l1 calibration for the wavelength axis, and uses the raman shift applied to the (l1) calculated laser energy to provide a reference for the grating calibrations.
             command = 'o{}o'.format(self.tuning_motor_dict['gpa'])

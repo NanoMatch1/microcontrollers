@@ -1,5 +1,18 @@
 import inspect
+
 from abc import ABC, abstractmethod
+from dataclasses import dataclass
+from functools import wraps
+
+def simulate(expected_value=None):
+    def decorator(func):
+        @wraps(func)
+        def wrapper(self, *args, **kwargs):
+            if self.simulated:
+                return expected_value
+            return func(self, *args, **kwargs)
+        return wrapper
+    return decorator
 
 def ui_callable(func):
     """
@@ -9,7 +22,12 @@ def ui_callable(func):
     func.is_ui_process_callable = True
     return func
 
-
+@dataclass
+class MotorPositions:
+    x: int
+    y: int
+    z: int
+    a: int
 
 
 class Instrument(ABC):
@@ -115,6 +133,10 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+
+    @simulated
+    def connect(self):
+        print('Connecting to microscope controller...')
 
     @ui_callable
     def run_scan_spectrum(self):
@@ -230,3 +252,31 @@ class Monochromator(Instrument):
     @ui_callable
     def get_wavelength(self):
         print("Getting the monochromator wavelength.")
+
+class Laser(Instrument):
+    def __init__(self):
+        super().__init__()
+        self.command_functions = {
+            'set_power': self.set_power,
+            'get_power': self.get_power
+        }
+
+        self._integrity_checker()
+
+    def __str__(self):
+        return "Laser"
+
+    def __call__(self, command: str, *args, **kwargs):
+        if command not in self.command_functions:
+            raise ValueError(f"Unknown laser command: '{command}'")
+        return self.command_functions[command](*args, **kwargs)
+
+    @ui_callable
+    def set_power(self):
+        '''Set the laser power.'''
+        print("Setting the laser power.")
+
+    @ui_callable
+    def get_power(self):
+        '''Get the laser power.'''
+        print("Getting the laser power.")

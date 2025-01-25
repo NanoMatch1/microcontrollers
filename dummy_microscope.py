@@ -2,7 +2,7 @@ import os
 
 from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
-class DummyMicroscope:
+class DummyInstrument:
 
     def __init__(self):
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
@@ -19,5 +19,5 @@ class DummyMicroscope:
 
 
 if __name__ == '__main__':
-    microscope = DummyMicroscope()
+    instrument = DummyInstrument()
     breakpoint()

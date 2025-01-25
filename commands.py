@@ -10,6 +10,7 @@ def ui_callable(func):
     return func
 
 
+
 class CommandHandler:
 
     def __init__(self):

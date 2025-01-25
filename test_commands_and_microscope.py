@@ -1,7 +1,7 @@
 
 import unittest
 from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
-from dummy_microscope import DummyMicroscope
+from microcontrollers.interface import DummyMicroscope
 
 class TestMicroscopeCommand(unittest.TestCase):
     def setUp(self):

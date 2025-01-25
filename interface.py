@@ -32,13 +32,13 @@ def cli(instrument):
         if command == 'help':
             print("Available commands:")
             help_dict = generate_help_dict(instrument)
-            for instrument, commands in help_dict.items():
-                print(f"{instrument}:")
+            for inst, commands in help_dict.items():
+                print(f"{inst}:")
                 for command in commands:
                     print(f"   {command}")
             continue
             
-        result = instrument._command_handler(*instrument._command_parser(command))
+        result = instrument._command_handler(command)
         print(result)
 
 class InstrumentMediator:
@@ -70,14 +70,19 @@ class InstrumentMediator:
         }
         return command_map
 
-    def _command_handler(self, funct, args):
+    def _command_handler(self, command:str):
+        '''Handles the command and arguments passed to the InstrumentMediator'''
+
+        funct, args = self._command_parser(command)
+
         if funct in self.command_map:
             _, method = self.command_map[funct]
             result = method(*(args or []))
             return result
-        print(f"Unknown command: {funct}")
+        else:
+            return f" > Unknown command: {funct}"
 
-        # Detail: * operator unpacks the list - since an empty list has nothing to unpack, nothing is passed to the function. This avoids a TypeError
+         # Detail: * operator unpacks the list - since an empty list has nothing to unpack, nothing is passed to the function. This avoids a TypeError
     
     def _command_parser(self, command:str):
         tokens = [item.lower() for item in command.split(' ') if item != '']

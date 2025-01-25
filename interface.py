@@ -14,15 +14,30 @@ def simulate(expected_value=None):
         return wrapper
     return decorator
 
+def generate_help_dict(instrument):
+    help_dict = {}
+    for command, (inst, method) in instrument.command_map.items():
+        try:
+            help_dict[str(inst)].append(f"{command} - {method.__doc__}")
+        except KeyError:
+            help_dict[str(inst)] = [f"{command} - {method.__doc__}"]
+    return help_dict
+
 def cli(instrument):
     while True:
         command = input("Enter a command: ")
         if command == 'exit':
             break
+
         if command == 'help':
             print("Available commands:")
-            # for 
-            breakpoint()
+            help_dict = generate_help_dict(instrument)
+            for instrument, commands in help_dict.items():
+                print(f"{instrument}:")
+                for command in commands:
+                    print(f"   {command}")
+            continue
+            
         result = instrument._command_handler(*instrument._command_parser(command))
         print(result)
 

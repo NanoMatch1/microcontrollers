@@ -108,6 +108,9 @@ class Microscope(Instrument):
 
         self._integrity_checker()  # Validate on init
 
+    def __str__(self):
+        return "Microscope"
+
     def __call__(self, command: str, *args, **kwargs):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
@@ -136,6 +139,9 @@ class Camera(Instrument):
 
         self._integrity_checker()
 
+    def __str__(self):
+        return "Camera"
+
     def __call__(self, command: str, *args, **kwargs):
         if command not in self.command_functions:
             raise ValueError(f"Unknown camera command: '{command}'")
@@ -143,6 +149,7 @@ class Camera(Instrument):
 
     @ui_callable
     def capture_frame(self):
+        '''Record a frame from the camera.'''
         print("Capturing a frame from the camera.")
 
 class Spectrometer(Instrument):
@@ -154,6 +161,9 @@ class Spectrometer(Instrument):
         }
 
         self._integrity_checker()
+
+    def __str__(self):
+        return "Spectrometer"
 
     def __call__(self, command: str, *args, **kwargs):
         if command not in self.command_functions:
@@ -178,6 +188,9 @@ class StageControl(Instrument):
 
         self._integrity_checker()
 
+    def __str__(self):
+        return "Stage Control"
+
     def __call__(self, command: str, *args, **kwargs):
         if command not in self.command_functions:
             raise ValueError(f"Unknown stage command: '{command}'")
@@ -201,6 +214,9 @@ class Monochromator(Instrument):
         }
 
         self._integrity_checker()
+
+    def __str__(self):
+        return "Monochromator"
 
     def __call__(self, command: str, *args, **kwargs):
         if command not in self.command_functions:

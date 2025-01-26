@@ -1,34 +1,38 @@
 import serial
 import time
 
-from instruments import simulate
+from instruments import Instrument, simulate, ui_callable
 
 class ArduinoUNO:
 
-    def __init__(self, unoCOM='COM10', baud=9600, simulate=False, report=True):
+    def __init__(self, com_port='COM10', baud=9600, simulate=False, report=True):
         self.simulate = simulate
-        self.unoCOM = unoCOM
+        self.com_port = com_port
         self.baud = baud
         self.report = report
 
         # if the firmware commands change, update this dictionary
         self.message_map = {
-            'get_grating_positions': 'Apos',
+            'get_laser_positions': 'Apos',
+            'get_grating_positions': 'Bpos',
+            'apos': 'Apos',
+            'bpos': 'Bpos',
         }
 
         self.response_map = {
             # 'get_grating_positions': self._process_grating_positions,
         }
 
-    def connect(self, unoCOM, baud):
-        self.serial = self._connect_to_UNO(unoCOM, baud)
+    def connect(self, com_port, baud):
+        self.serial = self._connect_to_UNO(com_port, baud)
 
     def send_command(self, command):
         self._send_command_to_UNO(self.message_map[command])
         return self._read_from_serial_until()
 
     def get_grating_motor_positions(self):
-        response = self.send_command(self.message_map['get_grating_positions'])
+        response = self._send_command_to_UNO(self.message_map['get_grating_positions'])
+        print(response)
         
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
@@ -38,7 +42,7 @@ class ArduinoUNO:
         return grating_steps
     
     def get_laser_motor_positions(self):
-        response = self.send_command(self.message_map['get_laser_positions'])
+        response = self._send_command_to_UNO(self.message_map['get_laser_positions'])
         
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
@@ -47,8 +51,8 @@ class ArduinoUNO:
         
         return laser_steps
 
-    def _connect_to_UNO(self, unoCOM, baud):
-        UNO_serial = serial.Serial(unoCOM, baud, timeout=1)
+    def _connect_to_UNO(self, com_port, baud):
+        UNO_serial = serial.Serial(com_port, baud, timeout=1)
         while UNO_serial.in_waiting == 0:
             time.sleep(0.1)
         while UNO_serial.in_waiting > 0:
@@ -70,7 +74,7 @@ class ArduinoUNO:
         end_responses = []
 
         while True:
-            response = self.read_command_from_uno()
+            response = self._read_command_from_uno()
             
             if response == '':
                 time.sleep(0.01)

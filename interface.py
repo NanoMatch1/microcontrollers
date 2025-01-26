@@ -1,6 +1,7 @@
 import os
 import serial
 import time
+import traceback
 
 from controller import ArduinoUNO
 from instruments import Instrument, Microscope, Camera, Triax, StageControl, Monochromator, Laser, simulate
@@ -27,7 +28,7 @@ def cli(instrument):
 
 class Interface:
 
-    def __init__(self, simulate=False, debug_skip=[],  unoCOM='COM10', baud=9600):
+    def __init__(self, simulate=False, debug_skip=[],  com_port='COM10', baud=9600):
         self.simulate = simulate
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
@@ -72,16 +73,20 @@ class Interface:
         }
 
         # These are all serial connections. In the future, we may establish all connections through the controller board, in which case only one connection command is required.
-        if 'TRIAX' not in debug_skip:
-            self.spectrometer.connect()
-        if 'UNO' not in debug_skip:
-            self.connect_to_controller(unoCOM, baud=9600)
-        if not 'laser' in debug_skip:
-            self.laser.connect()
-        if not 'camera' in debug_skip:
-            self.camera.connect()
-            pass
+        if 'TRIAX' in debug_skip:
+            self.spectrometer.simulate = True
+        if 'UNO' in debug_skip:
+            self.controller.simulate = True
+        if 'laser' in debug_skip:
+            self.laser.simulate = True
+        if 'camera' in debug_skip:
+            self.camera.simulate = True
 
+        self.spectrometer.connect()
+        self.controller.connect(com_port, baud) # TODO: Create a method to search and find controller COM port
+        self.laser.connect()
+        self.camera.connect()
+        
         self._integrity_checker()
 
     
@@ -132,7 +137,8 @@ class Interface:
             try:
                 result = method(*(args or []))
             except Exception as e:
-                result = f" > Error: {e}"
+                error_details = traceback.format_exc()
+                result = f" > Error: {e}\n{error_details}"
             return result
         else:
             return f" > Unknown command: {funct}"
@@ -152,15 +158,7 @@ class Interface:
         print("Microscope integrity check passed")
         pass
 
-    @simulate(expected_value=serial.Serial)
-    def connect_to_controller(self, unoCOM=None, baud=None):
-        print('Connecting to microscope controller...')
-        self.controller.connect(unoCOM, baud)
-        print('Connected to microscope controller.')
-        return self.serial.__class__
-
-
 
 if __name__ == '__main__':
-    instrument = Interface(simulate=True, unoCOM='COM10', debug_skip=['TRIAX', 'camera', 'laser'])
+    instrument = Interface(simulate=False, com_port='COM10', debug_skip=['TRIAX', 'camera', 'laser'])
     cli(instrument)

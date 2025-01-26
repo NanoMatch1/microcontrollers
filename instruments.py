@@ -39,11 +39,6 @@ class Instrument(ABC):
     def __init__(self):
         self.command_functions = {}
 
-    # @abstractmethod
-    def connect(self):
-        pass
-
-
     def _integrity_checker(self):
         """
         Checks that every UI-callable method is in command_functions
@@ -135,7 +130,8 @@ class Microscope(Instrument):
             'scan': self.run_scan_spectrum,
             'get_grating_position': self.get_grating_position,
             'set_scan_min': self.set_scan_min,
-            'wai': self.get_all_current_positions,
+            'wai': self.where_am_i,
+            'apos': self.get_laser_motor_positions,
         }
 
         self.calibrations = self._generate_calibrations()
@@ -148,16 +144,23 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+       
     
     def _generate_calibrations(self):
         return Calibration(self)
     
+    @ui_callable
     def where_am_i(self):
         self.get_all_current_positions()
         self.report_all_current_positions()
-    
+
     @ui_callable
+    def get_laser_motor_positions(self):
+        '''Get the current positions of the laser motors.'''
+        return self.controller.get_laser_motor_positions()
+    
     def get_all_current_positions(self):
+        '''Get the current positions of all motors and calculate the corresponding wavelengths.'''
         laser_positions = self.calculate_laser_wavelength()
         grating_positions = self.calculate_grating_wavelength()
         spectrometer_position = self.calculate_spectrometer_wavelength()
@@ -172,10 +175,6 @@ class Microscope(Instrument):
 
         self.spectrometer_wavelength = self.calibrations.triax_steps_to_wl(self.spectrometer_position) # TODO: rename triax_steps_to_wl to spectrometer_steps_to_wl - requires change to calibration files and will be breaking until otherwise completed
         return self.spectrometer_wavelength
-    
-    def calculate_spectrometer_wavelength(self):
-        self.spectrometer_wavelength = self.interface.spectrometer.get_spectrometer_position()
-
     
     def report_all_current_positions(self):
         '''Formats and prints the current positions of the microscope.'''
@@ -343,6 +342,7 @@ class Triax(Spectrometer):
 
         self.command_functions = {
             'get_spectrometer_position': self.get_spectrometer_position,
+            'rg': self.get_spectrometer_position,
             'go_to_position': self.go_to_position
         }
 
@@ -382,6 +382,7 @@ class Triax(Spectrometer):
     @ui_callable
     @simulate(expected_value=380000) # TODO: Change to actual response
     def get_spectrometer_position(self):
+        '''Get the current position of the spectrometer in motor steps.'''
         print("Getting the current position of the TRIAX spectrometer.")
         current_position = self._get_triax_steps()
         return current_position
@@ -394,6 +395,7 @@ class Triax(Spectrometer):
         response = self._send_command_to_spectrometer(command)
         return response
 
+    @simulate(expected_value=True) # TODO: Change to actual response
     def connect(self):
         # Open a connection to the instrument
         rm = pyvisa.ResourceManager()
@@ -404,6 +406,8 @@ class Triax(Spectrometer):
         time.sleep(0.0001)
         self.state = self.spectrometer.read()
         print(self.state)
+
+        print('Connected to TRIAX spectrometer.')
 
         return self.spectrometer, self.state
 
@@ -517,6 +521,10 @@ class Laser(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown laser command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+    
+    def connect(self):
+        print("Connecting to the laser.")
+        pass
 
     @ui_callable
     def set_power(self):

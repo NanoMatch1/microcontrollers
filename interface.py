@@ -129,7 +129,10 @@ class Interface:
 
         if funct in self.command_map:
             _, method = self.command_map[funct]
-            result = method(*(args or []))
+            try:
+                result = method(*(args or []))
+            except Exception as e:
+                result = f" > Error: {e}"
             return result
         else:
             return f" > Unknown command: {funct}"

@@ -56,8 +56,8 @@ class LinSinModulation:
     
 class Calibration:
 
-    def __init__(self, interface):
-        self.scriptDir = interface.scriptDir
+    def __init__(self, microscope):
+        self.scriptDir = microscope.interface.scriptDir
         self.calibrationDir = os.path.join(self.scriptDir, 'calibrations')
         self._generate_calibrations()
     

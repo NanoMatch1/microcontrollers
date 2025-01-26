@@ -5,7 +5,8 @@ from instruments import simulate
 
 class ArduinoUNO:
 
-    def __init__(self, unoCOM='COM10', baud=9600, report=True):
+    def __init__(self, unoCOM='COM10', baud=9600, simulate=False, report=True):
+        self.simulate = simulate
         self.unoCOM = unoCOM
         self.baud = baud
         self.report = report

@@ -123,7 +123,7 @@ class Microscope(Instrument):
         # 'run': self.continuous_acquire,
         # 'stop': self.stop_continuous_acquire,
 
-    def __init__(self, simulate=False, unoCOM='COM8', baud=9600):
+    def __init__(self, simulate=False):
         super().__init__()
         self.simulate = simulate
 
@@ -142,22 +142,6 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
-
-    def connect_to_UNO(self, unoCOM, baud):
-        UNO_serial = serial.Serial(unoCOM, baud, timeout=1)
-        while UNO_serial.in_waiting == 0:
-            time.sleep(0.1)
-        while UNO_serial.in_waiting > 0:
-            response = UNO_serial.readline().decode().strip()
-            print(response)
-        return UNO_serial
-
-    @simulate(expected_value=serial.Serial)
-    def connect(self, unoCOM=None, baud=None):
-        print('Connecting to microscope controller...')
-        self.serial = self.connect_to_UNO(unoCOM, baud)
-        print('Connected to microscope controller.')
-        return self.serial.__class__
 
     @ui_callable
     def run_scan_spectrum(self):
@@ -283,6 +267,10 @@ class Monochromator(Instrument):
     @ui_callable
     def set_wavelength(self):
         print("Setting the monochromator wavelength.")
+
+    def go_to_grating_wavelength(self, wavelength):
+        print(f"Going to grating wavelength: {wavelength}")
+
 
     @ui_callable
     def get_wavelength(self):

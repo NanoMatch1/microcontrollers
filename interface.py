@@ -1,17 +1,11 @@
 import os
+import serial
+import time
 
 from instruments import Instrument, Microscope, Camera, Spectrometer, StageControl, Monochromator, Laser, simulate
 from calibration import ldrScans, Calibration
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
-def generate_help_dict(instrument):
-    help_dict = {}
-    for command, (inst, method) in instrument.command_map.items():
-        try:
-            help_dict[str(inst)].append(f"{command} - {method.__doc__}")
-        except KeyError:
-            help_dict[str(inst)] = [f"{command} - {method.__doc__}"]
-    return help_dict
 
 def cli(instrument):
     while True:
@@ -21,7 +15,7 @@ def cli(instrument):
 
         if command == 'help':
             print("Available commands:")
-            help_dict = generate_help_dict(instrument)
+            help_dict = instrument.generate_help()
             for inst, commands in help_dict.items():
                 print(f"{inst}:")
                 for command in commands:
@@ -37,7 +31,7 @@ def cli(instrument):
 
 class InstrumentMediator:
 
-    def __init__(self, simulate=False, debug_skip=[], unoCOM='COM8'):
+    def __init__(self, simulate=False, debug_skip=[],  unoCOM='COM10', baud=9600):
         self.simulate = simulate
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
@@ -83,7 +77,7 @@ class InstrumentMediator:
         if 'TRIAX' not in debug_skip:
             self.spectrometer.connect()
         if 'UNO' not in debug_skip:
-            self.microscope.connect(unoCOM, baud=9600)
+            self.connect_to_controller(unoCOM, baud=9600)
         if not 'laser' in debug_skip:
             self.laser.connect()
         if not 'camera' in debug_skip:
@@ -92,6 +86,16 @@ class InstrumentMediator:
             pass
 
         self._integrity_checker()
+
+    
+    def generate_help(self):
+        help_dict = {}
+        for command, (inst, method) in self.command_map.items():
+            try:
+                help_dict[str(inst)].append(f"{command} - {method.__doc__}")
+            except KeyError:
+                help_dict[str(inst)] = [f"{command} - {method.__doc__}"]
+        return help_dict
 
     def _build_directories(self):
         '''Builds all the directories required for the system to run.'''
@@ -142,6 +146,22 @@ class InstrumentMediator:
     def _integrity_checker(self):
         print("Microscope integrity check passed")
         pass
+
+    @simulate(expected_value=serial.Serial)
+    def connect_to_controller(self, unoCOM=None, baud=None):
+        print('Connecting to microscope controller...')
+        self.serial = self.connect_to_UNO(unoCOM, baud)
+        print('Connected to microscope controller.')
+        return self.serial.__class__
+    
+    def connect_to_UNO(self, unoCOM, baud):
+        UNO_serial = serial.Serial(unoCOM, baud, timeout=1)
+        while UNO_serial.in_waiting == 0:
+            time.sleep(0.1)
+        while UNO_serial.in_waiting > 0:
+            response = UNO_serial.readline().decode().strip()
+            print(response)
+        return UNO_serial
 
 
 

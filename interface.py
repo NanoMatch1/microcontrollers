@@ -2,6 +2,7 @@ import os
 import serial
 import time
 
+from controller import ArduinoUNO
 from instruments import Instrument, Microscope, Camera, Spectrometer, StageControl, Monochromator, Laser, simulate
 from calibration import ldrScans, Calibration
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
@@ -33,6 +34,8 @@ class Interface:
         self.dataDir = os.path.join(self.scriptDir, 'data')
         self.transientDir = os.path.join(self.scriptDir, 'transient')
         self.saveDir = os.path.join(self.dataDir, 'saved_data')
+
+        self.controller = ArduinoUNO()
 
         self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
         self.camera = Camera(self, simulate=simulate)
@@ -153,49 +156,11 @@ class Interface:
     @simulate(expected_value=serial.Serial)
     def connect_to_controller(self, unoCOM=None, baud=None):
         print('Connecting to microscope controller...')
-        self.serial = self.connect_to_UNO(unoCOM, baud)
+        self.controller.connect(unoCOM, baud)
         print('Connected to microscope controller.')
         return self.serial.__class__
-    
-    def connect_to_UNO(self, unoCOM, baud):
-        UNO_serial = serial.Serial(unoCOM, baud, timeout=1)
-        while UNO_serial.in_waiting == 0:
-            time.sleep(0.1)
-        while UNO_serial.in_waiting > 0:
-            response = UNO_serial.readline().decode().strip()
-            print(response)
-        return UNO_serial
-    
-    def send_command(self, command):
-        self.uno_serial.write('{}\n'.format(command).encode())
-        time.sleep(0.1)
 
-    def read_command_from_uno(self):
-        response = ''
-        while self.uno_serial.in_waiting > 0:
-            response += self.uno_serial.readline().decode()
-        return response
 
-    def read_from_serial_until(self, end_flag='#CF'):
-        end_responses = []
-
-        while True:
-            response = self.read_command_from_uno()
-            
-            if response == '':
-                time.sleep(0.01)
-                continue
-
-            if self.report is True:
-                print(response)
-            split_responses = response.split('\r\n')
-            for item in split_responses:
-                if item == end_flag:
-                    return end_responses
-                if item != '':
-                    end_responses.append(item)
-
-            time.sleep(0.01)
 
 if __name__ == '__main__':
     instrument = Interface(simulate=True, unoCOM='COM10', debug_skip=['TRIAX', 'camera', 'laser'])

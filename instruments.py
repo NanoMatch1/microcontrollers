@@ -33,8 +33,7 @@ class MotorPositions:
 
 
 class Instrument(ABC):
-    def __init__(self, simulate=False):
-        self.simulate = simulate
+    def __init__(self):
         self.command_functions = {}
 
     # @abstractmethod
@@ -123,8 +122,9 @@ class Microscope(Instrument):
         # 'run': self.continuous_acquire,
         # 'stop': self.stop_continuous_acquire,
 
-    def __init__(self, simulate=False):
+    def __init__(self, interface, simulate=False):
         super().__init__()
+        self.interface = interface
         self.simulate = simulate
 
         self.command_functions = {
@@ -158,8 +158,9 @@ class Microscope(Instrument):
         print('Setting scan minimum...')
 
 class Camera(Instrument):
-    def __init__(self, simulate=False):
+    def __init__(self, interface, simulate=False):
         super().__init__()
+        self.interface = interface
         self.simulate = simulate
         self.command_functions = {
             'capture': self.capture_frame
@@ -189,8 +190,9 @@ class Camera(Instrument):
         print("Capturing a frame from the camera.")
 
 class Spectrometer(Instrument):
-    def __init__(self, simulate=False):
+    def __init__(self, interface, simulate=False):
         super().__init__()
+        self.interface = interface
         self.simulate = simulate
         self.command_functions = {
             'acquire': self.acquire_spectrum,
@@ -218,8 +220,9 @@ class Spectrometer(Instrument):
         print("Calibrating the spectrometer.")
 
 class StageControl(Instrument):
-    def __init__(self, simulate=False):
+    def __init__(self, interface, simulate=False):
         super().__init__()
+        self.interface = interface
         self.simulate = simulate
         self.command_functions = {
             'move': self.move_stage,
@@ -246,8 +249,9 @@ class StageControl(Instrument):
 
 
 class Monochromator(Instrument):
-    def __init__(self, simulate=False):
+    def __init__(self, interface, simulate=False):
         super().__init__()
+        self.interface = interface
         self.simulate = simulate
         self.command_functions = {
             'set_wavelength': self.set_wavelength,
@@ -277,8 +281,9 @@ class Monochromator(Instrument):
         print("Getting the monochromator wavelength.")
 
 class Laser(Instrument):
-    def __init__(self, simulate=False):
+    def __init__(self, interface, simulate=False):
         super().__init__()
+        self.interface = interface
         self.simulate = simulate
         self.command_functions = {
             'set_power': self.set_power,

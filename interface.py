@@ -24,27 +24,27 @@ def cli(instrument):
         result = instrument._command_handler(command)
         print(result)
 
-class InstrumentMediator:
+class Interface:
 
     def __init__(self, simulate=False, debug_skip=[],  unoCOM='COM10', baud=9600):
+        super().__init__(simulate=simulate)
         self.simulate = simulate
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
         self.transientDir = os.path.join(self.scriptDir, 'transient')
         self.saveDir = os.path.join(self.dataDir, 'saved_data')
 
-        self.microscope = Microscope(simulate=simulate)
-        self.camera = Camera(simulate=simulate)
-        self.spectrometer = Spectrometer(simulate=simulate)
-        self.stage = StageControl(simulate=simulate)
-        self.monochromator = Monochromator(simulate=simulate)
-        self.laser = Laser(simulate=simulate)
+        self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
+        self.camera = Camera(self, simulate=simulate)
+        self.spectrometer = Spectrometer(self, simulate=simulate)
+        self.stage = StageControl(self, simulate=simulate)
+        self.monochromator = Monochromator(self, simulate=simulate)
+        self.laser = Laser(self, simulate=simulate)
 
         self.command_map = self._generate_command_map()
 
         self._build_directories()
         self._generate_calibrations()
-
 
         self.grating_steps = None
         self.grating_wavelength = None
@@ -124,7 +124,7 @@ class InstrumentMediator:
         return command_map
 
     def _command_handler(self, command:str):
-        '''Handles the command and arguments passed to the InstrumentMediator'''
+        '''Handles the command and arguments passed to the Interface'''
 
         funct, args = self._command_parser(command)
 
@@ -165,9 +165,38 @@ class InstrumentMediator:
             response = UNO_serial.readline().decode().strip()
             print(response)
         return UNO_serial
+    
+    def send_command(self, command):
+        self.uno_serial.write('{}\n'.format(command).encode())
+        time.sleep(0.1)
 
+    def read_command_from_uno(self):
+        response = ''
+        while self.uno_serial.in_waiting > 0:
+            response += self.uno_serial.readline().decode()
+        return response
 
+    def read_from_serial_until(self, end_flag='#CF'):
+        end_responses = []
+
+        while True:
+            response = self.read_command_from_uno()
+            
+            if response == '':
+                time.sleep(0.01)
+                continue
+
+            if self.report is True:
+                print(response)
+            split_responses = response.split('\r\n')
+            for item in split_responses:
+                if item == end_flag:
+                    return end_responses
+                if item != '':
+                    end_responses.append(item)
+
+            time.sleep(0.01)
 
 if __name__ == '__main__':
-    instrument = InstrumentMediator(simulate=True, unoCOM='COM10', debug_skip=['TRIAX', 'camera', 'laser'])
+    instrument = Interface(simulate=True, unoCOM='COM10', debug_skip=['TRIAX', 'camera', 'laser'])
     cli(instrument)

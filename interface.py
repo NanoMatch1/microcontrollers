@@ -28,7 +28,6 @@ def cli(instrument):
 class Interface:
 
     def __init__(self, simulate=False, debug_skip=[],  unoCOM='COM10', baud=9600):
-        super().__init__(simulate=simulate)
         self.simulate = simulate
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
@@ -47,7 +46,7 @@ class Interface:
         self.command_map = self._generate_command_map()
 
         self._build_directories()
-        self._generate_calibrations()
+
 
         self.grating_steps = None
         self.grating_wavelength = None
@@ -112,9 +111,6 @@ class Interface:
             os.makedirs(self.transientDir)
         if not os.path.exists(self.saveDir):
             os.makedirs(self.saveDir)
-
-    def _generate_calibrations(self):
-        self.calibrations = Calibration(self)
 
     def _generate_command_map(self):
         '''Dynamically generate a command map from the instruments declared in __init__'''

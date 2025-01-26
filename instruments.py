@@ -6,6 +6,8 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import wraps
 
+from calibration import Calibration
+
 def simulate(expected_value=None):
     def decorator(func):
         @wraps(func)
@@ -94,7 +96,7 @@ class Microscope(Instrument):
         # 'sd': self.go_to_grating_wavelength,
         # 'st': self.go_to_triax_wavelength,
         # 'sall': self.go_to_wavelength_all,
-        # 'wai': self.get_all_current_positions,
+
         # 'reference': self.reference_calibration, # TODO: Bug where multiple calls are needed to refresh. Looks like grating motors are one step behind.
         # 'shift': self.go_to_wavenumber,
         # 'calshift': self.simple_calibration_shift,
@@ -125,14 +127,17 @@ class Microscope(Instrument):
     def __init__(self, interface, simulate=False):
         super().__init__()
         self.interface = interface
+        self.controller = interface.controller
         self.simulate = simulate
 
         self.command_functions = {
             'scan': self.run_scan_spectrum,
             'get_grating_position': self.get_grating_position,
             'set_scan_min': self.set_scan_min,
+            'wai': self.get_all_current_positions,
         }
 
+        self.calibrations = self._generate_calibrations()
         self._integrity_checker()  # Validate on init
 
     def __str__(self):
@@ -142,6 +147,106 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+    
+    def _generate_calibrations(self):
+        return Calibration(self)
+    
+    @ui_callable
+    def get_all_current_positions(self):
+        laser_positions = self.calculate_laser_wavelength()
+        l1_wavelength, l2_wavelength = [round(x, 2) for x in laser_positions]
+
+        b_positions = self.calculate_grating_wavelength()
+        g1_wavelength, g2_wavelength = [round(x, 2) for x in b_positions]
+
+        g2_pos = self.grating_steps
+        l1_pos = self.laser_steps
+        try:
+            triax_pos = self.get_triax_steps()
+            triax_wavelength = self.calculate_triax_wavelength(steps=triax_pos)
+        except Exception as e:
+            print('Error getting triax position')
+            print(e)
+            triax_pos = 0
+            triax_wavelength = 0
+
+        
+        print('laser pos: {}'.format(l1_pos))
+        print('grating pos: {}'.format(g2_pos))
+        print('triax pos: {}'.format(triax_pos))
+
+        print('triax wavelength: {}'.format(triax_wavelength))
+        print('l1 wavelength: {}'.format(l1_wavelength))
+        print('l2 wavelength: {}'.format(l2_wavelength))
+        print('g1 wavelength: {}'.format(g1_wavelength))
+        print('g2 wavelength: {}'.format(g2_wavelength))
+        print('Raman shift: {}'.format(self.current_shift))
+
+        return 
+    
+    def calculate_laser_wavelength(self, current_pos=None):
+        if current_pos is None:
+            current_laser_pos = self.controller.get_laser_motor_positions()
+        else:
+            current_laser_pos = current_pos
+
+        self.laser_steps = current_laser_pos
+
+        l1_pos = current_laser_pos[0]
+        l2_pos = current_laser_pos[1]
+
+        l1_wavelength = self.calibrations.l1_to_wl(l1_pos)
+        l2_wavelength = self.calibrations.l2_to_wl(l2_pos)
+
+        self.laser_wavelength = [l1_wavelength, l2_wavelength, 0, 0]
+        
+        # print('Current laser wavelength: {}'.format(l1_wavelength))
+        return (l1_wavelength, l2_wavelength, 0, 0)
+    
+    def get_grating_motor_positions(self):
+        self.grating_steps = self.controller.get_grating_positions()
+        print('Current grating pos: {}'.format(self.grating_steps))
+
+        return self.grating_steps
+    
+    def calculate_grating_wavelength(self, steps=None):
+        if steps is None:
+            current_grating_pos = self.controller.get_grating_motor_positions()
+        else:
+            current_grating_pos = steps
+
+        g1_pos = current_grating_pos[0]
+        g2_pos = current_grating_pos[1]
+
+        self.grating_steps = current_grating_pos
+
+        g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
+        g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
+
+        self.grating_wavelength = [g1_wavelength, g2_wavelength, 0, 0]
+
+        return (g1_wavelength, g2_wavelength, 0, 0)
+
+    def go_to_wavenumber(self, wavenumber):
+        try:
+            wavenumber = float(wavenumber)
+        except ValueError:
+            print('Invalid value for wavenumber - use a number')
+            return
+        if self.laser_wavelength is None:
+            self.get_all_current_positions()
+        
+        # ;
+        laser_wavenumber = self.current_laser_wavenumber
+        # 
+        wave = laser_wavenumber - wavenumber
+        new_wavelength = 10_000_000/wave
+        self.go_to_grating_wavelength(new_wavelength)
+        self.current_shift = wavenumber
+        
+        print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.laser_wavelength[0]))
+
+
 
     @ui_callable
     def run_scan_spectrum(self):

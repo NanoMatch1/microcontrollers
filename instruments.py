@@ -1,6 +1,7 @@
 import inspect
 import serial
 import time
+import pyvisa
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -151,29 +152,44 @@ class Microscope(Instrument):
     def _generate_calibrations(self):
         return Calibration(self)
     
+    def where_am_i(self):
+        self.get_all_current_positions()
+        self.report_all_current_positions()
+    
     @ui_callable
     def get_all_current_positions(self):
         laser_positions = self.calculate_laser_wavelength()
-        l1_wavelength, l2_wavelength = [round(x, 2) for x in laser_positions]
+        grating_positions = self.calculate_grating_wavelength()
+        spectrometer_position = self.calculate_spectrometer_wavelength()
 
-        b_positions = self.calculate_grating_wavelength()
-        g1_wavelength, g2_wavelength = [round(x, 2) for x in b_positions]
+        return True
+    
+    def calculate_spectrometer_wavelength(self, steps=None):
+        '''Uses calibration to calculate wavelength from reported position. For spectrometers that report wavelength, this is a pass-through.'''
+        if steps is None:
+            steps = self.interface.spectrometer.get_current_position()
+            self.spectrometer_position = steps
 
-        g2_pos = self.grating_steps
-        l1_pos = self.laser_steps
-        try:
-            triax_pos = self.get_triax_steps()
-            triax_wavelength = self.calculate_triax_wavelength(steps=triax_pos)
-        except Exception as e:
-            print('Error getting triax position')
-            print(e)
-            triax_pos = 0
-            triax_wavelength = 0
-
+        self.spectrometer_wavelength = self.calibrations.triax_steps_to_wl(self.spectrometer_position) # TODO: rename triax_steps_to_wl to spectrometer_steps_to_wl - requires change to calibration files and will be breaking until otherwise completed
+        return self.triax_wavelength
         
-        print('laser pos: {}'.format(l1_pos))
-        print('grating pos: {}'.format(g2_pos))
-        print('triax pos: {}'.format(triax_pos))
+    
+    def get_triax_steps(self):
+        pass
+
+    def calculate_spectrometer_wavelength(self):
+        self.spectrometer_wavelength = self.interface.spectrometer.get_current_position()
+
+    
+    def report_all_current_positions(self):
+
+        l1_wavelength, l2_wavelength = [round(x, 2) for x in self.laser_steps]
+        g1_wavelength, g2_wavelength = [round(x, 2) for x in self.grating_steps]
+        spectrometer_wavelength = self.interface.spectrometer.get_current_position(steps=self.triax_pos)
+
+        print('laser pos: {}'.format(self.laser_steps))
+        print('grating pos: {}'.format(self.grating_steps))
+        print('triax pos: {}'.format(self.spectrometer_position))
 
         print('triax wavelength: {}'.format(triax_wavelength))
         print('l1 wavelength: {}'.format(l1_wavelength))
@@ -246,8 +262,6 @@ class Microscope(Instrument):
         
         print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.laser_wavelength[0]))
 
-
-
     @ui_callable
     def run_scan_spectrum(self):
         print('Scanning spectrum...')
@@ -313,16 +327,118 @@ class Spectrometer(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown spectrometer command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+
+    @abstractmethod
+    def get_current_position(self):
+        print("Getting the current position of the spectrometer.")
+
+    @abstractmethod
+    def go_to_position(self, position):
+        print("Going to the position: {}".format(position))
+
+
+
+class Triax(Spectrometer):
+    def __init__(self, interface, simulate=False):
+        super().__init__(interface, simulate)
+        self.command_functions = {
+            'calibrate': self.calibrate_triax_pixels,
+            'pixelcal': self.calibrate_triax_pixels,
+            'acquire': self.acquire_spectrum,
+            'run': self.continuous_acquire,
+            'stop': self.stop_continuous_acquire
+        }
+
+        self.message_map = {
+            'initialise': 'A',
+            'comsmode': '02000',
+            'get_grating_steps': 'H0',
+            'read_grating': 'H0',
+            'rg': 'H0',
+            'grating': 'F0,',
+            'move_grating': 'F0,',
+            'mg': 'F0,',
+            'read_enter': 'j0,0',
+            'ren': 'j0,0',
+            'read_exit': 'j0,3',
+            'rex': 'j0,3',
+            'move_enter': 'k0,0,',
+            'men': 'k0,0,',
+            'move_exit': 'k0,3,',
+            'mex': 'k0,3,',
+            'tpol': 'E', # poll motors after move command sent
+            'ccd_mode': 'f0',
+            'ccd': 'f0',
+            'apd_mode': 'e0',
+            'apd': 'e0',
+            # 'gotoir': 'F0,375131'
+            #'entrance mirror to front enterance': 'c0',
+            #'entrance mirror to side enterance': 'd0'
+        }
+
+        self._integrity_checker()
+
+    def __str__(self):
+        return "TRIAX Spectrometer"
+
+    @ui_callable
+    def calibrate_triax_pixels(self):
+        print("Calibrating the TRIAX spectrometer pixels.")
+
+    @ui_callable
+    def get_current_position(self):
+        print("Getting the current position of the TRIAX spectrometer.")
+        current_position = self._get_triax_steps()
+        return current_position
     
+    def go_to_position(self, position):
+        print("Going to the position: {}".format(position))
+        command = self.message_map['move_grating'] + str(position)
+        response = self._send_command_to_spectrometer(command)
+        return response
 
+    def connect(self):
+        # Open a connection to the instrument
+        rm = pyvisa.ResourceManager()
+        rm.list_resources()
+        self.spectrometer = rm.open_resource('GPIB0::1::INSTR')  # Replace with the actual VISA address of your instrument
 
-    @ui_callable
-    def acquire_spectrum(self):
-        print("Acquiring a spectrum from the spectrometer.")
+        self.spectrometer.write('WHERE AM I')
+        time.sleep(0.0001)
+        self.state = self.spectrometer.read()
+        print(self.state)
 
-    @ui_callable
-    def calibrate_spectrometer(self):
-        print("Calibrating the spectrometer.")
+        return self.spectrometer, self.state
+
+    def _get_triax_steps(self):
+        '''Polls the spectrometer for position and returns the current position in steps.'''
+        response = self._send_command_to_spectrometer(self.message_map['get_grating_steps'])
+        self.triax_steps = int(response.strip()[1:])
+        return self.triax_steps
+    
+    def send_command(self, command):
+        '''Send a command to the spectrometer.'''
+        coms = self.message_map.get(command, None)
+        if coms is None:
+            print('Invalid command: {}'.format(command))
+            return
+        
+        response = self._send_command_to_spectrometer(coms)
+        return response
+    
+    def _send_command_to_spectrometer(self, command, report=True):
+        self.spectrometer.write(command)
+        time.sleep(0.0001)
+
+        if command == 'A':
+            count = 100
+            while count > 0:
+                print('Initialising: Sleeping for {} seconds'.format(count))
+                time.sleep(1)
+                count -= 1
+        
+        response = self.spectrometer.read()
+        return response
 
 class StageControl(Instrument):
     def __init__(self, interface, simulate=False):

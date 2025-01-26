@@ -3,7 +3,7 @@ import serial
 import time
 
 from controller import ArduinoUNO
-from instruments import Instrument, Microscope, Camera, Spectrometer, StageControl, Monochromator, Laser, simulate
+from instruments import Instrument, Microscope, Camera, Triax, StageControl, Monochromator, Laser, simulate
 from calibration import ldrScans, Calibration
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
@@ -34,11 +34,11 @@ class Interface:
         self.transientDir = os.path.join(self.scriptDir, 'transient')
         self.saveDir = os.path.join(self.dataDir, 'saved_data')
 
-        self.controller = ArduinoUNO()
+        self.controller = ArduinoUNO(self, simulate=simulate)
 
         self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
         self.camera = Camera(self, simulate=simulate)
-        self.spectrometer = Spectrometer(self, simulate=simulate)
+        self.spectrometer = Triax(self, simulate=simulate)
         self.stage = StageControl(self, simulate=simulate)
         self.monochromator = Monochromator(self, simulate=simulate)
         self.laser = Laser(self, simulate=simulate)

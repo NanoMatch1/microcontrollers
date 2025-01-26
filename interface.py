@@ -14,12 +14,7 @@ def cli(instrument):
             break
 
         if command == 'help':
-            print("Available commands:")
-            help_dict = instrument.generate_help()
-            for inst, commands in help_dict.items():
-                print(f"{inst}:")
-                for command in commands:
-                    print(f"   {command}")
+            instrument.show_help()
             continue
     
         if command == 'debug':
@@ -74,6 +69,7 @@ class InstrumentMediator:
             '#CF': 'end of response',
         }
 
+        # These are all serial connections. In the future, we may establish all connections through the controller board, in which case only one connection command is required.
         if 'TRIAX' not in debug_skip:
             self.spectrometer.connect()
         if 'UNO' not in debug_skip:
@@ -81,7 +77,6 @@ class InstrumentMediator:
         if not 'laser' in debug_skip:
             self.laser.connect()
         if not 'camera' in debug_skip:
-            # self.camera = PIXISCam(self)
             self.camera.connect()
             pass
 
@@ -96,6 +91,14 @@ class InstrumentMediator:
             except KeyError:
                 help_dict[str(inst)] = [f"{command} - {method.__doc__}"]
         return help_dict
+    
+    def show_help(self):
+        help_dict = self.generate_help()
+        print("Available commands:")
+        for inst, commands in help_dict.items():
+            print(f"{inst}:")
+            for command in commands:
+                print(f"   {command}")
 
     def _build_directories(self):
         '''Builds all the directories required for the system to run.'''

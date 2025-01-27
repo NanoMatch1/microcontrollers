@@ -348,9 +348,21 @@ void processCommand(String command) {
         sendI2C(message, SLAVE2_ADDRESS);
         break;
       case 'C':
-        // Serial.print("UNO>C:");
-        // Serial.println(message);
-        sendI2C(message, SLAVE3_ADDRESS);
+        if (message == "gsh") {
+        monoShutter(comvalstring);
+      return;
+    }
+    else if (com == "ld0") {
+      int count = 0;
+      while (count < 10) {
+        ldr0value += analogRead(ldr0pin);
+        count ++;
+      }
+      Serial.print('t');
+      Serial.println(ldr0value);
+      ldr0value = 0;
+      return;
+    }
         break;
       // case 'D':
       //   // Serial.print("Acquiring for ");

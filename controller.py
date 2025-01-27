@@ -3,6 +3,16 @@ import time
 
 from instruments import Instrument, simulate, ui_callable
 
+def command_formatter(command):
+    '''Formats the command to be sent to the Arduino UNO - this is a workaround until the firmware is updated.'''
+
+    hardware_command = ['gsh', 'ld0']
+
+    if command in hardware_command:
+        return 'm{}m'.format(command)
+    else:
+        return 'o{}o'.format(command)
+
 class ArduinoUNO:
 
     def __init__(self, com_port='COM10', baud=9600, simulate=False, report=True):
@@ -27,12 +37,15 @@ class ArduinoUNO:
         self.serial = self._connect_to_UNO(com_port, baud)
 
     def send_command(self, command):
-        self._send_command_to_UNO(self.message_map[command])
+        com = command.split(' ')[0]
+        command = self.message_map[com]
+        command = command_formatter(command)
+        self._send_command_to_UNO(command)
+
         return self._read_from_serial_until()
 
     def get_grating_motor_positions(self):
-        response = self._send_command_to_UNO(self.message_map['get_grating_positions'])
-        print(response)
+        response = self.send_command('get_grating_positions')
         
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
@@ -42,7 +55,7 @@ class ArduinoUNO:
         return grating_steps
     
     def get_laser_motor_positions(self):
-        response = self._send_command_to_UNO(self.message_map['get_laser_positions'])
+        response = self.send_command('get_laser_positions')
         
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')

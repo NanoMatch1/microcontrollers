@@ -132,6 +132,7 @@ class Microscope(Instrument):
             'set_scan_min': self.set_scan_min,
             'wai': self.where_am_i,
             'apos': self.get_laser_motor_positions,
+            'bpos': self.get_grating_motor_positions,
         }
 
         self.calibrations = self._generate_calibrations()
@@ -154,10 +155,7 @@ class Microscope(Instrument):
         self.get_all_current_positions()
         self.report_all_current_positions()
 
-    @ui_callable
-    def get_laser_motor_positions(self):
-        '''Get the current positions of the laser motors.'''
-        return self.controller.get_laser_motor_positions()
+
     
     def get_all_current_positions(self):
         '''Get the current positions of all motors and calculate the corresponding wavelengths.'''
@@ -215,8 +213,18 @@ class Microscope(Instrument):
         # print('Current laser wavelength: {}'.format(l1_wavelength))
         return (l1_wavelength, l2_wavelength, 0, 0)
     
+    @ui_callable
+    def get_laser_motor_positions(self):
+        '''Get the current positions of the laser motors.'''
+        self.laser_steps = self.controller.get_laser_motor_positions()
+        print('Current laser pos: {}'.format(self.laser_steps))
+
+        return self.laser_steps
+    
+    @ui_callable
     def get_grating_motor_positions(self):
-        self.grating_steps = self.controller.get_grating_positions()
+        '''Get the current positions of the grating motors.'''
+        self.grating_steps = self.controller.get_grating_motor_positions()
         print('Current grating pos: {}'.format(self.grating_steps))
 
         return self.grating_steps

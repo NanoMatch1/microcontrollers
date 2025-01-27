@@ -1,6 +1,8 @@
 #include <Wire.h>
 #include <AccelStepper.h>
 
+// COM11 = Slave B
+
 // TODO: Add case separators for relative and asbolute positioning
 
 // Define stepper motor connections (adjust pin numbers based on CNC Shield wiring)
@@ -63,6 +65,9 @@ void loop() {
     } else if (command == "status") {
       Serial.println(identifier);
     }
+    else {
+      processCommand(command);
+    }
     // Main loop does nothing, all work done in event handlers
   }
 }
@@ -102,6 +107,9 @@ void receiveEvent(int howMany) {
     testFlag = "2";
     response = "Test mode activated";
   } 
+  else {
+    processCommand(command);
+  }
   // else if (command.startsWith("scang1")) {
   //   String steps = command.substring(6);
   // }
@@ -110,9 +118,11 @@ void receiveEvent(int howMany) {
 
   // }
 
+}
 
-
-  else if (command == "isrun") {
+void processCommand(String command) {
+  
+  if (command == "isrun") {
     if (stepperX.isRunning() == true) {
       response = "R1";
     }
@@ -191,7 +201,7 @@ void receiveEvent(int howMany) {
     testFlag = "0";
     response = "Unknown command";
   }
-
+  Serial.println(response);
   // For this example, we just print the received command
   // You can set a flag or take some action based on the command
 }

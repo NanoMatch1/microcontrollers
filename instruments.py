@@ -214,7 +214,7 @@ class Microscope(Instrument):
         return (l1_wavelength, l2_wavelength, 0, 0)
     
     @ui_callable
-    def get_laser_motor_positions(self):
+    def get_laser_motor_positions(self, *args):
         '''Get the current positions of the laser motors.'''
         self.laser_steps = self.controller.get_laser_motor_positions()
         print('Current laser pos: {}'.format(self.laser_steps))
@@ -222,7 +222,7 @@ class Microscope(Instrument):
         return self.laser_steps
     
     @ui_callable
-    def get_grating_motor_positions(self):
+    def get_grating_motor_positions(self, *args):
         '''Get the current positions of the grating motors.'''
         self.grating_steps = self.controller.get_grating_motor_positions()
         print('Current grating pos: {}'.format(self.grating_steps))

@@ -130,22 +130,27 @@ class Interface:
     def _command_handler(self, command:str):
         '''Handles the command and arguments passed to the Interface'''
 
-        funct, args = self._command_parser(command)
+        funct, arguments = self._command_parser(command)
+
 
         if funct in self.command_map:
             _, method = self.command_map[funct]
             try:
-                result = method(*(args or []))
+                result = method(*(arguments or []))
             except Exception as e:
                 error_details = traceback.format_exc()
                 result = f" > Error: {e}\n{error_details}"
             return result
         else:
-            return f" > Unknown command: {funct}"
+            response = self.controller.send_command(command)
+
+            # return f" > Unknown command: {funct}"
 
          # Detail: * operator unpacks the list - since an empty list has nothing to unpack, nothing is passed to the function. This avoids a TypeError
     
     def _command_parser(self, command:str):
+        if command == '':
+            return None, None
         tokens = [item.lower() for item in command.split(' ') if item != '']
         funct = tokens[0]
         if len(tokens) > 1:

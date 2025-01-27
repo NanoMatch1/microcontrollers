@@ -224,14 +224,10 @@ class Microscope:
 
         # commands for controlling laser properties
         self.tuning_motor_dict = { # TODO: separate into Stage motion and laser tuning
-            'lambda': 'lambda',
             'atest': 'Atest',
             'btest': 'Btest',
-            'ctest': 'Ctest',
-            'creport': 'Creport',
             'astatus': 'Astatus',
             'bstatus': 'Bstatus',
-            'cstatus': 'Cstatus',
             'z': 'BZ',
             'y': 'BY',
             'x': 'BX',

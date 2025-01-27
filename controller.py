@@ -24,9 +24,32 @@ class ArduinoUNO:
         # if the firmware commands change, update this dictionary
         self.message_map = {
             'get_laser_positions': 'Apos',
+            'gpb': 'Bpos',
             'get_grating_positions': 'Bpos',
-            'apos': 'Apos',
-            'bpos': 'Bpos',
+            'gpa': 'Apos',
+            'lambda': 'lambda',
+            'atest': 'Atest',
+            'btest': 'Btest',
+            'ctest': 'Ctest',
+            'creport': 'Creport',
+            'astatus': 'Astatus',
+            'bstatus': 'Bstatus',
+            'cstatus': 'Cstatus',
+            'z': 'BZ',
+            'y': 'BY',
+            'x': 'BX',
+            'a': 'BY', # TODO: BUG: Temporarilly ported A to Y for testing
+            'g1': 'BX',
+            'g2': 'BY',
+            'l1' : 'AX',
+            'l2' : 'AY',
+            'l3' : 'AZ',
+            'setposa': 'Asetpos',
+            'setposb' : 'Bsetpos',
+            'aisrun': 'Aisrun',
+            'bisrun': 'Bisrun',
+            'ld0': 'ld0',
+            'gsh': 'gsh',
         }
 
         self.response_map = {
@@ -36,16 +59,37 @@ class ArduinoUNO:
     def connect(self, com_port, baud):
         self.serial = self._connect_to_UNO(com_port, baud)
 
-    def send_command(self, command):
-        com = command.split(' ')[0]
-        command = self.message_map[com]
-        command = command_formatter(command)
-        self._send_command_to_UNO(command)
+    def _format_command_length(self, command):
+        command_set = command.split(' ')
+        try:
+            new_command = self.message_map[command_set[0]]
+        except KeyError:
+            print('Command not recognized by Arduino UNO: {}'.format(command))
+            return None
 
-        return self._read_from_serial_until()
+        if len(command_set) > 1:
+            new_command = ' '.join([new_command] + command_set[1:])
+        else:
+            new_command = '{}'.format(new_command)
+        
+        return new_command
+            
+
+    def send_command(self, orig_com):
+        new_com = self._format_command_length(orig_com)
+        new_com = command_formatter(new_com)
+
+        self._send_command_to_UNO(new_com)
+        response = self._read_from_serial_until()
+        
+        return response
 
     def get_grating_motor_positions(self):
         response = self.send_command('get_grating_positions')
+        if response == []:
+            response = self.send_command('get_grating_positions') # bug with controller returning empty list, try again # TODO: seems to be related to an extra end flag #CF in the firmware. Will be fixed in the next firmware update.
+        if self.report:
+            print(response)
         
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
@@ -56,7 +100,10 @@ class ArduinoUNO:
     
     def get_laser_motor_positions(self):
         response = self.send_command('get_laser_positions')
-        
+        if response == []:
+            response = self.send_command('get_laser_positions') # TODO: firmware bug, will be fixed in the next update
+        if self.report:
+            print(response)
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
         positions = positions.split(',')

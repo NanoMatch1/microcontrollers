@@ -34,6 +34,46 @@ class MotorPositions:
     z: int
     a: int
 
+class AcquitisionParameters:
+    '''Holds the acquisition parameters for the microscope, and is passed to acquisition methods to perform actions.'''
+    def __init__(self):
+        self.scan_min = None
+        self.scan_max = None
+        self.scan_resolution = None
+        self.acq_time = None
+
+    @ui_callable
+    def set_scan_min(self, value):
+        try:
+            self.scan_min = int(value)
+        except ValueError:
+            print('Invalid value for scan min')
+        print('Scan Min: {}'.format(self.scan_min))
+
+    @ui_callable
+    def set_scan_max(self, value):
+        try:
+            self.scan_max = int(value)
+        except ValueError:
+            print('Invalid value for scan max')
+        print('Scan Max: {}'.format(self.scan_max))
+    
+    @ui_callable
+    def set_scan_resolution(self, value):
+        try:
+            self.scan_resolution = int(value)
+        except ValueError:
+            print('Invalid value for scan resolution')
+        print('Scan Resolution: {}'.format(self.scan_resolution))
+
+    @ui_callable
+    def set_acquisition_time(self, acq_time):
+        try:
+            self.acq_time = float(acq_time)
+        except ValueError:
+            print('Invalid value for acquisition time')
+        print('Acquisition Time Set: {}'.format(self.acq_time))
+
 
 class Instrument(ABC):
     def __init__(self):
@@ -82,44 +122,6 @@ class Instrument(ABC):
 
 class Microscope(Instrument):
 
-
-
-        # 'scan_min': self.set_scan_min,
-        # 'scan_max': self.set_scan_max,
-        # 'scan_res': self.set_scan_resolution,
-        # 'acq_time': self.set_acquisition_time,
-        # 'sl': self.go_to_laser_wavelength,
-        # 'sd': self.go_to_grating_wavelength,
-        # 'st': self.go_to_triax_wavelength,
-        # 'sall': self.go_to_wavelength_all,
-
-        # 'reference': self.reference_calibration, # TODO: Bug where multiple calls are needed to refresh. Looks like grating motors are one step behind.
-        # 'shift': self.go_to_wavenumber,
-        # 'calshift': self.simple_calibration_shift,
-        # 'isrun': self.wait_for_motors,
-        # 'report': self.report_status,
-        # 'setmode': self.change_monochromator_mode,
-        # 'writemotora': self.set_absolute_positions_A,
-        # 'writemotorb': self.set_absolute_positions_B,
-        # 'help': self.show_help,
-        # 'motorscan': self.motor_scan,
-        # 'lockcal': self.lock_calibration,
-        # 'unlockcal': self.unlock_calibration,
-        # 'pin': self.move_pinhole,
-        # 'setpin': self.set_pinhole_pos,
-        # 'mshut': self.close_mono_shutter,
-        # 'mopen': self.open_mono_shutter,
-        # 'readldr': self.read_ldr0,
-        # 'debug': self.print_debug,
-        # 'calibrate': self.run_calibration,
-        # 'gtgsteps': self.go_to_grating_steps,
-        # 'homemono': self.home_motors_monochromator,
-        # 'camera': self.start_camera_ui, # for testing
-        # 'pixelcal': self.calibrate_triax_pixels,
-        # 'acquire': self.acquire_spectrum,
-        # 'run': self.continuous_acquire,
-        # 'stop': self.stop_continuous_acquire,
-
     def __init__(self, interface, simulate=False):
         super().__init__()
         self.interface = interface
@@ -131,6 +133,10 @@ class Microscope(Instrument):
             'rg': self._get_spectrometer_position,
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_grating_motor_positions,
+            'scanmin': self.acquisition_parameters.set_scan_min,
+            'scanmax': self.acquisition_parameters.set_scan_max,
+            'scanres': self.acquisition_parameters.set_scan_resolution,
+            'acqtime': self.acquisition_parameters.set_acquisition_time,
         }
 
         # scientific attributes
@@ -141,6 +147,8 @@ class Microscope(Instrument):
         self.spectrometer_position = None
         self.current_shift = 0
 
+        # acquisition parameters
+        self.acquisition_parameters = AcquitisionParameters()
 
         self.calibrations = self._generate_calibrations()
         self.calibrations.ammend_calibrations()
@@ -170,6 +178,8 @@ class Microscope(Instrument):
         self.spectrometer_position = self.interface.spectrometer.get_spectrometer_position()
         print('Current spectrometer position: {}'.format(self.spectrometer_position))
         return self.spectrometer_position
+    
+
     
     def get_all_current_positions(self):
         '''Get the current positions of all motors and calculate the corresponding wavelengths.'''

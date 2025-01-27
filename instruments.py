@@ -74,6 +74,152 @@ class AcquitisionParameters:
             print('Invalid value for acquisition time')
         print('Acquisition Time Set: {}'.format(self.acq_time))
 
+class MotionControl:
+    '''Handles the motion control of the microscope. Needs access to the controller to move the motors.'''
+    def __init__(self, controller):
+        self.controller = controller
+        self._grating_steps = None
+        self._laser_steps = None
+        self._spectrometer_position = None
+
+        self._laser_wavelength = None
+        self._grating_wavelength = None
+        self._spectrometer_wavelength = None
+
+        self.hard_limits = {
+            'laser_wavelength': [650, 1000],
+            'grating_wavelength': [500, 1300],
+        }
+
+    def close_mono_shutter(self):
+        self.controller.send_command('gsh on')
+
+    def open_mono_shutter(self):
+        self.controller.send_command('gsh off')
+
+    @ui_callable
+    def get_laser_motor_positions(self, *args):
+        '''Get the current positions of the laser motors.'''
+        self.laser_steps = self.controller.get_laser_motor_positions()
+        print('Current laser pos: {}'.format(self.laser_steps))
+
+        return self.laser_steps
+    
+    @ui_callable
+    def get_grating_motor_positions(self, *args):
+        '''Get the current positions of the grating motors.'''
+        self.grating_steps = self.controller.get_grating_motor_positions()
+        print('Current grating pos: {}'.format(self.grating_steps))
+
+        return self.grating_steps
+
+    @property
+    def laser_wavelength(self):
+        return self._laser_wavelength
+
+    @laser_wavelength.setter
+    def laser_wavelength(self, value): 
+        self._laser_wavelength = value
+
+    @property
+    def grating_steps(self):
+        return self._grating_steps
+    
+    @grating_steps.setter
+    def grating_steps(self, value):
+        if len(value) != 4 or not all(isinstance(x, int) for x in value):
+            print('Invalid grating steps')
+        self._grating_steps = value
+
+    @property
+    def laser_steps(self):
+        return self._laser_steps
+    
+    @laser_steps.setter
+    def laser_steps(self, value):
+        if len(value) != 4 or not all(isinstance(x, int) for x in value):
+            print('Invalid laser steps')
+        self._laser_steps = value
+
+    def check_hard_limits(self, value, limits):
+        '''Checks the hard limits dictionary of the microscope for the allowed range of values.'''
+        if not limits[0] < value < limits[1]:
+            return False
+        
+    def check_laser_wavelength(self, wavelength):
+        '''Checks the validity of the entered value for laser wavelength.'''
+        try:
+            wavelength = float(wavelength)
+        except ValueError:
+            print('Invalid value for wavelength - use a number')
+            return False
+        
+        if not self.check_hard_limits(wavelength, self.hard_limits['laser_wavelength']):
+            print('Wavelength out of range. Pick a wavelength between {} and {} nm'.format(*self.hard_limits['laser_wavelength']))
+            return False
+        
+        return True
+        
+
+    def go_to_laser_wavelength(self, wavelength, autoshutter=True):
+
+        if self.check_laser_wavelength(wavelength) is False:
+            return False
+        
+        self.close_mono_shutter()
+
+        current_pos = self.get_laser_motor_positions()
+        if current_pos is None:
+            return 
+
+        l1_target = round(self.calibrations.wl_to_l1(wavelength))
+        # print("l1 target: {}".format(l1_target))
+
+        l2_target = round(self.calibrations.wl_to_l2(wavelength))
+        # print("l2 target: {}".format(l2_target))
+        print('Current laser position: {}'.format(current_pos))
+        print('Target laser position: {}'.format([l1_target, l2_target]))
+        if l1_target == current_pos[0] and l2_target == current_pos[1]:
+            print('Laser already at target position')
+            return
+        move_l1 = l1_target - current_pos[0]
+        move_l2 = l2_target - current_pos[1]
+        print("moving l1 by {}".format(move_l1))
+
+        backlash = False
+        # self.move_to(target_pos)
+        if move_l1 != 0:
+            if move_l1 < 0:
+                backlash = True
+            response = self.process_coms('l1 {}'.format(move_l1))
+
+        if move_l2 != 0:
+            if move_l2 < 0:
+                backlash = True
+            response = self.process_coms('l2 {}'.format(move_l2))
+
+        # self.wait_for_motors_manual([l1_target, l2_target, 0, 0], 'A')
+        self.wait_for_motors()
+
+        if backlash:
+            response = self.process_coms('l1 -20')
+            response = self.process_coms('l2 -20')
+            time.sleep(0.1)
+            response = self.process_coms('l1 20')
+            response = self.process_coms('l2 20')
+
+        self.confirm_motor_positions([l1_target, l2_target, 0, 0], 'A')
+        self.laser_steps[0] = l1_target
+        self.laser_steps[1] = l2_target
+
+        print('Laser excitation at {}'.format(wavelength))
+        # if autoshutter is True:
+        self.laser_safety_check()
+            # self.open_pinhole_shutter() # add check that light levels are safe #TODO: Add this check
+        self.open_mono_shutter()
+
+        self.calculate_laser_wavelength(self.laser_steps)
+
 
 class Instrument(ABC):
     def __init__(self):
@@ -237,21 +383,7 @@ class Microscope(Instrument):
         # print('Current laser wavelength: {}'.format(l1_wavelength))
         return (l1_wavelength, l2_wavelength, 0, 0)
     
-    @ui_callable
-    def get_laser_motor_positions(self, *args):
-        '''Get the current positions of the laser motors.'''
-        self.laser_steps = self.controller.get_laser_motor_positions()
-        print('Current laser pos: {}'.format(self.laser_steps))
 
-        return self.laser_steps
-    
-    @ui_callable
-    def get_grating_motor_positions(self, *args):
-        '''Get the current positions of the grating motors.'''
-        self.grating_steps = self.controller.get_grating_motor_positions()
-        print('Current grating pos: {}'.format(self.grating_steps))
-
-        return self.grating_steps
     
     def calculate_grating_wavelength(self, steps=None):
         if steps is None:

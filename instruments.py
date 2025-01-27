@@ -127,10 +127,8 @@ class Microscope(Instrument):
         self.simulate = simulate
 
         self.command_functions = {
-            'scan': self.run_scan_spectrum,
-            'get_grating_position': self.get_grating_position,
-            'set_scan_min': self.set_scan_min,
             'wai': self.where_am_i,
+            'rg': self._get_spectrometer_position,
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_grating_motor_positions,
         }
@@ -166,7 +164,12 @@ class Microscope(Instrument):
         self.get_all_current_positions()
         self.report_all_current_positions()
 
-
+    @ui_callable
+    def _get_spectrometer_position(self):
+        '''Get the current position of the spectrometer in motor steps.'''
+        self.spectrometer_position = self.interface.spectrometer.get_spectrometer_position()
+        print('Current spectrometer position: {}'.format(self.spectrometer_position))
+        return self.spectrometer_position
     
     def get_all_current_positions(self):
         '''Get the current positions of all motors and calculate the corresponding wavelengths.'''
@@ -276,20 +279,6 @@ class Microscope(Instrument):
         self.current_shift = wavenumber
         
         print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.laser_wavelength[0]))
-
-    @ui_callable
-    def run_scan_spectrum(self):
-        print('Scanning spectrum...')
-        return True
-    
-    @ui_callable
-    def get_grating_position(self):
-        print('Getting grating position...')
-        return 356465
-
-    @ui_callable
-    def set_scan_min(self):
-        print('Setting scan minimum...')
 
 class Camera(Instrument):
     def __init__(self, interface, simulate=False):

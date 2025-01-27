@@ -135,7 +135,18 @@ class Microscope(Instrument):
             'bpos': self.get_grating_motor_positions,
         }
 
+        # scientific attributes
+        self.laser_steps = None
+        self.laser_wavelength = None
+        self.grating_steps = None
+        self.grating_wavelength = None
+        self.spectrometer_position = None
+        self.current_shift = 0
+
+
         self.calibrations = self._generate_calibrations()
+        self.calibrations.ammend_calibrations()
+        self.calibrations.fix_subtractive_calibrations() # TODO: remove after recalibration subtractive
         self._integrity_checker()  # Validate on init
 
     def __str__(self):

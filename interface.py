@@ -5,7 +5,6 @@ import traceback
 
 from controller import ArduinoUNO
 from instruments import Instrument, Microscope, Camera, Triax, StageControl, Monochromator, Laser, simulate
-from calibration import ldrScans, Calibration
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
 

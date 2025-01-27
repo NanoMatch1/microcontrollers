@@ -59,7 +59,7 @@ class Calibration:
     def __init__(self, microscope):
         self.scriptDir = microscope.interface.scriptDir
         self.calibrationDir = os.path.join(self.scriptDir, 'calibrations')
-        self._generate_calibrations()
+        self.generate_calibrations()
     
     def _load_calibrations(self):
         """
@@ -70,7 +70,7 @@ class Calibration:
             print('Calibrations loaded from file')
         return calibrations
 
-    def _generate_calibrations(self, report=False):
+    def generate_calibrations(self, report=False):
         self.all_calibrations = self._load_calibrations()
         # self.calibrations = SimpleNamespace()
         
@@ -90,7 +90,50 @@ class Calibration:
 
         print("Calibrations successfully built.")
 
+    def ammend_calibrations(self, report=True):
+        '''If an autocalibration has been performed, this function will update the current calibrations with the new data. Loads individual files'''
+        json_files = [f for f in os.listdir(self.calibrationDir) if f.endswith('autocal.json')]
 
+
+        if len(json_files) == 0:
+            print('No autocalibration data found.')
+            return
+        
+        report_dict = {}
+
+        for file in json_files:
+
+            with open(os.path.join(self.calibrationDir, file), 'r') as f:
+                data = json.load(f)
+
+            for name, calib in data.items():
+                # print("Updating {} with autocalibration data".format(name))
+                if len(calib) == 7:
+                    # print("Loading {} as poly_sin".format(name))
+                    report_dict[name] ='poly_sin'
+                    self.all_calibrations[name] = calib
+                    self.__setattr__(name, PolySinModulation(*calib))
+                elif len(calib) == 6:
+                    # print("Loading {} as lin_sin".format(name))
+                    report_dict[name] = 'lin_sin'
+                    self.all_calibrations[name] = calib
+                    self.__setattr__(name, LinSinModulation(*calib))
+                else:
+                    # print("Loading {} as poly1d".format(name))
+                    report_dict[name] = 'poly1d'
+                    self.all_calibrations[name] = calib
+                    self.__setattr__(name, np.poly1d(calib))
+
+        if report:
+            for key, value in report_dict.items():
+                print(f'{key} updated as {value}')
+        print('Calibrations updated with autocalibration data')
+        print('-'*20)
+
+    def fix_subtractive_calibrations(self):
+        '''Workaround until new subtractive calibrations are performed'''
+        self.wl_to_g2 = self.wl_to_g2_subtractive
+        self.g2_to_wl = self.g2_to_wl_subtractive
 
 class ldrScans:
 

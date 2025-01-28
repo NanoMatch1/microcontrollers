@@ -304,6 +304,8 @@ class Microscope(Instrument):
             'monochromator_wavelength': [500, 1300],
         }
 
+        self.calibratable_motors = ['l1', 'l2', 'l3', 'g1', 'g2']
+
         # acquisition parameters
         self.acquisition_parameters = AcquitisionParameters()
 
@@ -320,6 +322,11 @@ class Microscope(Instrument):
             'st': self.go_to_spectrometer_wavelength,
             'reference': self.reference_calibration,
             'shift': self.go_to_wavenumber,
+            'calshift': self.simple_calibration_shift,
+            'report': self.report_status,
+            'writemotora': self.set_absolute_positions_A,
+            'writemotorb': self.set_absolute_positions_B,
+            'rldr': self.read_ldr0,
             # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_monochromator_motor_positions,
@@ -328,6 +335,10 @@ class Microscope(Instrument):
             'scanmax': self.set_scan_max,
             'scanres': self.set_scan_resolution,
             'acqtime': self.set_acquisition_time,
+            'mshut': self.close_mono_shutter,
+            'mopen': self.open_mono_shutter,
+            # 'isrun': self.motion_control.wait_for_motors,
+
         }
 
         # scientific attributes
@@ -361,6 +372,7 @@ class Microscope(Instrument):
         self.get_spectrometer_position()
         self.report_status(initialise=True)
 
+    @ui_callable
     def report_status(self, initialise=False):
         '''Prints the current status of the system. If initialise is True, the function will recalculate all parameters. If False, it will use the current values obtained from the initialisation.'''
 
@@ -368,7 +380,7 @@ class Microscope(Instrument):
             # recalculate all parameters
             self.laser_steps = self.get_laser_motor_positions()
             self.monochromator_steps = self.get_monochromator_motor_positions()
-            self.spectrometer_position = self.get_spectrometer_position()
+            self.get_spectrometer_position()
 
 
         report = {
@@ -397,7 +409,110 @@ class Microscope(Instrument):
         print('-'*20)
 
 
-    # def initialise_microscope(self):
+    @ui_callable
+    def read_ldr0(self):
+        '''Reads the light-dependent resistor value from the microscope. Used to detect laser light in autocalibrations.'''
+        response = self.controller.send_command('ld0')
+        ldr_value = int(response[0][1:])
+        print("LDR0:", ldr_value)
+        return ldr_value
+    
+    @ui_callable
+    def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5, safety=False):
+       
+        if motor.lower() not in self.motorList:
+            print("Invalid motor. Must be one of: ", self.motorList)
+            return
+        
+        if safety is True:
+            self.detector_safety = True
+        else:
+            self.detector_safety = False
+
+        def convert_to_serializable(obj):
+            if isinstance(obj, np.ndarray):
+                return obj.tolist()  # Convert NumPy arrays to Python lists
+            elif isinstance(obj, np.int32) or isinstance(obj, np.int64):
+                return int(obj)  # Convert NumPy integers to Python ints
+            elif isinstance(obj, np.float32) or isinstance(obj, np.float64):
+                return float(obj)  # Convert NumPy floats to Python floats
+            else:
+                return obj  # Leave other types unchanged
+            
+
+        calibrationDict = {'data_type': 'autocal'}
+
+        if isinstance(wavelength_range, str):
+            vals = wavelength_range.split(',')
+            wavelength_range = (float(vals[0]), float(vals[1]))
+
+        resolution = float(resolution)
+
+        initial_grating = self.grating_steps
+        initial_laser = self.laser_steps
+
+        wavelengths = np.arange(*wavelength_range, resolution)
+        print(f"Running {motor} calibration for wavelengths: ", wavelengths)
+        cond = input("Continue? (y/n): ")
+        if cond.lower() == 'n':
+            return
+        index = len([file for file in os.listdir(os.path.join(self.scriptDir, 'autocalibration')) if file.endswith('.json')])
+        
+        # initial_pinhole_pos = int(self.pinhole)
+        # self.close_pinhole(pinhole_size)
+        self.close_mono_shutter()
+        
+        for wl in wavelengths:
+            self.go_to_laser_wavelength(wl, autoshutter=True)
+            self.go_to_grating_wavelength(wl, autoshutter=True)
+            scan_data = self.run_ldr0_scan(motor)
+            # Apply the conversion to ensure the data is serializable
+            calibrationDict[float(wl)] = scan_data
+
+            print("Saving state...")        
+
+            with open(os.path.join(self.scriptDir, 'autocalibration', 'autocal_{}_{}.json'.format(index, motor)), 'w') as f:
+                json.dump(calibrationDict, f)
+
+        print(f"{motor.lower()} Scan complete. Data saved to autocal_{index}_{motor}.json")
+
+        self.detector_safety = True
+        # self.open_pinhole_shutter()
+        print("Returning to initial position")
+        self.go_to_laser_steps(initial_laser)
+        self.go_to_grating_steps(initial_grating)
+
+        # self.open_pinhole(initial_pinhole_pos)
+    
+    # def close_pinhole(self):
+    #     self.
+    
+    def run_ldr0_scan(self, motor, search_length=None, resolution=None):
+        if motor not in ['g1', 'g2', 'l2']:
+            print("Invalid motor. Must be 'g1', 'g2', or 'l2'")
+            return
+        if search_length is None:
+            search_length = self.ldr_scan_dict[motor]['range']
+        if resolution is None:
+            resolution = self.ldr_scan_dict[motor]['resolution']
+
+        # build a dictionary of motor positions
+        posDict = {'l1': self.laser_steps[0], 'l2': self.laser_steps[1], 'g1': self.grating_steps[0], 'g2': self.grating_steps[1]}
+        current_pos = posDict[motor]
+        scan_data = []
+        scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
+
+        for idx, final_pos in enumerate(scan_points):
+            self.process_coms("{} {}".format(motor, final_pos - current_pos))
+            if idx == 0:
+                # self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
+                self.wait_for_motors()
+            scan_data.append([int(final_pos), 6000-int(self.read_ldr0())])
+            current_pos = final_pos
+        
+        return scan_data
+
+            
 
 
     @property
@@ -544,10 +659,57 @@ class Microscope(Instrument):
             print('Expected: {}, {}'.format(g1_target, g2_target))
             print('Actual: {}, {}'.format(grating_pos[0], grating_pos[1]))
 
+    def wavenumber_to_wavelength(self, wavenumber):
+        return 10_000_000/wavenumber
+    
+    def wavelength_to_wavenumber(self, wavelength):
+        return 10_000_000/wavelength
+    
+    @ui_callable
+    def simple_calibration_shift(self, raman_shift=None):
+        '''Takes the current motor positions as the new position for the current wavelength. Simply sets the motor steps to the calcualted position for the current wavelength.'''
+
+        if raman_shift is not None:
+            self.current_shift = float(raman_shift)
+        
+        current_laser_pos = self.get_laser_motor_positions()
+        current_laser_wavelength, l2_wavelength = self.calculate_laser_wavelength(current_laser_pos)
+        current_grating_pos = self.get_monochromator_motor_positions()
+        current_grating_wavenumber = self.current_grating_wavenumber
+        # What the current wavelength should be at the detector
+        current_monochromator_wavelength = self.wavenumber_to_wavelength(current_grating_wavenumber)
+        print(current_monochromator_wavelength)
+
+        l1_target = round(self.calibrations.wl_to_l1(current_laser_wavelength))
+        l2_target = round(self.calibrations.wl_to_l2(current_laser_wavelength))
+        g1_target = round(self.calibrations.wl_to_g1(current_monochromator_wavelength))
+        g2_target = round(self.calibrations.wl_to_g2(current_monochromator_wavelength))
+
+        print('Current Positions:\n Laser: {}\n Monochromator: {}'.format(current_laser_pos, current_grating_pos))
+        print('Target Positions:\n Laser: {}\n Monochromator: {}'.format([l1_target, l2_target], [g1_target, g2_target]))
+
+        # set the motor positions to the calculated positions, shifting the calibration to the current wavelength
+        self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
+        
+        new_laser_pos = self.get_laser_motor_positions()
+        new_laser_wavelength, l2_wavelength = self.calculate_laser_wavelength(new_laser_pos)
+        new_grating_pos = self.get_monochromator_motor_positions()
+        new_grating_wavelength = self.calculate_monochromator_wavelength(new_grating_pos)[0]
+        
+        if new_grating_pos[0] == g1_target and new_grating_pos[1] == g2_target and new_laser_pos[0] == l1_target and new_laser_pos[1] == l2_target:
+            print('Calibration shift successful')
+            print('New Positions:\n Laser: {}\n Grating: {}'.format(new_laser_wavelength, new_grating_wavelength))
+        else:
+            print('Calibration shift failed')
+            print('New Positions:\n Laser: {}\n Grating: {}'.format(new_laser_wavelength, new_grating_wavelength))
+
+    @ui_callable
     def set_absolute_positions_A(self, positions):
         print("Setting absolute positions A: {}".format(positions))
         response = self.controller.send_command('setposA {}'.format(positions))
     
+    @ui_callable
     def set_absolute_positions_B(self, positions):
         print("Setting absolute positions B: {}".format(positions))
         response = self.controller.send_command('setposB {}'.format(positions))
@@ -597,9 +759,11 @@ class Microscope(Instrument):
         '''Moves the laser motors the specified number of steps.'''
         self.motion_control.move_motors(move_steps, 'A', backlash=True)
 
+    @ui_callable
     def close_mono_shutter(self):
         self.controller.send_command('gsh on')
 
+    @ui_callable
     def open_mono_shutter(self):
         self.controller.send_command('gsh off')
 
@@ -674,8 +838,8 @@ class Microscope(Instrument):
             current_pos = self.controller.get_monochromator_motor_positions()
         self.monochromator_steps = current_pos
         g1_pos, g2_pos = current_pos[0], current_pos[1]
-        g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
-        g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
+        g1_wavelength = round(self.calibrations.g1_to_wl(g1_pos), 4)
+        g2_wavelength = round(self.calibrations.g2_to_wl(g2_pos), 4)
         self.monochromator_wavelength = [g1_wavelength, g2_wavelength, 0, 0]
         return (g1_wavelength, g2_wavelength, 0, 0)
 
@@ -756,8 +920,8 @@ class Microscope(Instrument):
 
         l1_pos = current_laser_pos[0]
         l2_pos = current_laser_pos[1]
-        l1_wavelength = self.calibrations.l1_to_wl(l1_pos)
-        l2_wavelength = self.calibrations.l2_to_wl(l2_pos)
+        l1_wavelength = round(self.calibrations.l1_to_wl(l1_pos), 4)
+        l2_wavelength = round(self.calibrations.l2_to_wl(l2_pos), 4)
 
         self.laser_wavelength = [l1_wavelength, l2_wavelength, 0, 0]
 
@@ -958,6 +1122,7 @@ class Triax(Spectrometer):
                 print('Timeout reached')
                 return 'F0'
 
+    
 
     @ui_callable
     @simulate(expected_value=380000) # TODO: Change to actual response

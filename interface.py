@@ -140,8 +140,13 @@ class Interface:
                 result = f" > Error: {e}\n{error_details}"
             return result
         else:
-            response = self.controller.send_command(command)
+            try:
 
+                result = self.controller.send_command(command)
+            except Exception as e:
+                error_details = traceback.format_exc()
+                result = f" > Error: {e}\n{error_details}"
+            return result
             # return f" > Unknown command: {funct}"
 
          # Detail: * operator unpacks the list - since an empty list has nothing to unpack, nothing is passed to the function. This avoids a TypeError

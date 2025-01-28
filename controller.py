@@ -82,6 +82,8 @@ class ArduinoUNO:
 
     def send_command(self, orig_com):
         new_com = self._format_command_length(orig_com)
+        if new_com is None:
+            return None
         new_com = command_formatter(new_com)
 
         self._send_command_to_UNO(new_com)

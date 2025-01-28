@@ -15,7 +15,8 @@ def command_formatter(command):
 
 class ArduinoUNO:
 
-    def __init__(self, com_port='COM10', baud=9600, simulate=False, report=True):
+    def __init__(self, interface, com_port='COM10', baud=9600, simulate=False, report=True):
+        self.interface = interface
         self.simulate = simulate
         self.com_port = com_port
         self.baud = baud
@@ -56,8 +57,11 @@ class ArduinoUNO:
             # 'get_grating_positions': self._process_grating_positions,
         }
 
-    def connect(self, com_port, baud):
-        self.serial = self._connect_to_UNO(com_port, baud)
+    def initialise(self):
+        self.connect()
+
+    def connect(self):
+        self.serial = self._connect_to_UNO()
 
     def _format_command_length(self, command):
         '''Formats the command by checking length and compiling the correct command from the message_map. Work around until firmware is updated.'''
@@ -112,8 +116,8 @@ class ArduinoUNO:
         
         return laser_steps
 
-    def _connect_to_UNO(self, com_port, baud):
-        UNO_serial = serial.Serial(com_port, baud, timeout=1)
+    def _connect_to_UNO(self):
+        UNO_serial = serial.Serial(self.com_port, self.baud, timeout=1)
         while UNO_serial.in_waiting == 0:
             time.sleep(0.1)
         while UNO_serial.in_waiting > 0:

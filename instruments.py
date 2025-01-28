@@ -295,7 +295,6 @@ class Microscope(Instrument):
         super().__init__()
         self.interface = interface
         self.controller = interface.controller
-        self.spectrometer = interface.spectrometer
         self.simulate = simulate
 
         # Microscope hard limits for hardware
@@ -327,19 +326,14 @@ class Microscope(Instrument):
 
         # scientific attributes
         # self.laser_steps = None
-        self.laser_wavelength = None
-        # self.grating_steps = None
-        self.grating_wavelength = None
+        self.laser_wavelength = [700, 700, 700, 700]
+        self.grating_wavelength = [700, 700, 700, 700]
         # self.spectrometer_position = None
         self.current_shift = 0
         self.current_wavenumber = None
 
         self.detector_safety = True
 
-
-        self.calibrations = self._generate_calibrations()
-        self.calibrations.ammend_calibrations()
-        self.calibrations.fix_subtractive_calibrations() # TODO: remove after recalibration subtractive
         self._integrity_checker()  # Validate on init
 
     def __str__(self):
@@ -350,7 +344,16 @@ class Microscope(Instrument):
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
         
+    def initialise(self):
+        '''Initialises the microscope by querying all connections to instruments and setting up the necessary parameters.'''
+        self.calibrations = self._generate_calibrations()
+        self.calibrations.ammend_calibrations()
+        self.calibrations.fix_subtractive_calibrations() # TODO: Remove this line once the calibration files are fixed
 
+        self.get_laser_motor_positions()
+        self.get_grating_motor_positions()
+        self.get_spectrometer_position()
+        self.report_status(initialise=True)
 
     def report_status(self, initialise=False):
         '''Prints the current status of the system. If initialise is True, the function will recalculate all parameters. If False, it will use the current values obtained from the initialisation.'''
@@ -389,6 +392,16 @@ class Microscope(Instrument):
 
 
     # def initialise_microscope(self):
+
+
+    @property
+    def current_laser_wavenumber(self):
+        '''Takes the current laser wavelength and calculates the absolute wavenumbers.'''
+        return 10_000_000/self.laser_wavelength[0]
+    
+    def current_grating_wavenumber(self):
+        '''Takes the current grating wavelength and calculates the absolute wavenumbers.'''
+        return 10_000_000/self.grating_wavelength[0]
 
     @property
     def laser_steps(self):
@@ -432,7 +445,7 @@ class Microscope(Instrument):
 
     @property
     def spectrometer_position(self):
-        return self.spectrometer._spectrometer_position
+        return self.interface.spectrometer.spectrometer_position
 
     @ui_callable
     def set_scan_min(self, value):
@@ -527,7 +540,7 @@ class Microscope(Instrument):
 
         self.laser_safety_check()
         self.open_mono_shutter()
-        self.calculate_laser_wavelength(self.motion_control.laser_steps)
+        self.calculate_laser_wavelength(self.laser_steps)
         print('Laser excitation at {}'.format(wavelength))
 
     def laser_safety_check(self, limit=50):
@@ -555,9 +568,9 @@ class Microscope(Instrument):
     @ui_callable
     def get_spectrometer_position(self):
         '''Get the current position of the spectrometer in motor steps.'''
-        self.spectrometer_position = self.interface.spectrometer.get_spectrometer_position()
-        print('Current spectrometer position: {}'.format(self.spectrometer_position))
-        return self.spectrometer_position
+        self.interface.spectrometer.get_spectrometer_position()
+        print('Current spectrometer position: {}'.format(self.interface.spectrometer.spectrometer_position))
+        return self.interface.spectrometer.spectrometer_position
     
 
     
@@ -573,7 +586,6 @@ class Microscope(Instrument):
         '''Uses calibration to calculate wavelength from reported position. For spectrometers that report wavelength, this is a pass-through.'''
         if steps is None:
             steps = self.interface.spectrometer.get_spectrometer_position()
-            self.spectrometer_position = steps
 
         self.spectrometer_wavelength = self.calibrations.triax_steps_to_wl(self.spectrometer_position) # TODO: rename triax_steps_to_wl to spectrometer_steps_to_wl - requires change to calibration files and will be breaking until otherwise completed
         return self.spectrometer_wavelength
@@ -673,6 +685,10 @@ class Camera(Instrument):
             raise ValueError(f"Unknown camera command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
     
+    def initialise(self):
+        self.connect()
+    
+    @simulate(expected_value=serial.Serial)
     def connect(self):
         print("Connecting to the camera.")
         self.serial = self.connect_to_camera()
@@ -728,6 +744,7 @@ class Triax(Spectrometer):
             'go_to_position': self.go_to_position
         }
 
+        self.spectrometer_position = 380000
 
         self.message_map = {
             'initialise': 'A',
@@ -756,11 +773,18 @@ class Triax(Spectrometer):
             #'entrance mirror to side enterance': 'd0'
         }
 
-        self.get_spectrometer_position()
         self._integrity_checker()
 
     def __str__(self):
         return "TRIAX Spectrometer"
+    
+    # @simulate(expected_value=380000) # TODO: Change to actual response
+    def initialise(self):
+        '''Connect and establish primary attributes.'''
+        self.connect()
+        self.get_spectrometer_position()
+
+        return self.spectrometer_position
 
     @ui_callable
     @simulate(expected_value=380000) # TODO: Change to actual response
@@ -793,12 +817,14 @@ class Triax(Spectrometer):
 
         return self.spectrometer, self.state
 
+    @simulate(expected_value=380000) # TODO: Change to actual response
     def get_triax_steps(self):
         '''Polls the spectrometer for position and returns the current position in steps.'''
         response = self._send_command_to_spectrometer(self.message_map['get_grating_steps'])
         self.triax_steps = int(response.strip()[1:])
         return self.triax_steps
     
+    @simulate(expected_value='OK') # TODO: Change to actual response
     def send_command(self, command):
         '''Send a command to the spectrometer.'''
         coms = self.message_map.get(command, None)
@@ -809,6 +835,7 @@ class Triax(Spectrometer):
         response = self._send_command_to_spectrometer(coms)
         return response
     
+    @simulate(expected_value='OK') # TODO: Change to actual response
     def _send_command_to_spectrometer(self, command, report=True):
         self.spectrometer.write(command)
         time.sleep(0.0001)
@@ -904,6 +931,10 @@ class Laser(Instrument):
             raise ValueError(f"Unknown laser command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
     
+    def initialise(self):
+        self.connect()
+    
+    @simulate(expected_value=True) # TODO: Change to actual response
     def connect(self):
         print("Connecting to the laser.")
         pass

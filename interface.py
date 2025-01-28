@@ -7,7 +7,6 @@ from controller import ArduinoUNO
 from instruments import Instrument, Microscope, Camera, Triax, StageControl, Monochromator, Laser, simulate
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
-
 def cli(instrument):
     while True:
         command = input("Enter a command: ")
@@ -27,14 +26,14 @@ def cli(instrument):
 
 class Interface:
 
-    def __init__(self, simulate=False, debug_skip=[],  com_port='COM10', baud=9600):
+    def __init__(self, simulate=False, com_port='COM10', baud=9600, debug_skip=[]):
         self.simulate = simulate
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
         self.transientDir = os.path.join(self.scriptDir, 'transient')
         self.saveDir = os.path.join(self.dataDir, 'saved_data')
 
-        self.controller = ArduinoUNO(self, simulate=simulate)
+        self.controller = ArduinoUNO(self, com_port=com_port, baud=baud, simulate=simulate)
 
         self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
         self.camera = Camera(self, simulate=simulate)
@@ -81,10 +80,11 @@ class Interface:
         if 'camera' in debug_skip:
             self.camera.simulate = True
 
-        self.spectrometer.connect()
-        self.controller.connect(com_port, baud) # TODO: Create a method to search and find controller COM port
-        self.laser.connect()
-        self.camera.connect()
+        self.spectrometer.initialise()
+        self.controller.initialise() # TODO: Create a method to search and find controller COM port
+        self.laser.initialise()
+        self.camera.initialise()
+        self.microscope.initialise() # this one must be last
         
         self._integrity_checker()
 

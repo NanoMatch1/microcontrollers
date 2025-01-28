@@ -318,6 +318,7 @@ class Microscope(Instrument):
             'sm': self.go_to_monochromator_wavelength,
             'sall': self.go_to_wavelength_all,
             'st': self.go_to_spectrometer_wavelength,
+            'reference': self.reference_calibration,
             # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_monochromator_motor_positions,
@@ -494,6 +495,59 @@ class Microscope(Instrument):
     def go_to_spectrometer_wavelength(self, wavelength):
         '''Moves the spectrometer to the specified wavelength.'''
         self.interface.spectrometer.go_to_wavelength(wavelength)
+
+    @ui_callable
+    def reference_calibration(self, steps=None, shift=True):
+        '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
+        # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
+        # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
+        if steps is None:
+            steps = self.get_spectrometer_position()
+        true_wavelength_laser = self.calibrations.triax_steps_to_wl(float(steps))
+        print('True wavelength: {}. Shifting motor positions to true wavelength'.format(true_wavelength_laser))
+        
+        # correct for current Raman shift (usually zero, but might be different if performing Raman measurements)
+        if shift is True:
+            grating_wavelength = self.current_laser_wavenumber - self.current_shift
+            true_wavelength_grating = 10_000_000/grating_wavelength
+        else:
+            true_wavelength_grating = true_wavelength_laser
+
+
+        l1_target = round(self.calibrations.wl_to_l1(true_wavelength_laser))
+        l2_target = round(self.calibrations.wl_to_l2(true_wavelength_laser))
+        g1_target = round(self.calibrations.wl_to_g1(true_wavelength_grating))
+        g2_target = round(self.calibrations.wl_to_g2(true_wavelength_grating))
+
+        #  #378617
+
+        self.set_absolute_positions_A(f'{l1_target},{l2_target},0,0')
+        self.set_absolute_positions_B(f'{g1_target},{g2_target},0,0')
+
+        laser_pos = self.get_laser_motor_positions()
+        grating_pos = self.get_monochromator_motor_positions()
+
+        if l1_target == laser_pos[0] and l2_target == laser_pos[1]:
+            print('Laser motors successfully calibrated')
+        else:
+            print('Error calibrating laser motors')
+            print('Expected: {}, {}'.format(l1_target, l2_target))
+            print('Actual: {}, {}'.format(laser_pos[0], laser_pos[1]))
+        
+        if g1_target == grating_pos[0] and g2_target == grating_pos[1]:
+            print('Grating motors successfully calibrated')
+        else:
+            print('Error calibrating grating motors')
+            print('Expected: {}, {}'.format(g1_target, g2_target))
+            print('Actual: {}, {}'.format(grating_pos[0], grating_pos[1]))
+
+    def set_absolute_positions_A(self, positions):
+        print("Setting absolute positions A: {}".format(positions))
+        response = self.controller.send_command('setposA {}'.format(positions))
+    
+    def set_absolute_positions_B(self, positions):
+        print("Setting absolute positions B: {}".format(positions))
+        response = self.controller.send_command('setposB {}'.format(positions))
     
     def _generate_calibrations(self):
         return Calibration(self)

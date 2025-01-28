@@ -86,6 +86,8 @@ class ArduinoUNO:
             return None
         new_com = command_formatter(new_com)
 
+        if self.report is True:
+            print('>UNO:{}'.format(new_com))
         self._send_command_to_UNO(new_com)
         response = self._read_from_serial_until()
         

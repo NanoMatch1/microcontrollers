@@ -396,6 +396,7 @@ class Microscope(Instrument):
         self.get_monochromator_motor_positions()
         self.get_spectrometer_position()
         self.report_status(initialise=True)
+        pass
 
     @ui_callable
     def report_status(self, initialise=False):

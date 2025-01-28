@@ -8,7 +8,7 @@ def command_formatter(command):
 
     hardware_command = ['gsh', 'ld0']
 
-    if command in hardware_command:
+    if command.split(' ')[0] in hardware_command:
         return 'm{}m'.format(command)
     else:
         return 'o{}o'.format(command)

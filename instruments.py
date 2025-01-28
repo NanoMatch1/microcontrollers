@@ -58,7 +58,7 @@ class AcquitisionParameters:
             self._scan_min = int(value)
         except ValueError:
             print('Invalid value for scan min')
-        print('Scan Min: {}'.format(self._scan_min))
+        print('Scan Min Set: {}'.format(self._scan_min))
 
     @property
     def scan_max(self):
@@ -70,7 +70,7 @@ class AcquitisionParameters:
             self._scan_max = int(value)
         except ValueError:
             print('Invalid value for scan max')
-        print('Scan Max: {}'.format(self._scan_max))
+        print('Scan Max Set: {}'.format(self._scan_max))
 
     @property
     def scan_resolution(self):
@@ -82,7 +82,7 @@ class AcquitisionParameters:
             self._scan_resolution = int(value)
         except ValueError:
             print('Invalid value for scan resolution')
-        print('Scan Resolution: {}'.format(self._scan_resolution))
+        print('Scan Resolution Set: {}'.format(self._scan_resolution))
     
     @property
     def acq_time(self):
@@ -172,6 +172,7 @@ class MotionControl:
         if motors == 'A':
             response = self.controller.send_command('l1 {}'.format(steps[0]))
             response = self.controller.send_command('l2 {}'.format(steps[1]))
+            self.wait_for_motors()
 
             if backlash:
                 response = self.controller.send_command('l1 -20')
@@ -183,6 +184,7 @@ class MotionControl:
         elif motors == 'B':
             response = self.controller.send_command('g1 {}'.format(steps[0]))
             response = self.controller.send_command('g2 {}'.format(steps[1]))
+            self.wait_for_motors()
 
             if backlash:
                 response = self.controller.send_command('g1 -20')
@@ -192,7 +194,6 @@ class MotionControl:
                 response = self.controller.send_command('g2 20')
         
         self.wait_for_motors()
-        self.confirm_motor_positions([steps[0], steps[1], 0, 0], motors)
 
         return response
 
@@ -399,6 +400,7 @@ class Microscope(Instrument):
         '''Takes the current laser wavelength and calculates the absolute wavenumbers.'''
         return 10_000_000/self.laser_wavelength[0]
     
+    @property
     def current_grating_wavenumber(self):
         '''Takes the current grating wavelength and calculates the absolute wavenumbers.'''
         return 10_000_000/self.grating_wavelength[0]
@@ -507,12 +509,12 @@ class Microscope(Instrument):
         print('Target laser position: {}'.format([l1_target, l2_target]))
         if l1_target == current_pos[0] and l2_target == current_pos[1]:
             print('Laser already at target position')
-            return
+            return (0, 0), (l1_target, l2_target)
         move_l1 = l1_target - current_pos[0]
         move_l2 = l2_target - current_pos[1]
         # print("moving l1 by {} and l2 by {}".format(move_l1, move_l2))
 
-        return (move_l1, move_l2)
+        return (move_l1, move_l2), (l1_target, l2_target)
     
     def move_laser_motors(self, move_steps):
         '''Moves the laser motors the specified number of steps.'''
@@ -535,13 +537,16 @@ class Microscope(Instrument):
         
         self.close_mono_shutter()
         
-        move_steps = self.calculate_laser_steps_to_wavelength(wavelength)
+        move_steps, target_steps = self.calculate_laser_steps_to_wavelength(wavelength)
+        if all(x == 0 for x in move_steps):
+            return
         self.move_laser_motors(move_steps)
+        self.motion_control.confirm_motor_positions([target_steps[0], target_steps[1], 0, 0], 'A') # TODO: Refactor this to use the motion control class
 
         self.laser_safety_check()
         self.open_mono_shutter()
         self.calculate_laser_wavelength(self.laser_steps)
-        print('Laser excitation at {}'.format(wavelength))
+        print('Laser excitation at {} nm'.format(wavelength))
 
     def laser_safety_check(self, limit=50):
         '''If the detector wavelength is within 20 wavenumbers of the laser wavelength, warn the user and prompt to overwrite or revert to a safe position.'''

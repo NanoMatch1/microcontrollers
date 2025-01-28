@@ -71,7 +71,6 @@ class LinSinModulation:
    
 
 
-
 @dataclass
 class MotorPositions:
     x: int

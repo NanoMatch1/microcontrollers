@@ -10,7 +10,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from functools import wraps
 
-from calibration import Calibration
+from calibration import Calibration, LdrScan
 
 def simulate(expected_value=None):
     def decorator(func):
@@ -510,9 +510,13 @@ class Microscope(Instrument):
             'l1': self.laser_steps[0],
             'l2': self.laser_steps[1],
             'l3': self.laser_steps[2], 
+            'l4': self.laser_steps[3],
             'g1': self.monochromator_steps[0],
-            'g2': self.monochromator_steps[1]
+            'g2': self.monochromator_steps[1],
+            'g3': self.monochromator_steps[2],
+            'g4': self.monochromator_steps[3]
         }
+
         current_pos = posDict[motor]
         scan_data = []
         scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)

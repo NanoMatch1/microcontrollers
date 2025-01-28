@@ -54,6 +54,45 @@ class LinSinModulation:
         sin_part = f"{self.A}*sin({self.B}*x + {self.C}) + {self.D}"
         return f"LinSinModulation: ({linear_part}) + ({sin_part})"
     
+
+class LdrScan:
+
+
+    def __init__(self, motor, scan_range, resolution):
+        self.motor = motor
+        self.scan_range = scan_range
+        self.resolution = resolution
+
+        self.ldr_scan_dict = {
+            'l1': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'l2': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'l3': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'g1': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'g2': {
+                'range': 150,
+                'resolution': 5,
+            }
+        }
+
+    def __call__(self):
+        self.run_scan()
+    
+    def run_scan(self):
+        pass
+
+    
 class Calibration:
 
     def __init__(self, microscope):

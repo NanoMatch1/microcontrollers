@@ -156,7 +156,7 @@ class Microscope:
             'st': self.go_to_triax_wavelength,
             'sall': self.go_to_wavelength_all,
             'wai': self.get_all_current_positions,
-            'reference': self.reference_calibration, # TODO: Bug where multiple calls are needed to refresh. Looks like grating motors are one step behind.
+            'reference': self.reference_calibration,
             'shift': self.go_to_wavenumber,
             'calshift': self.simple_calibration_shift,
             'isrun': self.wait_for_motors,

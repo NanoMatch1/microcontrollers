@@ -319,6 +319,7 @@ class Microscope(Instrument):
             'sall': self.go_to_wavelength_all,
             'st': self.go_to_spectrometer_wavelength,
             'reference': self.reference_calibration,
+            'shift': self.go_to_wavenumber,
             # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_monochromator_motor_positions,
@@ -372,7 +373,7 @@ class Microscope(Instrument):
 
         report = {
             'laser l1, l2 lambda': self.calculate_laser_wavelength(self.laser_steps),
-            'g1 lambda': self.calculate_grating_wavelength(self.monochromator_steps),
+            'g1 lambda': self.calculate_monochromator_wavelength(self.monochromator_steps),
             'TRIAX lambda': self.calculate_spectrometer_wavelength(self.spectrometer_position),
             'laser motor positions': self.laser_steps,
             'monochromator motor positions': self.monochromator_steps,
@@ -501,14 +502,16 @@ class Microscope(Instrument):
         '''Used to reference the current motor position to the laser wavelength, as defined by the current calibration. Measure a spectrum on the TRIAX and enter the stepper motor position and pixel count of the peak wavelength here. In the future, this will be automated with a peak detection algorithm.'''
         # Instructions: Ensure that the entire system is well aligned, and that the stepper motors are in the correct positions relative to one another for passing the laser wavelength to the spectrograph.
         # Centre the laser peak in pixel 50 of the CCD. Enter the stepper motor position here.
+        # correct for current Raman shift (usually zero, but might be different if performing Raman measurements)
+            
         if steps is None:
             steps = self.get_spectrometer_position()
         true_wavelength_laser = self.calibrations.triax_steps_to_wl(float(steps))
         print('True wavelength: {}. Shifting motor positions to true wavelength'.format(true_wavelength_laser))
         
-        # correct for current Raman shift (usually zero, but might be different if performing Raman measurements)
         if shift is True:
-            grating_wavelength = self.current_laser_wavenumber - self.current_shift
+            grating_wavelength = (10_000_000/true_wavelength_laser) - self.current_shift
+            # grating_wavelength = self.current_laser_wavenumber - self.current_shift
             true_wavelength_grating = 10_000_000/grating_wavelength
         else:
             true_wavelength_grating = true_wavelength_laser
@@ -710,10 +713,10 @@ class Microscope(Instrument):
     def get_all_current_positions(self):
         '''Get the current positions of all motors and calculate the corresponding wavelengths.'''
         laser_positions = self.calculate_laser_wavelength()
-        grating_positions = self.calculate_grating_wavelength()
+        monochromator_positions = self.calculate_monochromator_wavelength()
         spectrometer_position = self.calculate_spectrometer_wavelength()
 
-        return (laser_positions, grating_positions, spectrometer_position)
+        return (laser_positions, monochromator_positions, spectrometer_position)
     
     def calculate_spectrometer_wavelength(self, steps=None):
         '''Uses calibration to calculate wavelength from reported position. For spectrometers that report wavelength, this is a pass-through.'''
@@ -759,27 +762,8 @@ class Microscope(Instrument):
         self.laser_wavelength = [l1_wavelength, l2_wavelength, 0, 0]
 
         return (l1_wavelength, l2_wavelength, 0, 0)
-    
 
-    
-    def calculate_grating_wavelength(self, steps=None):
-        if steps is None:
-            current_grating_pos = self.controller.get_monochromator_motor_positions()
-        else:
-            current_grating_pos = steps
-
-        g1_pos = current_grating_pos[0]
-        g2_pos = current_grating_pos[1]
-
-        self.monochromator_steps = current_grating_pos
-
-        g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
-        g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
-
-        self.monochromator_wavelength = [g1_wavelength, g2_wavelength, 0, 0]
-
-        return (g1_wavelength, g2_wavelength, 0, 0)
-
+    @ui_callable
     def go_to_wavenumber(self, wavenumber):
         try:
             wavenumber = float(wavenumber)

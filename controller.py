@@ -63,7 +63,7 @@ class ArduinoUNO:
         '''Formats the command by checking length and compiling the correct command from the message_map. Work around until firmware is updated.'''
         command_set = command.split(' ')
         try:
-            new_command = self.message_map[command_set[0]]
+            new_command = self.message_map[command_set[0].lower()]
         except KeyError:
             print('Command not recognized by Arduino UNO: {}'.format(command))
             return None

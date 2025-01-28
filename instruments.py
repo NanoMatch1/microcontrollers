@@ -27,6 +27,12 @@ def ui_callable(func):
     func.is_ui_process_callable = True
     return func
 
+def string_to_float(value, message=''):
+    try:
+        return float(value)
+    except ValueError:
+        print('Invalid value {}- use a number'.format(message))
+
 @dataclass
 class MotorPositions:
     x: int
@@ -103,6 +109,9 @@ class MotionControl:
         self._grating_wavelength = None
         self._spectrometer_wavelength = None
 
+    def extract_coms_flag(self, message):
+        return message[0].split(':')[1].strip(' ')
+
     def wait_for_motors(self, delay=0.1):
         '''Waits for the motors to finish moving by polling the motors until they are no longer running.'''
         count = 0
@@ -111,28 +120,22 @@ class MotionControl:
         while running_A is True or running_B is True:
 
             if running_A is True:
-                response = self.process_coms('Aisrun')
-                # 
-                # res = response[0].split(':')[0]
-                res1 = self.extract_coms_message(response)
-                # 
+                response = self.controller.send_command('Aisrun')
+                res1 = self.extract_coms_flag(response)
+
                 if res1 == 'S0':
                     running_A = False
-                # elif res1 == 'R1':
                 else:
-                    # print("A running")
                     time.sleep(delay)
                     continue
 
             if running_B is True:
-                response = self.process_coms('Bisrun')
-                res2 = self.extract_coms_message(response)
+                response = self.controller.send_command('Bisrun')
+                res2 = self.extract_coms_flag(response)
                 if res2 == 'S0':
                     running_B = False
-                # elif res2 == 'R1':
                 else:
                     time.sleep(delay)
-                    # print("B running")
                     continue
                 
             if count > 0:
@@ -292,6 +295,7 @@ class Microscope(Instrument):
         super().__init__()
         self.interface = interface
         self.controller = interface.controller
+        self.spectrometer = interface.spectrometer
         self.simulate = simulate
 
         # Microscope hard limits for hardware
@@ -322,13 +326,15 @@ class Microscope(Instrument):
         }
 
         # scientific attributes
-        self.laser_steps = None
+        # self.laser_steps = None
         self.laser_wavelength = None
-        self.grating_steps = None
+        # self.grating_steps = None
         self.grating_wavelength = None
-        self.spectrometer_position = None
+        # self.spectrometer_position = None
         self.current_shift = 0
+        self.current_wavenumber = None
 
+        self.detector_safety = True
 
 
         self.calibrations = self._generate_calibrations()
@@ -343,6 +349,90 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+        
+
+
+    def report_status(self, initialise=False):
+        '''Prints the current status of the system. If initialise is True, the function will recalculate all parameters. If False, it will use the current values obtained from the initialisation.'''
+
+        if initialise is False:
+            # recalculate all parameters
+            self.laser_steps = self.get_laser_motor_positions()
+            self.grating_steps = self.get_grating_motor_positions()
+            self.spectrometer_position = self.get_spectrometer_position()
+
+
+        report = {
+            'laser l1, l2 lambda': self.calculate_laser_wavelength(self.laser_steps),
+            'g1 lambda': self.calculate_grating_wavelength(self.grating_steps),
+            'TRIAX lambda': self.calculate_spectrometer_wavelength(self.spectrometer_position),
+            'laser motor positions': self.laser_steps,
+            'grating motor positions': self.grating_steps,
+            'laser wavenumber': self.current_laser_wavenumber,
+            'grating wavenumber': self.current_grating_wavenumber,
+            # 'Raman wavelength': self.current_raman_wavelength,
+            'Raman shift': self.current_shift,
+            # 'pinhole': self.pinhole
+        }
+        
+
+        if  report['g1 lambda'][0] < 500 or report['g1 lambda'][0] > 2000:
+            print('Grating wavelength out of range - please check monochromator mode')
+
+        # self.pinhole = report['grating motor positions'][2]
+        # report['pinhole'] = self.pinhole
+
+        print('-'*20)
+        for key, value in report.items():
+            print('{}: {}'.format(key, value))
+        print('-'*20)
+
+
+    # def initialise_microscope(self):
+
+    @property
+    def laser_steps(self):
+        return self.motion_control._laser_steps
+    
+    @laser_steps.setter
+    def laser_steps(self, value):
+        valid_steps = True
+        try:
+            value = [int(x) for x in value]
+            if not all(isinstance(x, int) for x in value) and len(value) != 4:
+                print('Invalid laser steps')
+                valid_steps = False
+        except ValueError:
+            print('Invalid laser steps')
+
+        if valid_steps is False:
+            return self.motion_control._laser_steps
+        else:
+            self.motion_control._laser_steps = value
+
+    @property
+    def grating_steps(self):
+        return self.motion_control._grating_steps
+    
+    @grating_steps.setter
+    def grating_steps(self, value):
+        valid_steps = True
+        try:
+            value = [int(x) for x in value]
+            if not all(isinstance(x, int) for x in value) and len(value) != 4:
+                print('Invalid grating steps')
+                valid_steps = False
+        except ValueError:
+            print('Invalid grating steps')
+
+        if valid_steps is False:
+            return self.motion_control._grating_steps
+        else:
+            self.motion_control._grating_steps = value
+
+    @property
+    def spectrometer_position(self):
+        return self.spectrometer._spectrometer_position
 
     @ui_callable
     def set_scan_min(self, value):
@@ -381,17 +471,14 @@ class Microscope(Instrument):
         
     def check_laser_wavelength(self, wavelength):
         '''Checks the validity of the entered value for laser wavelength.'''
-        try:
-            wavelength = float(wavelength)
-        except ValueError:
-            print('Invalid value for wavelength - use a number')
-            return False
+
+        wavelength = string_to_float(wavelength)
 
         if not self.check_hard_limits(wavelength, self.hard_limits['laser_wavelength']):
             print('Wavelength out of range. Pick a wavelength between {} and {} nm'.format(*self.hard_limits['laser_wavelength']))
             return False
         
-        return True
+        return wavelength
     
     # def get_steps_calibration_wavelength(self, calibration, wavelength):
     #     '''Determines the motor steps for a given wavelength using the calibration function.'''
@@ -424,10 +511,13 @@ class Microscope(Instrument):
     def open_mono_shutter(self):
         self.controller.send_command('gsh off')
 
+
+
     @ui_callable
     def go_to_laser_wavelength(self, wavelength):
 
-        if self.check_laser_wavelength(wavelength) is False:
+        wavelength = self.check_laser_wavelength(wavelength)
+        if wavelength is False:
             return False
         
         self.close_mono_shutter()
@@ -666,6 +756,7 @@ class Triax(Spectrometer):
             #'entrance mirror to side enterance': 'd0'
         }
 
+        self.get_spectrometer_position()
         self._integrity_checker()
 
     def __str__(self):
@@ -675,9 +766,8 @@ class Triax(Spectrometer):
     @simulate(expected_value=380000) # TODO: Change to actual response
     def get_spectrometer_position(self):
         '''Get the current position of the spectrometer in motor steps.'''
-        print("Getting the current position of the TRIAX spectrometer.")
-        current_position = self.get_triax_steps()
-        return current_position
+        self.spectrometer_position = self.get_triax_steps()
+        return self.spectrometer_position
     
     @ui_callable
     @simulate(expected_value='OK') # TODO: Change to actual response

@@ -37,42 +37,59 @@ class MotorPositions:
 class AcquitisionParameters:
     '''Holds the acquisition parameters for the microscope, and is passed to acquisition methods to perform actions.'''
     def __init__(self):
-        self.scan_min = None
-        self.scan_max = None
-        self.scan_resolution = None
-        self.acq_time = None
+        self.scan_min = 0
+        self.scan_max = 0
+        self.scan_resolution = 0
+        self.acq_time = 0
 
-    @ui_callable
-    def set_scan_min(self, value):
+    @property
+    def scan_min(self):
+        return self._scan_min
+
+    @scan_min.setter
+    def scan_min(self, value):
         try:
-            self.scan_min = int(value)
+            self._scan_min = int(value)
         except ValueError:
             print('Invalid value for scan min')
-        print('Scan Min: {}'.format(self.scan_min))
+        print('Scan Min: {}'.format(self._scan_min))
 
-    @ui_callable
-    def set_scan_max(self, value):
+    @property
+    def scan_max(self):
+        return self._scan_max
+    
+    @scan_max.setter
+    def scan_max(self, value):
         try:
-            self.scan_max = int(value)
+            self._scan_max = int(value)
         except ValueError:
             print('Invalid value for scan max')
-        print('Scan Max: {}'.format(self.scan_max))
+        print('Scan Max: {}'.format(self._scan_max))
+
+    @property
+    def scan_resolution(self):
+        return self._scan_resolution
     
-    @ui_callable
-    def set_scan_resolution(self, value):
+    @scan_resolution.setter
+    def scan_resolution(self, value):
         try:
-            self.scan_resolution = int(value)
+            self._scan_resolution = int(value)
         except ValueError:
             print('Invalid value for scan resolution')
-        print('Scan Resolution: {}'.format(self.scan_resolution))
-
-    @ui_callable
-    def set_acquisition_time(self, acq_time):
+        print('Scan Resolution: {}'.format(self._scan_resolution))
+    
+    @property
+    def acq_time(self):
+        return self._acq_time
+    
+    @acq_time.setter
+    def acq_time(self, value):
         try:
-            self.acq_time = float(acq_time)
+            self._acq_time = float(value)
         except ValueError:
             print('Invalid value for acquisition time')
-        print('Acquisition Time Set: {}'.format(self.acq_time))
+        print('Acquisition Time Set: {}'.format(self._acq_time))
+
 
 class MotionControl:
     '''Handles the motion control of the microscope. Needs access to the controller to move the motors.'''
@@ -175,12 +192,6 @@ class MotionControl:
         self.confirm_motor_positions([steps[0], steps[1], 0, 0], motors)
 
         return response
-
-    def close_mono_shutter(self):
-        self.controller.send_command('gsh on')
-
-    def open_mono_shutter(self):
-        self.controller.send_command('gsh off')
 
     @ui_callable
     def get_laser_motor_positions(self, *args):
@@ -289,17 +300,25 @@ class Microscope(Instrument):
             'grating_wavelength': [500, 1300],
         }
 
+        # acquisition parameters
+        self.acquisition_parameters = AcquitisionParameters()
+
+        # Motion control
+        self.motion_control = MotionControl(self.controller)
 
         self.command_functions = {
+            # general commands
             'wai': self.where_am_i,
-            'rg': self._get_spectrometer_position,
+            'rg': self.get_spectrometer_position,
+            'sl': self.go_to_laser_wavelength,
+            # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_grating_motor_positions,
-            'scanmin': self.acquisition_parameters.set_scan_min,
-            'scanmax': self.acquisition_parameters.set_scan_max,
-            'scanres': self.acquisition_parameters.set_scan_resolution,
-            'acqtime': self.acquisition_parameters.set_acquisition_time,
-            'sl': self.go_to_laser_wavelength,
+            # acquisition commands
+            'scanmin': self.set_scan_min,
+            'scanmax': self.set_scan_max,
+            'scanres': self.set_scan_resolution,
+            'acqtime': self.set_acquisition_time,
         }
 
         # scientific attributes
@@ -310,11 +329,7 @@ class Microscope(Instrument):
         self.spectrometer_position = None
         self.current_shift = 0
 
-        # acquisition parameters
-        self.acquisition_parameters = AcquitisionParameters()
 
-        # Motion control
-        self.motion_control = MotionControl(self.controller)
 
         self.calibrations = self._generate_calibrations()
         self.calibrations.ammend_calibrations()
@@ -328,6 +343,32 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+
+    @ui_callable
+    def set_scan_min(self, value):
+        self.acquisition_parameters.scan_min = value
+    
+    @ui_callable
+    def set_scan_max(self, value):
+        self.acquisition_parameters.scan_max = value
+
+    @ui_callable
+    def set_scan_resolution(self, value):
+        self.acquisition_parameters.scan_resolution = value
+
+    @ui_callable
+    def set_acquisition_time(self, value):
+        self.acquisition_parameters.acq_time = value
+
+    @ui_callable
+    def get_laser_motor_positions(self):
+        '''Get the current positions of the laser motors.'''
+        return self.motion_control.get_laser_motor_positions()
+    
+    @ui_callable
+    def get_grating_motor_positions(self):
+        '''Get the current positions of the grating motors.'''
+        return self.motion_control.get_grating_motor_positions()
     
     def _generate_calibrations(self):
         return Calibration(self)
@@ -336,6 +377,7 @@ class Microscope(Instrument):
         '''Checks the hard limits dictionary of the microscope for the allowed range of values.'''
         if not limits[0] < value < limits[1]:
             return False
+        return True
         
     def check_laser_wavelength(self, wavelength):
         '''Checks the validity of the entered value for laser wavelength.'''
@@ -344,7 +386,7 @@ class Microscope(Instrument):
         except ValueError:
             print('Invalid value for wavelength - use a number')
             return False
-        
+
         if not self.check_hard_limits(wavelength, self.hard_limits['laser_wavelength']):
             print('Wavelength out of range. Pick a wavelength between {} and {} nm'.format(*self.hard_limits['laser_wavelength']))
             return False
@@ -376,6 +418,11 @@ class Microscope(Instrument):
         '''Moves the laser motors the specified number of steps.'''
         self.motion_control.move_motors(move_steps, 'A', backlash=True)
 
+    def close_mono_shutter(self):
+        self.controller.send_command('gsh on')
+
+    def open_mono_shutter(self):
+        self.controller.send_command('gsh off')
 
     @ui_callable
     def go_to_laser_wavelength(self, wavelength):
@@ -416,7 +463,7 @@ class Microscope(Instrument):
         self.report_all_current_positions()
 
     @ui_callable
-    def _get_spectrometer_position(self):
+    def get_spectrometer_position(self):
         '''Get the current position of the spectrometer in motor steps.'''
         self.spectrometer_position = self.interface.spectrometer.get_spectrometer_position()
         print('Current spectrometer position: {}'.format(self.spectrometer_position))
@@ -629,7 +676,7 @@ class Triax(Spectrometer):
     def get_spectrometer_position(self):
         '''Get the current position of the spectrometer in motor steps.'''
         print("Getting the current position of the TRIAX spectrometer.")
-        current_position = self._get_triax_steps()
+        current_position = self.get_triax_steps()
         return current_position
     
     @ui_callable
@@ -656,7 +703,7 @@ class Triax(Spectrometer):
 
         return self.spectrometer, self.state
 
-    def _get_triax_steps(self):
+    def get_triax_steps(self):
         '''Polls the spectrometer for position and returns the current position in steps.'''
         response = self._send_command_to_spectrometer(self.message_map['get_grating_steps'])
         self.triax_steps = int(response.strip()[1:])

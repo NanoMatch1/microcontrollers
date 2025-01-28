@@ -95,7 +95,7 @@ class ArduinoUNO:
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
         positions = positions.split(',')
-        grating_steps = [float(x[1:]) for x in positions]
+        grating_steps = [int(x[1:]) for x in positions]
         
         return grating_steps
     
@@ -108,7 +108,7 @@ class ArduinoUNO:
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
         positions = positions.split(',')
-        laser_steps = [float(x[1:]) for x in positions]
+        laser_steps = [int(x[1:]) for x in positions]
         
         return laser_steps
 

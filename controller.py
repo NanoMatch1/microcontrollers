@@ -26,7 +26,7 @@ class ArduinoUNO:
         self.message_map = {
             'get_laser_positions': 'Apos',
             'gpb': 'Bpos',
-            'get_grating_positions': 'Bpos',
+            'get_monochromator_positions': 'Bpos',
             'gpa': 'Apos',
             'lambda': 'lambda',
             'atest': 'Atest',
@@ -54,7 +54,7 @@ class ArduinoUNO:
         }
 
         self.response_map = {
-            # 'get_grating_positions': self._process_grating_positions,
+            # 'get_monochromator_positions': self._process_grating_positions,
         }
 
     def initialise(self):
@@ -89,10 +89,10 @@ class ArduinoUNO:
         
         return response
 
-    def get_grating_motor_positions(self):
-        response = self.send_command('get_grating_positions')
+    def get_monochromator_motor_positions(self):
+        response = self.send_command('get_monochromator_positions')
         if response == []:
-            response = self.send_command('get_grating_positions') # bug with controller returning empty list, try again # TODO: seems to be related to an extra end flag #CF in the firmware. Will be fixed in the next firmware update.
+            response = self.send_command('get_monochromator_positions') # bug with controller returning empty list, try again # TODO: seems to be related to an extra end flag #CF in the firmware. Will be fixed in the next firmware update.
         if self.report:
             print(response)
         

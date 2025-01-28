@@ -101,12 +101,12 @@ class MotionControl:
     '''Handles the motion control of the microscope. Needs access to the controller to move the motors.'''
     def __init__(self, controller):
         self.controller = controller
-        self._grating_steps = None
+        self._monochromator_steps = None
         self._laser_steps = None
         self._spectrometer_position = None
 
         self._laser_wavelength = None
-        self._grating_wavelength = None
+        self._monochromator_wavelength = None
         self._spectrometer_wavelength = None
 
     def extract_coms_flag(self, message):
@@ -209,7 +209,7 @@ class MotionControl:
     def get_monochromator_motor_positions(self, *args):
         '''Get the current positions of the grating motors.'''
         self.monochromator_steps = self.controller.get_monochromator_motor_positions()
-        print('Current grating pos: {}'.format(self.monochromator_steps))
+        print('Current monochromator pos: {}'.format(self.monochromator_steps))
 
         return self.monochromator_steps
 
@@ -222,14 +222,14 @@ class MotionControl:
         self._laser_wavelength = value
 
     @property
-    def grating_steps(self):
-        return self._grating_steps
+    def monochromator_steps(self):
+        return self._monochromator_steps
     
-    @grating_steps.setter
-    def grating_steps(self, value):
+    @monochromator_steps.setter
+    def monochromator_steps(self, value):
         if len(value) != 4 or not all(isinstance(x, int) for x in value):
             print('Invalid grating steps')
-        self._grating_steps = value
+        self._monochromator_steps = value
 
     @property
     def laser_steps(self):
@@ -301,7 +301,7 @@ class Microscope(Instrument):
         # Microscope hard limits for hardware
         self.hard_limits = {
             'laser_wavelength': [650, 1000],
-            'grating_wavelength': [500, 1300],
+            'monochromator_wavelength': [500, 1300],
         }
 
         # acquisition parameters
@@ -316,6 +316,8 @@ class Microscope(Instrument):
             'rg': self.get_spectrometer_position,
             'sl': self.go_to_laser_wavelength,
             'sm': self.go_to_monochromator_wavelength,
+            'sall': self.go_to_wavelength_all,
+            'st': self.go_to_spectrometer_wavelength,
             # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_monochromator_motor_positions,
@@ -372,9 +374,9 @@ class Microscope(Instrument):
             'g1 lambda': self.calculate_grating_wavelength(self.monochromator_steps),
             'TRIAX lambda': self.calculate_spectrometer_wavelength(self.spectrometer_position),
             'laser motor positions': self.laser_steps,
-            'grating motor positions': self.monochromator_steps,
+            'monochromator motor positions': self.monochromator_steps,
             'laser wavenumber': self.current_laser_wavenumber,
-            'grating wavenumber': self.current_grating_wavenumber,
+            'monochromator wavenumber': self.current_grating_wavenumber,
             # 'Raman wavelength': self.current_raman_wavelength,
             'Raman shift': self.current_shift,
             # 'pinhole': self.pinhole
@@ -384,7 +386,7 @@ class Microscope(Instrument):
         if  report['g1 lambda'][0] < 500 or report['g1 lambda'][0] > 2000:
             print('Grating wavelength out of range - please check monochromator mode')
 
-        # self.pinhole = report['grating motor positions'][2]
+        # self.pinhole = report['monochromator motor positions'][2]
         # report['pinhole'] = self.pinhole
 
         print('-'*20)
@@ -427,11 +429,11 @@ class Microscope(Instrument):
             self.motion_control._laser_steps = value
 
     @property
-    def grating_steps(self):
-        return self.motion_control._grating_steps
+    def monochromator_steps(self):
+        return self.motion_control._monochromator_steps
     
-    @grating_steps.setter
-    def grating_steps(self, value):
+    @monochromator_steps.setter
+    def monochromator_steps(self, value):
         valid_steps = True
         try:
             value = [int(x) for x in value]
@@ -475,6 +477,23 @@ class Microscope(Instrument):
     def get_monochromator_motor_positions(self):
         '''Get the current positions of the grating motors.'''
         return self.motion_control.get_monochromator_motor_positions()
+    
+    @ui_callable
+    def go_to_wavelength_all(self, wavelength, shift=True):
+        self.go_to_laser_wavelength(wavelength)
+        # raman_shift = self.calculate_raman_shift_wavelength(wavelength)
+        if shift is True:
+            
+            self.go_to_wavenumber(self.current_shift)
+        else:
+            self.go_to_monochromator_wavelength(wavelength)
+
+        self.go_to_spectrometer_wavelength(wavelength)
+
+    @ui_callable
+    def go_to_spectrometer_wavelength(self, wavelength):
+        '''Moves the spectrometer to the specified wavelength.'''
+        self.interface.spectrometer.go_to_wavelength(wavelength)
     
     def _generate_calibrations(self):
         return Calibration(self)
@@ -569,9 +588,9 @@ class Microscope(Instrument):
 
     def check_monochromator_wavelength(self, wavelength):
         wavelength = string_to_float(wavelength)
-        if not self.check_hard_limits(wavelength, self.hard_limits['grating_wavelength']):
+        if not self.check_hard_limits(wavelength, self.hard_limits['monochromator_wavelength']):
             print('Wavelength out of range. Pick a wavelength between {} and {} nm'.format(
-                *self.hard_limits['grating_wavelength']))
+                *self.hard_limits['monochromator_wavelength']))
             return False
         return wavelength
 
@@ -658,7 +677,7 @@ class Microscope(Instrument):
         spectrometer_wavelength = round(self.spectrometer_wavelength, 2)
 
         print('laser pos: {}'.format(self.laser_steps))
-        print('grating pos: {}'.format(self.monochromator_steps))
+        print('monochromator pos: {}'.format(self.monochromator_steps))
         print('triax pos: {}'.format(self.spectrometer_position))
 
         print('triax wavelength: {}'.format(spectrometer_wavelength))
@@ -721,7 +740,7 @@ class Microscope(Instrument):
         # 
         wave = laser_wavenumber - wavenumber
         new_wavelength = 10_000_000/wave
-        self.go_to_grating_wavelength(new_wavelength)
+        self.go_to_monochromator_wavelength(new_wavelength)
         self.current_shift = wavenumber
         
         print('Moving to wavenumber: {} for {} nm excitation'.format(wavenumber, self.laser_wavelength[0]))
@@ -797,6 +816,8 @@ class Spectrometer(Instrument):
 class Triax(Spectrometer):
     def __init__(self, interface, simulate=False):
         super().__init__(interface, simulate)
+        self.interface = interface
+
 
         self.command_functions = {
             'get_spectrometer_position': self.get_spectrometer_position,
@@ -843,8 +864,62 @@ class Triax(Spectrometer):
         '''Connect and establish primary attributes.'''
         self.connect()
         self.get_spectrometer_position()
+        # self.calibrations = self.interface.microscope.calibrations
 
         return self.spectrometer_position
+
+    
+
+
+    
+    # @simulate(expected_value='S0') # TODO: Change to actual response
+    def go_to_wavelength(self, wavelength):
+        '''Moves the spectrometer to the specified wavelength.'''
+        try:
+            wavelength = float(wavelength)
+        except ValueError:
+            print('Invalid input')
+            return
+        
+        triax_steps = self.get_triax_steps()
+        
+        target_steps = round(self.interface.microscope.calibrations.wl_to_triax_steps(wavelength))
+        # 
+        new_steps = target_steps - triax_steps
+        # return if no movement is required
+        if new_steps == 0:
+            return
+        
+        print('UNO>g {}>triax'.format(new_steps))
+
+        response = self.send_command('mg {}'.format(new_steps))
+        if response == 'o':
+            triax_res = self.wait_for_triax(target_steps)
+            if triax_res == 'S0':
+                print('Triax moved to {} nm'.format(wavelength))
+                self.triax_steps = target_steps
+                return 'S0'
+            else:
+                print('Triax move failed: {}'.format(triax_res))
+                return 'F0'
+
+        else:
+            print('Triax communication failed:')
+            print(response)
+
+    @simulate(expected_value='S0') # TODO: Change to actual response
+    def wait_for_triax(self, target_steps, timeout=10):
+        '''Polls the spectrometer until the target steps are reached. Note the MOTOR BUSY CHECK (E) on the spectrometer does not send a response with this configuration, so we use this command instead.'''
+        start = time.time()
+        while True:
+            response = self.get_triax_steps()
+            if response == target_steps:
+                return 'S0'
+            time.sleep(0.1)
+            if time.time() - start > timeout:
+                print('Timeout reached')
+                return 'F0'
+
 
     @ui_callable
     @simulate(expected_value=380000) # TODO: Change to actual response
@@ -883,15 +958,24 @@ class Triax(Spectrometer):
         response = self._send_command_to_spectrometer(self.message_map['get_grating_steps'])
         self.triax_steps = int(response.strip()[1:])
         return self.triax_steps
+        
+    def _command_parser(self, command):
+        '''Parses the command to ensure it is in the correct format for the spectrometer.'''
+        com_set = command.split(' ')
+        new_command = self.message_map.get(com_set[0], None)
+        if new_command is None:
+            print('Unknown command: {}'.format(command))
+            return None
+
+        if len(com_set) > 1:
+            new_command += com_set[1]
+        
+        return new_command
     
-    @simulate(expected_value='OK') # TODO: Change to actual response
+    @simulate(expected_value='o') # TODO: Change to actual response
     def send_command(self, command):
         '''Send a command to the spectrometer.'''
-        coms = self.message_map.get(command, None)
-        if coms is None:
-            print('Invalid command: {}'.format(command))
-            return
-        
+        coms = self._command_parser(command)
         response = self._send_command_to_spectrometer(coms)
         return response
     

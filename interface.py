@@ -88,7 +88,6 @@ class Interface:
         
         self._integrity_checker()
 
-    
     def generate_help(self):
         help_dict = {}
         for command, (inst, method) in self.command_map.items():

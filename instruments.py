@@ -315,6 +315,7 @@ class Microscope(Instrument):
             'wai': self.where_am_i,
             'rg': self.get_spectrometer_position,
             'sl': self.go_to_laser_wavelength,
+            'sm': self.go_to_monochromator_wavelength,
             # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_grating_motor_positions,
@@ -542,11 +543,65 @@ class Microscope(Instrument):
             return
         self.move_laser_motors(move_steps)
         self.motion_control.confirm_motor_positions([target_steps[0], target_steps[1], 0, 0], 'A') # TODO: Refactor this to use the motion control class
+            
 
         self.laser_safety_check()
         self.open_mono_shutter()
-        self.calculate_laser_wavelength(self.laser_steps)
-        print('Laser excitation at {} nm'.format(wavelength))
+        new_wavelength = self.calculate_laser_wavelength(self.laser_steps)
+        print('Laser excitation at {} nm'.format(new_wavelength[0]))
+
+    @ui_callable
+    def go_to_monochromator_wavelength(self, wavelength):
+        wavelength = self.check_monochromator_wavelength(wavelength)
+        if wavelength is False:
+            return False
+        
+        self.close_mono_shutter()
+        move_steps, target_steps = self.calculate_monochromator_steps_to_wavelength(wavelength)
+        if all(x == 0 for x in move_steps):
+            return
+        
+        self.move_monochromator_motors(move_steps)
+        self.motion_control.confirm_motor_positions([target_steps[0], target_steps[1], 0, 0], 'B')
+        self.open_mono_shutter()
+        new_wavelength = self.calculate_monochromator_wavelength(self.grating_steps)
+        print(f'Monochromator set to {new_wavelength[0]} nm')
+
+    def check_monochromator_wavelength(self, wavelength):
+        wavelength = string_to_float(wavelength)
+        if not self.check_hard_limits(wavelength, self.hard_limits['grating_wavelength']):
+            print('Wavelength out of range. Pick a wavelength between {} and {} nm'.format(
+                *self.hard_limits['grating_wavelength']))
+            return False
+        return wavelength
+
+    def calculate_monochromator_steps_to_wavelength(self, target_wavelength):
+        current_pos = self.get_grating_motor_positions()
+        g1_target = round(self.calibrations.wl_to_g1(target_wavelength))
+        g2_target = round(self.calibrations.wl_to_g2(target_wavelength))
+        print('Current monochromator position: {}'.format(current_pos))
+        print('Target monochromator position: {}'.format([g1_target, g2_target]))
+
+        if g1_target == current_pos[0] and g2_target == current_pos[1]:
+            print('Monochromator already at target position')
+            return (0, 0), (g1_target, g2_target)
+
+        move_g1 = g1_target - current_pos[0]
+        move_g2 = g2_target - current_pos[1]
+        return (move_g1, move_g2), (g1_target, g2_target)
+
+    def move_monochromator_motors(self, move_steps):
+        self.motion_control.move_motors(move_steps, 'B', backlash=True)
+
+    def calculate_monochromator_wavelength(self, current_pos=None):
+        if current_pos is None:
+            current_pos = self.controller.get_grating_motor_positions()
+        self.grating_steps = current_pos
+        g1_pos, g2_pos = current_pos[0], current_pos[1]
+        g1_wavelength = self.calibrations.g1_to_wl(g1_pos)
+        g2_wavelength = self.calibrations.g2_to_wl(g2_pos)
+        self.grating_wavelength = [g1_wavelength, g2_wavelength, 0, 0]
+        return (g1_wavelength, g2_wavelength, 0, 0)
 
     def laser_safety_check(self, limit=50):
         '''If the detector wavelength is within 20 wavenumbers of the laser wavelength, warn the user and prompt to overwrite or revert to a safe position.'''

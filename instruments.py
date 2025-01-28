@@ -2,6 +2,9 @@ import inspect
 import serial
 import time
 import pyvisa
+import numpy as np
+import os
+import json
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -295,16 +298,37 @@ class Microscope(Instrument):
     def __init__(self, interface, simulate=False):
         super().__init__()
         self.interface = interface
+        self.scriptDir = interface.scriptDir
         self.controller = interface.controller
         self.simulate = simulate
 
+        self.ldr_scan_dict = {
+            'l1': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'l2': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'l3': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'g1': {
+                'range': 150,
+                'resolution': 5,
+            },
+            'g2': {
+                'range': 150,
+                'resolution': 5,
+            }
+        }
         # Microscope hard limits for hardware
         self.hard_limits = {
             'laser_wavelength': [650, 1000],
             'monochromator_wavelength': [500, 1300],
         }
-
-        self.calibratable_motors = ['l1', 'l2', 'l3', 'g1', 'g2']
 
         # acquisition parameters
         self.acquisition_parameters = AcquitisionParameters()
@@ -327,6 +351,7 @@ class Microscope(Instrument):
             'writemotora': self.set_absolute_positions_A,
             'writemotorb': self.set_absolute_positions_B,
             'rldr': self.read_ldr0,
+            'calibrate': self.run_calibration,
             # motor commands
             'apos': self.get_laser_motor_positions,
             'bpos': self.get_monochromator_motor_positions,
@@ -420,25 +445,14 @@ class Microscope(Instrument):
     @ui_callable
     def run_calibration(self, motor:str, wavelength_range=(750, 850), resolution=5, safety=False):
        
-        if motor.lower() not in self.motorList:
-            print("Invalid motor. Must be one of: ", self.motorList)
+        if motor.lower() not in self.ldr_scan_dict.keys():
+            print("Invalid motor. Must be one of: ", self.ldr_scan_dict.keys())
             return
         
         if safety is True:
             self.detector_safety = True
         else:
             self.detector_safety = False
-
-        def convert_to_serializable(obj):
-            if isinstance(obj, np.ndarray):
-                return obj.tolist()  # Convert NumPy arrays to Python lists
-            elif isinstance(obj, np.int32) or isinstance(obj, np.int64):
-                return int(obj)  # Convert NumPy integers to Python ints
-            elif isinstance(obj, np.float32) or isinstance(obj, np.float64):
-                return float(obj)  # Convert NumPy floats to Python floats
-            else:
-                return obj  # Leave other types unchanged
-            
 
         calibrationDict = {'data_type': 'autocal'}
 
@@ -448,13 +462,13 @@ class Microscope(Instrument):
 
         resolution = float(resolution)
 
-        initial_grating = self.grating_steps
+        initial_grating = self.monochromator_steps
         initial_laser = self.laser_steps
 
         wavelengths = np.arange(*wavelength_range, resolution)
         print(f"Running {motor} calibration for wavelengths: ", wavelengths)
-        cond = input("Continue? (y/n): ")
-        if cond.lower() == 'n':
+        condition = input("Continue? (y/n): ")
+        if condition.lower() == 'n':
             return
         index = len([file for file in os.listdir(os.path.join(self.scriptDir, 'autocalibration')) if file.endswith('.json')])
         
@@ -463,8 +477,8 @@ class Microscope(Instrument):
         self.close_mono_shutter()
         
         for wl in wavelengths:
-            self.go_to_laser_wavelength(wl, autoshutter=True)
-            self.go_to_grating_wavelength(wl, autoshutter=True)
+            self.go_to_laser_wavelength(wl)
+            self.go_to_monochromator_wavelength(wl)
             scan_data = self.run_ldr0_scan(motor)
             # Apply the conversion to ensure the data is serializable
             calibrationDict[float(wl)] = scan_data
@@ -480,15 +494,10 @@ class Microscope(Instrument):
         # self.open_pinhole_shutter()
         print("Returning to initial position")
         self.go_to_laser_steps(initial_laser)
-        self.go_to_grating_steps(initial_grating)
+        self.go_to_monochromator_wavelength(initial_grating)
 
-        # self.open_pinhole(initial_pinhole_pos)
-    
-    # def close_pinhole(self):
-    #     self.
-    
     def run_ldr0_scan(self, motor, search_length=None, resolution=None):
-        if motor not in ['g1', 'g2', 'l2']:
+        if motor not in self.ldr_scan_dict.keys():
             print("Invalid motor. Must be 'g1', 'g2', or 'l2'")
             return
         if search_length is None:
@@ -497,23 +506,26 @@ class Microscope(Instrument):
             resolution = self.ldr_scan_dict[motor]['resolution']
 
         # build a dictionary of motor positions
-        posDict = {'l1': self.laser_steps[0], 'l2': self.laser_steps[1], 'g1': self.grating_steps[0], 'g2': self.grating_steps[1]}
+        posDict = {
+            'l1': self.laser_steps[0],
+            'l2': self.laser_steps[1],
+            'l3': self.laser_steps[2], 
+            'g1': self.monochromator_steps[0],
+            'g2': self.monochromator_steps[1]
+        }
         current_pos = posDict[motor]
         scan_data = []
         scan_points = np.arange(current_pos - search_length, current_pos + search_length, resolution)
 
         for idx, final_pos in enumerate(scan_points):
-            self.process_coms("{} {}".format(motor, final_pos - current_pos))
+            self.controller.send_command("{} {}".format(motor, final_pos - current_pos))
             if idx == 0:
-                # self.wait_for_motors_manual([final_pos, self.grating_steps[1]], 'B')
-                self.wait_for_motors()
+                # self.wait_for_motors_manual([final_pos, self.monochromator_steps[1]], 'B')
+                self.motion_control.wait_for_motors()
             scan_data.append([int(final_pos), 6000-int(self.read_ldr0())])
             current_pos = final_pos
         
         return scan_data
-
-            
-
 
     @property
     def current_laser_wavenumber(self):

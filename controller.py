@@ -69,8 +69,8 @@ class ArduinoUNO:
         try:
             new_command = self.message_map[command_set[0].lower()]
         except KeyError:
-            print('Command not recognized by Arduino UNO: {}'.format(command))
-            return None
+            # print('Command not recognized by Arduino UNO: {}'.format(command))
+            return command # if not recognized, return the original command and attempt to send it anyway
 
         if len(command_set) > 1:
             new_command = ' '.join([new_command] + command_set[1:])

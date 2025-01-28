@@ -170,11 +170,14 @@ class MotionControl:
             return False
 
     def move_motors(self, steps: tuple, motors: str, backlash=True):
-        '''Move the motors to the specified positions.'''
+        '''Move the motors to the specified positions. #TODO: modify firmware to accept all motor positions in one command.'''
+        motion_command = 'X{}Y{}Z{}A{}'.format(steps[0], steps[1], steps[2], steps[3])
+
 
         if motors == 'A':
             response = self.controller.send_command('l1 {}'.format(steps[0]))
             response = self.controller.send_command('l2 {}'.format(steps[1]))
+            # response = self.controller.send_command('l3 {}'.format(steps[2]))
             self.wait_for_motors()
 
             if backlash:
@@ -185,8 +188,9 @@ class MotionControl:
                 response = self.controller.send_command('l2 20')
 
         elif motors == 'B':
-            response = self.controller.send_command('g1 {}'.format(steps[0]))
-            response = self.controller.send_command('g2 {}'.format(steps[1]))
+            # response = self.controller.send_command('g1 {}'.format(steps[0]))
+            # response = self.controller.send_command('g2 {}'.format(steps[1]))
+            response = self.controller.send_command('B{}'.format(motion_command))
             self.wait_for_motors()
 
             if backlash:
@@ -531,6 +535,49 @@ class Microscope(Instrument):
             current_pos = final_pos
         
         return scan_data
+    
+
+    def go_to_grating_steps(self, grating_pos:list):
+        '''Moves the grating motors to the specified position in steps.'''
+
+        current_pos = self.get_grating_motor_positions()
+        if current_pos is None:
+            return 
+
+        g1_target = grating_pos[0]
+        g2_target = grating_pos[1]
+        # print("l2 target: {}".format(g2_target))
+        move_g1 = g1_target - current_pos[0]
+        move_g2 = g2_target - current_pos[1] # 1, 13, 0, 0/ -21, -11, 0, 0
+
+        backlash = False
+        if move_g1 != 0:
+            if move_g1 < 0:
+                backlash = True
+
+            response = self.process_coms('g1 {}'.format(move_g1))
+
+        if move_g2 != 0:
+            if move_g2 < 0:
+                backlash = True
+                # move_g2 = move_g2 - 20 # move 20 steps further to correct for backlash
+            response = self.process_coms('g2 {}'.format(move_g2))
+
+
+        self.wait_for_motors()
+        # time.sleep(5)
+        if backlash:
+            response = self.process_coms('g1 -20')
+            response = self.process_coms('g2 -20')
+            time.sleep(0.1)
+            response = self.process_coms('g1 20')
+            response = self.process_coms('g2 20')
+
+
+        self.confirm_motor_positions([g1_target, g2_target, pinhole_target, 0], 'B')
+        self.grating_steps = grating_pos
+
+        print('Grating motors moved to position {}'.format(grating_pos))
 
     @property
     def current_laser_wavenumber(self):
@@ -756,56 +803,24 @@ class Microscope(Instrument):
     #     return int(round(calibration(wavelength)))
 
     def calculate_laser_steps_to_wavelength(self, target_wavelength):
+        '''Calculates the number of steps needed to move the laser motors to the target wavelength.'''
         current_pos = self.get_laser_motor_positions()
+        target_steps = [i for i in self.laser_steps]
 
-        l1_target = round(self.calibrations.wl_to_l1(target_wavelength))
-        l2_target = round(self.calibrations.wl_to_l2(target_wavelength))
-        # print("l2 target: {}".format(l2_target))
-        print('Current laser position: {}'.format(current_pos))
-        print('Target laser position: {}'.format([l1_target, l2_target]))
-        if l1_target == current_pos[0] and l2_target == current_pos[1]:
+        target_steps[0] = round(self.calibrations.wl_to_l1(target_wavelength))
+        target_steps[1] = round(self.calibrations.wl_to_l2(target_wavelength))
+        # implement new logic for other motors here
+        print('Current laser position: {}'.format(*current_pos))
+        print('Target laser position: {}'.format(*target_steps))
+        move_steps = [i - j for i, j in zip(target_steps, current_pos)]
+        if all(x == 0 for x in move_steps):
             print('Laser already at target position')
-            return (0, 0), (l1_target, l2_target)
-        move_l1 = l1_target - current_pos[0]
-        move_l2 = l2_target - current_pos[1]
-        # print("moving l1 by {} and l2 by {}".format(move_l1, move_l2))
 
-        return (move_l1, move_l2), (l1_target, l2_target)
+        return move_steps, target_steps
     
     def move_laser_motors(self, move_steps):
         '''Moves the laser motors the specified number of steps.'''
         self.motion_control.move_motors(move_steps, 'A', backlash=True)
-
-    @ui_callable
-    def close_mono_shutter(self):
-        self.controller.send_command('gsh on')
-
-    @ui_callable
-    def open_mono_shutter(self):
-        self.controller.send_command('gsh off')
-
-
-
-    @ui_callable
-    def go_to_laser_wavelength(self, wavelength):
-
-        wavelength = self.check_laser_wavelength(wavelength)
-        if wavelength is False:
-            return False
-        
-        self.close_mono_shutter()
-        
-        move_steps, target_steps = self.calculate_laser_steps_to_wavelength(wavelength)
-        if all(x == 0 for x in move_steps):
-            return
-        self.move_laser_motors(move_steps)
-        self.motion_control.confirm_motor_positions([target_steps[0], target_steps[1], 0, 0], 'A') # TODO: Refactor this to use the motion control class
-            
-
-        self.laser_safety_check()
-        self.open_mono_shutter()
-        new_wavelength = self.calculate_laser_wavelength(self.laser_steps)
-        print('Laser excitation at {} nm'.format(new_wavelength[0]))
 
     @ui_callable
     def go_to_monochromator_wavelength(self, wavelength):
@@ -834,18 +849,20 @@ class Microscope(Instrument):
 
     def calculate_monochromator_steps_to_wavelength(self, target_wavelength):
         current_pos = self.get_monochromator_motor_positions()
-        g1_target = round(self.calibrations.wl_to_g1(target_wavelength))
-        g2_target = round(self.calibrations.wl_to_g2(target_wavelength))
+        target_steps = [i for i in self.monochromator_steps]
+
+        target_steps[0] = round(self.calibrations.wl_to_g1(target_wavelength))
+        target_steps[1] = round(self.calibrations.wl_to_g2(target_wavelength))
+
         print('Current monochromator position: {}'.format(current_pos))
-        print('Target monochromator position: {}'.format([g1_target, g2_target]))
+        print('Target monochromator position: {}'.format(target_steps))
 
-        if g1_target == current_pos[0] and g2_target == current_pos[1]:
+        move_steps = [i - j for i, j in zip(target_steps, current_pos)]
+
+        if all(x == 0 for x in move_steps):
             print('Monochromator already at target position')
-            return (0, 0), (g1_target, g2_target)
 
-        move_g1 = g1_target - current_pos[0]
-        move_g2 = g2_target - current_pos[1]
-        return (move_g1, move_g2), (g1_target, g2_target)
+        return move_steps, target_steps
 
     def move_monochromator_motors(self, move_steps):
         self.motion_control.move_motors(move_steps, 'B', backlash=True)
@@ -859,6 +876,39 @@ class Microscope(Instrument):
         g2_wavelength = round(self.calibrations.g2_to_wl(g2_pos), 4)
         self.monochromator_wavelength = [g1_wavelength, g2_wavelength, 0, 0]
         return (g1_wavelength, g2_wavelength, 0, 0)
+
+
+    @ui_callable
+    def close_mono_shutter(self):
+        self.controller.send_command('gsh on')
+
+    @ui_callable
+    def open_mono_shutter(self):
+        self.controller.send_command('gsh off')
+
+
+
+    @ui_callable
+    def go_to_laser_wavelength(self, wavelength):
+
+        wavelength = self.check_laser_wavelength(wavelength)
+        if wavelength is False:
+            return False
+        
+        self.close_mono_shutter()
+        
+        move_steps, target_steps = self.calculate_laser_steps_to_wavelength(wavelength)
+        if all(x == 0 for x in move_steps):
+            return
+        self.move_laser_motors(move_steps)
+        self.motion_control.confirm_motor_positions(target_steps, 'A') # TODO: Refactor this to use the motion control class
+            
+
+        self.laser_safety_check()
+        self.open_mono_shutter()
+        new_wavelength = self.calculate_laser_wavelength(self.laser_steps)
+        print('Laser excitation at {} nm'.format(new_wavelength[0]))
+
 
     def laser_safety_check(self, limit=50):
         '''If the detector wavelength is within 20 wavenumbers of the laser wavelength, warn the user and prompt to overwrite or revert to a safe position.'''

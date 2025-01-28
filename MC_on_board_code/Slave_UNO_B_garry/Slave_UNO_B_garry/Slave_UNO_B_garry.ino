@@ -120,6 +120,87 @@ void receiveEvent(int howMany) {
 
 }
 
+int findNextAxisIndex(const String &command, int startIndex, const char *axes) {
+  int nextIndex = command.length(); // Default to the end of the string
+  for (int i = 0; axes[i] != '\0'; i++) {
+    int tempIndex = command.indexOf(axes[i], startIndex);
+    if (tempIndex != -1 && tempIndex < nextIndex) {
+      nextIndex = tempIndex;
+    }
+  }
+  return nextIndex;
+}
+
+String processStepCommand(String command) {
+  // Initialize response string
+  String response = "";
+
+  // Parse commands for each axis
+  int xPos = 0, yPos = 0, zPos = 0, aPos = 0;
+  bool xMove = false, yMove = false, zMove = false, aMove = false;
+
+  // List of valid axis identifiers
+  const char *axes = "XYZA";
+
+  // Find and process X-axis command
+  int xIndex = command.indexOf('X');
+  if (xIndex != -1) {
+    int nextIndex = findNextAxisIndex(command, xIndex + 1, axes);
+    xPos = command.substring(xIndex + 1, nextIndex).toInt();
+    if (xPos != 0) {
+      xMove = true;
+    }
+    response += "X" + String(xPos) + " ";
+  }
+
+  // Find and process Y-axis command
+  int yIndex = command.indexOf('Y');
+  if (yIndex != -1) {
+    int nextIndex = findNextAxisIndex(command, yIndex + 1, axes);
+    yPos = command.substring(yIndex + 1, nextIndex).toInt();
+    if (yPos != 0) {
+      yMove = true;
+    }
+    response += "Y" + String(yPos) + " ";
+  }
+
+  // Find and process Z-axis command
+  int zIndex = command.indexOf('Z');
+  if (zIndex != -1) {
+    int nextIndex = findNextAxisIndex(command, zIndex + 1, axes);
+    zPos = command.substring(zIndex + 1, nextIndex).toInt();
+    if (zPos != 0) {
+      zMove = true;
+    }
+    response += "Z" + String(zPos) + " ";
+  }
+
+  // Find and process A-axis command
+  int aIndex = command.indexOf('A');
+  if (aIndex != -1) {
+    int nextIndex = findNextAxisIndex(command, aIndex + 1, axes);
+    aPos = command.substring(aIndex + 1, nextIndex).toInt();
+    if (aPos != 0) {
+      aMove = true;
+    }
+    response += "A" + String(aPos) + " ";
+  }
+
+  // Move the stepper motors based on the parsed commands
+  if (xMove) stepperX.move(xPos);
+  if (yMove) stepperY.move(yPos);
+  if (zMove) stepperZ.move(zPos);
+  if (aMove) stepperA.move(aPos);
+
+  // Print the response
+  if (response == "") {
+    response = "Unknown command UNO-B";
+  }
+  return response;
+}
+
+
+
 void processCommand(String command) {
   
   if (command == "isrun") {
@@ -177,29 +258,8 @@ void processCommand(String command) {
     String currentPosition = ("<PX"+String(stepperX.currentPosition())+",Y"+String(stepperY.currentPosition())+",Z"+String(stepperZ.currentPosition())+",A"+String(stepperA.currentPosition())+"P>");
     response = currentPosition;
   }
-    else if (command.startsWith("X")) {
-    // Extract number from command and move X-axis
-    int pos = command.substring(1).toInt();
-    stepperX.move(pos);
-    response = "X" + String(pos);
-  } else if (command.startsWith("Y")) {
-    // Extract number from command and move Y-axis
-    int pos = command.substring(1).toInt();
-    stepperY.move(pos);
-    response = "Y" + String(pos);
-  } else if (command.startsWith("Z")) {
-    // Extract number from command and move Z-axis
-    int pos = command.substring(1).toInt();
-    stepperZ.move(pos);
-    response = "Z" + String(pos);
-  } else if (command.startsWith("A")) {
-    // Extract number from command and move A-axis
-    int pos = command.substring(1).toInt();
-    stepperA.move(pos);
-    response = "A" + String(pos);
-  } else {
-    testFlag = "0";
-    response = "Unknown command";
+  else {
+    response = processStepCommand(command);
   }
   Serial.println(response);
   // For this example, we just print the received command

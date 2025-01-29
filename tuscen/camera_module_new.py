@@ -1,15 +1,13 @@
 #!/usr/bin/env python
 # coding: utf-8
-"""
-Example of a refactored Tucsen Camera module for clean modular usage.
-@author: fdy (original), refactored by ChatGPT
-"""
 
 import ctypes
 import os
 import threading
 import time
 import numpy as np
+
+import traceback
 
 from ctypes import pointer
 from TUCam import (
@@ -33,7 +31,14 @@ from TUCam import (
     TUFRM_FORMATS,
     TUCAM_IDCAPA,
     TUCAM_IDPROP,
+    TUCAM_Cap_SetROI,
+    TUCAMRET,
+    TUCAM_Prop_GetAttr,
+    TUCAM_PROP_ATTR,
+    
+
 )
+
 # from TUCam import get_camera_gain_attributes    # If you have a local function to retrieve gain info
 
 class TucamCamera:
@@ -42,21 +47,18 @@ class TucamCamera:
     acquisition, and teardown for a Tucsen camera.
     """
 
-    def __init__(self, microscope=None):
+    def __init__(self, interface=None):
         """
         Initialize the camera driver (but do not open a specific camera yet).
         """
+        self.interface = interface
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.microscope = microscope
-        self.transient_dir = self.microscope.transientDir if self.microscope else self.script_dir
+        self.transient_dir = self.interface.transientDir if self.interface else self.script_dir
 
-        # Prepare TUCAM structures
-        self.TUCAMINIT = TUCAM_INIT(0, self.script_dir.encode('utf-8'))
-        self.TUCAMOPEN = TUCAM_OPEN(0, 0)
-        self.handle = self.TUCAMOPEN.hIdxTUCam
+        # acquisition parameters
+        self.acq_time = 100 # milliseconds
+        self.roi = (0, 0, 2048, 2048)
 
-        # Initialize TUCam API
-        TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
 
         # Thread-safety and acquisition flags
         self.camera_lock = threading.Lock()
@@ -96,13 +98,28 @@ class TucamCamera:
     #         print("Open the camera failure!")
     #     else:
     #         print("Open the camera success!")
+    def initialise(self):
+        print("Initialising TUCam API...")
+        # Prepare TUCAM structures
+        self.TUCAMINIT = TUCAM_INIT(0, self.script_dir.encode('utf-8'))
+        self.TUCAMOPEN = TUCAM_OPEN(0, 0)
+        self.handle = self.TUCAMOPEN.hIdxTUCam
+
+        # Initialize TUCam API
+        TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
+        print("TUCam API initialized.")
+
+        self.open_camera()
 
 
-    def open_camera(self, Idx):
+
+
+    def open_camera(self, Idx=0):
 
         if  Idx >= self.TUCAMINIT.uiCamCount:
             return
 
+        print('Opening camera...')
         self.TUCAMOPEN = TUCAM_OPEN(Idx, 0)
 
         # ch:打开相机Idx | en:Open camera Idx
@@ -129,7 +146,7 @@ class TucamCamera:
         """
         TUCAM_Api_Uninit()
 
-    def acquire_one_frame(self):
+    def acquire_one_frame(self, export=True):
         """
         Acquire a single frame from the camera and return it as a numpy array.
         This function:
@@ -139,12 +156,14 @@ class TucamCamera:
           4. Closes the camera.
           5. Returns the frame data (numpy array).
         """
-        self.open_camera(0)
-        self.set_roi((0, 0, 2048, 2048))
-        self.set_exposure(200)
+        # self.open_camera(0)
+        # self.set_roi((0, 0, 2048, 2048))
+        # self.set_exposure(200)
 
         data_dict = self.wait_for_image_data(nframes=1)
-        self.close_camera()
+        # self.close_camera()
+        if export is True:
+            self.export_data(data_dict[0], 'test')
         if data_dict:
             return data_dict[0]
         else:
@@ -270,12 +289,18 @@ class TucamCamera:
                     roi.nHOffset, roi.nVOffset, roi.nWidth, roi.nHeight
                 )
             )
-        except Exception:
+            
+        except Exception as e:
+            error_details = traceback.format_exc()
+            result = f" > Error: {e}\n{error_details}"
+            print(result)
             print(
                 "Set ROI failure: HOffset={}, VOffset={}, Width={}, Height={}".format(
                     roi.nHOffset, roi.nVOffset, roi.nWidth, roi.nHeight
                 )
             )
+
+        self.roi = roi_tuple
 
     def export_data(self, data, filename='default'):
         """
@@ -285,9 +310,38 @@ class TucamCamera:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
+        index = len([file for file in os.listdir(save_dir) if f'{filename}' in file])
+        filename = f'{filename}_{index}.npy'
+
         filepath = os.path.join(save_dir, filename)
         np.save(filepath, data)
         print('Data saved to %s' % filepath)
+
+    def get_gain_attributes(self):
+        """
+        Get the attributes for the camera gain, including min, max, default, and step values.
+
+        :return: A dictionary with 'min', 'max', 'default', and 'step' values, or None if retrieval fails.
+        """
+        if not hasattr(self, "TUCAMOPEN") or self.TUCAMOPEN.hIdxTUCam == 0:
+            print("Error: Camera not initialized or opened.")
+            return None
+
+        attr = TUCAM_PROP_ATTR()
+        attr.idProp = TUCAM_IDPROP.TUIDP_GLOBALGAIN.value
+        status = TUCAM_Prop_GetAttr(self.TUCAMOPEN.hIdxTUCam, byref(attr))
+
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            return {
+                "min": attr.dbValMin,
+                "max": attr.dbValMax,
+                "default": attr.dbValDft,
+                "step": attr.dbValStep
+            }
+        else:
+            print(f"Failed to get camera gain attributes. Error code: {status}")
+            return None
+
 
     # ------------------
     # Internal Helpers

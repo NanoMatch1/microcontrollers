@@ -351,6 +351,6 @@ if __name__ == '__main__':
             dataB = value[:, :, 1]
             plot_image((dataA, dataB))
         
-    # refresh_camera()
-    # run_cam(set_ROI=(0, 1100, 2048, 400))
+    refresh_camera()
+    run_cam(set_ROI=(0, 1100, 2048, 400))
     # plot_data()

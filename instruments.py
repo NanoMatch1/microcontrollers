@@ -1075,30 +1075,49 @@ class Camera(Instrument):
         return self.acquire_frame()
     
 class TucsenCamera(Camera):
-    def __init__(self, Microscope=None):
-        self.scriptDir = os.path.dirname(os.path.abspath(__file__))
-        self.microscope = Microscope
-        self.transientDir = self.microscope.transientDir if self.microscope else self.scriptDir
-        self.TUCAMINIT = TUCAM_INIT(0, self.scriptDir.encode('utf-8'))
-        self.TUCAMOPEN = TUCAM_OPEN(0, 0)
-        self.handle = self.TUCAMOPEN.hIdxTUCam
-        TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
+    def __init__(self, interface, simulate=False, set_ROI=(0, 0, 2048, 2048)):
+        self.simulate = simulate
+        self.scriptDir = interface.scriptDir
+        self.transientDir = interface.transientDir
+        self.set_ROI = set_ROI
+
         self.camera_lock = threading.Lock()
         self.stop_flag = threading.Event()
         self.is_running = False
 
+        self.command_functions = {
+            'acquire_one_frame': self.acquire_one_frame,
+            'start_continuous_acquire': self.start_continuous_acquisition,
+            'stop_continuous_acquire': self.stop_continuous_acquisition
+        }
+
+    @simulate(expected_value=serial.Serial)
+    def connect(self):
+        print("Connecting to Tucsen...")
+        self.TUCAMINIT = TUCAM_INIT(0, self.scriptDir.encode('utf-8'))
+        self.TUCAMOPEN = TUCAM_OPEN(0, 0)
+        self.handle = self.TUCAMOPEN.hIdxTUCam
+        TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
+        print("Connected to Tucsen.")
+        
+        # self.open_camera(0)
+        # self.SetROI(set_ROI=self.set_ROI)
+
+    @simulate(expected_value=np.arange(1024))
+    @ui_callable
     def acquire_one_frame(self):
-        self.OpenCamera(0)
-        self.SetROI()
+        self.open_camera(0)
+        self.SetROI(set_ROI=(0, 0, 2048, 2048))
         self.SetExposure(200)
         dataDict = self.WaitForImageData(nframes=1)
-        self.CloseCamera()
+        self.close_camera()
         return dataDict[0] if dataDict else None
 
+    @ui_callable
     def continuous_acquisition(self):
         self.stop_flag.clear()
-        self.OpenCamera(0)
-        self.SetROI()
+        self.open_camera(0)
+        self.SetROI(set_ROI=(0, 0, 2048, 2048))
         self.SetExposure(200)
         self.write_dir = self.transientDir
 
@@ -1115,8 +1134,9 @@ class TucsenCamera(Camera):
                 print(f"Acquisition error: {e}")
                 break
 
-        self.CloseCamera()
+        self.close_camera()
 
+    @ui_callable
     def start_continuous_acquisition(self):
         acq_thread = threading.Thread(target=self.continuous_acquisition)
         acq_thread.daemon = True
@@ -1129,14 +1149,13 @@ class TucsenCamera(Camera):
         self.stop_flag.set()
         self.is_running = False
 
-    def OpenCamera(self, Idx):
+    def open_camera(self, Idx):
 
         if  Idx >= self.TUCAMINIT.uiCamCount:
             return
 
         self.TUCAMOPEN = TUCAM_OPEN(Idx, 0)
 
-        # ch:打开相机Idx | en:Open camera Idx
         TUCAM_Dev_Open(pointer(self.TUCAMOPEN))
 
         if 0 == self.TUCAMOPEN.hIdxTUCam:
@@ -1145,14 +1164,12 @@ class TucsenCamera(Camera):
         else:
             print('Open the camera success!')
 
-    def CloseCamera(self):
-        # ch:关闭相机 | en:Close camera
+    def close_camera(self):
         if 0 != self.TUCAMOPEN.hIdxTUCam:
             TUCAM_Dev_Close(self.TUCAMOPEN.hIdxTUCam)
         print('Close the camera success')
 
     def UnInitApi(self):
-        # ch:反初始化相机 | en:Uninitial Cameras
         TUCAM_Api_Uninit()
 
     def SetROI(self, set_ROI=(0, 0, 2048, 2048)):
@@ -1167,7 +1184,6 @@ class TucsenCamera(Camera):
         roi.nHeight  = set_ROI[3]
 
         try:
-            # ch:设置相机感兴趣区域 | en:Set ROI
            TUCAM_Cap_SetROI(self.TUCAMOPEN.hIdxTUCam, roi)
            print('Set ROI state success, HOffset:%#d, VOffset:%#d, Width:%#d, Height:%#d'%(roi.nHOffset,
                     roi.nVOffset, roi.nWidth, roi.nHeight))
@@ -1186,7 +1202,6 @@ class TucsenCamera(Camera):
         return np_array
         # return buffer_list
 
-    # ch:获取相机数据流 | en:Get camera stream
     def WaitForImageData(self, nframes=10):
         dataDict = {}
         m_frame = TUCAM_FRAME()
@@ -1257,11 +1272,11 @@ class TucsenCamera(Camera):
 
     def refresh_camera(self):
         print("refreshing camera")
-        demo = TucsenCamera()
-        demo.OpenCamera(0)
+        self.close_camera()
+        self.open_camera(0)
         # demo.get_camera_info()
-        demo.CloseCamera()
-        demo.UnInitApi()
+        self.get_camera_info()
+
 
 
 

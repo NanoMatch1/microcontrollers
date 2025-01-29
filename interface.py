@@ -4,7 +4,7 @@ import time
 import traceback
 
 from controller import ArduinoUNO
-from instruments import Instrument, Microscope, Camera, Triax, StageControl, Monochromator, Laser, simulate
+from instruments import Instrument, Microscope, TucsenCamera, Triax, StageControl, Monochromator, Laser, simulate
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 
 def cli(instrument):
@@ -36,7 +36,7 @@ class Interface:
         self.controller = ArduinoUNO(self, com_port=com_port, baud=baud, simulate=simulate)
 
         self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
-        self.camera = Camera(self, simulate=simulate)
+        self.camera = TucsenCamera(self, simulate=simulate)
         self.spectrometer = Triax(self, simulate=simulate)
         self.stage = StageControl(self, simulate=simulate)
         self.monochromator = Monochromator(self, simulate=simulate)

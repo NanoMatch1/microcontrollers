@@ -103,9 +103,10 @@ class ArduinoUNO:
         positions = response[0].split(':')[1]
         positions = positions.strip('<P>P')
         positions = positions.split(',')
-        grating_steps = [int(x[1:]) for x in positions]
+        monochromator_steps = [int(x[1:]) for x in positions]
+        self.monochromator_steps = monochromator_steps
         
-        return grating_steps
+        return monochromator_steps
     
     def get_laser_motor_positions(self):
         response = self.send_command('get_laser_positions')
@@ -117,6 +118,7 @@ class ArduinoUNO:
         positions = positions.strip('<P>P')
         positions = positions.split(',')
         laser_steps = [int(x[1:]) for x in positions]
+        self.laser_steps = laser_steps
         
         return laser_steps
 

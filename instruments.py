@@ -451,8 +451,8 @@ class Microscope(Instrument):
 
         resolution = float(resolution)
 
-        initial_grating = self.monochromator_steps
-        initial_laser = self.laser_steps
+        initial_grating = [i for i in self.monochromator_steps]
+        initial_laser = [i for i in self.laser_steps]
 
         wavelengths = np.arange(*wavelength_range, resolution)
         print(f"Running {motor} calibration for wavelengths: ", wavelengths)
@@ -483,7 +483,25 @@ class Microscope(Instrument):
         # self.open_pinhole_shutter()
         print("Returning to initial position")
         self.go_to_laser_steps(initial_laser)
-        self.go_to_monochromator_wavelength(initial_grating)
+        self.go_to_monochromator_steps(initial_grating)
+
+    def go_to_laser_steps(self, laser_pos):
+        '''Moves the laser motors to the specified position in steps.'''
+        self.motion_control.move_motors(laser_pos, 'A')
+        self.motion_control.wait_for_motors()
+        self.motion_control.backlash_correction(laser_pos, 'A')
+
+        self.motion_control.confirm_motor_positions(laser_pos, 'A')
+        print("Moved to laser steps: ", laser_pos)
+
+    def go_to_monochromator_steps(self, grating_pos):
+        '''Moves the grating motors to the specified position in steps.'''
+        self.motion_control.move_motors(grating_pos, 'B')
+        self.motion_control.wait_for_motors()
+        self.motion_control.backlash_correction(grating_pos, 'B')
+
+        self.motion_control.confirm_motor_positions(grating_pos, 'B')
+        print("Moved to monochromator steps: ", grating_pos)
 
     def run_ldr0_scan(self, motor, search_length=None, resolution=None):
         if motor not in self.ldr_scan_dict.keys():
@@ -520,49 +538,6 @@ class Microscope(Instrument):
         
         return scan_data
     
-
-    def go_to_grating_steps(self, grating_pos:list):
-        '''Moves the grating motors to the specified position in steps.'''
-
-        current_pos = self.get_grating_motor_positions()
-        if current_pos is None:
-            return 
-
-        g1_target = grating_pos[0]
-        g2_target = grating_pos[1]
-        # print("l2 target: {}".format(g2_target))
-        move_g1 = g1_target - current_pos[0]
-        move_g2 = g2_target - current_pos[1] # 1, 13, 0, 0/ -21, -11, 0, 0
-
-        backlash = False
-        if move_g1 != 0:
-            if move_g1 < 0:
-                backlash = True
-
-            response = self.process_coms('g1 {}'.format(move_g1))
-
-        if move_g2 != 0:
-            if move_g2 < 0:
-                backlash = True
-                # move_g2 = move_g2 - 20 # move 20 steps further to correct for backlash
-            response = self.process_coms('g2 {}'.format(move_g2))
-
-
-        self.wait_for_motors()
-        # time.sleep(5)
-        if backlash:
-            response = self.process_coms('g1 -20')
-            response = self.process_coms('g2 -20')
-            time.sleep(0.1)
-            response = self.process_coms('g1 20')
-            response = self.process_coms('g2 20')
-
-
-        self.confirm_motor_positions([g1_target, g2_target, pinhole_target, 0], 'B')
-        self.grating_steps = grating_pos
-
-        print('Grating motors moved to position {}'.format(grating_pos))
-
     @property
     def current_laser_wavenumber(self):
         '''Takes the current laser wavelength and calculates the absolute wavenumbers.'''
@@ -880,14 +855,16 @@ class Microscope(Instrument):
 
     def calculate_monochromator_wavelength(self, current_pos=None):
         if current_pos is None:
-            current_pos = self.controller.get_monochromator_motor_positions()
+            current_pos = [i for i in self.controller.get_monochromator_motor_positions()]
+
         self.monochromator_steps = current_pos
         g1_pos, g2_pos = current_pos[0], current_pos[1]
         g1_wavelength = round(self.calibrations.g1_to_wl(g1_pos), 4)
         g2_wavelength = round(self.calibrations.g2_to_wl(g2_pos), 4)
-        self.monochromator_wavelength = [g1_wavelength, g2_wavelength, 0, 0]
-        return (g1_wavelength, g2_wavelength, 0, 0)
 
+        self.monochromator_wavelength[0] = g1_wavelength
+        self.monochromator_wavelength[1] = g2_wavelength
+        return self.monochromator_wavelength
 
     @ui_callable
     def close_mono_shutter(self):
@@ -969,20 +946,17 @@ class Microscope(Instrument):
     
     def calculate_laser_wavelength(self, current_pos=None):
         if current_pos is None:
-            current_laser_pos = self.controller.get_laser_motor_positions()
-        else:
-            current_laser_pos = current_pos
+            current_pos = [i for i in self.controller.get_laser_motor_positions()]
 
-        self.laser_steps = current_laser_pos
-
-        l1_pos = current_laser_pos[0]
-        l2_pos = current_laser_pos[1]
+        self.laser_steps = current_pos
+        l1_pos = current_pos[0]
+        l2_pos = current_pos[1]
         l1_wavelength = round(self.calibrations.l1_to_wl(l1_pos), 4)
         l2_wavelength = round(self.calibrations.l2_to_wl(l2_pos), 4)
 
-        self.laser_wavelength = [l1_wavelength, l2_wavelength, 0, 0]
-
-        return (l1_wavelength, l2_wavelength, 0, 0)
+        self.laser_wavelength[0] = l1_wavelength
+        self.laser_wavelength[1] = l2_wavelength
+        return self.laser_wavelength
 
     @ui_callable
     def go_to_wavenumber(self, wavenumber):
@@ -1306,9 +1280,6 @@ class Monochromator(Instrument):
     @ui_callable
     def set_wavelength(self):
         print("Setting the monochromator wavelength.")
-
-    def go_to_grating_wavelength(self, wavelength):
-        print(f"Going to grating wavelength: {wavelength}")
 
 
     @ui_callable

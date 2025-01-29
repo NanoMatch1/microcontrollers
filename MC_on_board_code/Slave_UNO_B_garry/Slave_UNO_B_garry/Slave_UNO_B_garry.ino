@@ -199,6 +199,39 @@ String processStepCommand(String command) {
   return response;
 }
 
+// void backlashCorrection() {
+//   waitForMotorsInternal();
+//   // remove backlash back
+//   if (xMove) stepperX.move(-20);
+//   if (yMove) stepperY.move(-20);
+//   if (zMove) stepperZ.move(-20);
+//   if (aMove) stepperA.move(-20);
+
+//   waitForMotorsInternal();
+//   // remove backlash forwards
+//   if (xMove) stepperX.move(20);
+//   if (yMove) stepperY.move(20);
+//   if (zMove) stepperZ.move(20);
+//   if (aMove) stepperA.move(20);
+// }
+
+void waitForMotorsInternal() {
+  while (true) {
+    if (stepperX.isRunning() == true) {
+      continue;
+    }
+    else if (stepperY.isRunning() == true) {
+      continue;
+    }
+    else if (stepperZ.isRunning() == true) {
+      continue;
+    }
+    else if (stepperA.isRunning() == true) {
+      continue;
+    }
+    return;
+  }
+}
 
 
 void processCommand(String command) {

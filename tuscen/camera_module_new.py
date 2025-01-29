@@ -54,7 +54,7 @@ class TucamCamera:
         """
         self.interface = interface
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
-        self.transient_dir = self.interface.transientDir if self.interface else self.script_dir
+        self.transient_dir = self.interface.transientDir if self.interface else os.path.join(self.script_dir, 'transient')
 
         # acquisition parameters
         self.acq_time = 100 # milliseconds
@@ -136,7 +136,6 @@ class TucamCamera:
         print('Opening camera...')
         self.TUCAMOPEN = TUCAM_OPEN(Idx, 0)
 
-        # ch:打开相机Idx | en:Open camera Idx
         TUCAM_Dev_Open(pointer(self.TUCAMOPEN))
 
         if 0 == self.TUCAMOPEN.hIdxTUCam:
@@ -195,9 +194,9 @@ class TucamCamera:
         # Set up for continuous acquisition
         def continuous_task():
             self.stop_flag.clear()
-            self.open_camera(0)
-            self.set_roi(roi)
-            self.set_exposure(exposure)
+            # self.open_camera(0)
+            # self.set_roi(roi)
+            # self.set_exposure(exposure)
 
             while not self.stop_flag.is_set():
                 try:
@@ -206,14 +205,14 @@ class TucamCamera:
                     if not data_dict:
                         continue
                     data = data_dict[0]
-                    file_path = os.path.join(self.transient_dir, "transient_data.npy")
-                    np.save(file_path, data)
+                    self.export_data(data, 'transient_data.npy', save_dir=self.transient_dir)
                     time.sleep(0.001)
+                    del data_dict
                 except Exception as e:
                     print(f"Acquisition error: {e}")
                     break
 
-            self.close_camera()
+            # self.close_camera()
 
         acq_thread = threading.Thread(target=continuous_task, daemon=True)
         acq_thread.start()
@@ -288,6 +287,13 @@ class TucamCamera:
         """
         Set camera ROI; expects a tuple: (HOffset, VOffset, Width, Height).
         """
+        if isinstance(roi_tuple, list):
+            try:
+                roi_tuple = roi_tuple[0].split(',')
+                roi_tuple = tuple([int(x) for x in roi_tuple])
+            except ValueError:
+                print("ROI values must be integers.")
+
         if len(roi_tuple) != 4:
             print("ROI must be a 4-element tuple: (HOffset, VOffset, Width, Height)")
             return
@@ -316,11 +322,12 @@ class TucamCamera:
 
         self.roi = roi_tuple
 
-    def export_data(self, data, filename='default'):
+    def export_data(self, data, filename='default', save_dir=None):
         """
         Example data export, saves to <script_dir>/data by default.
         """
-        save_dir = os.path.join(self.script_dir, 'data')
+        if not save_dir:
+            save_dir = os.path.join(self.script_dir, 'data')
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 

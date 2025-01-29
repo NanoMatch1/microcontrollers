@@ -13,6 +13,8 @@ def cli(camera):
             if len(command_strip) == 1:
                 return command_strip[0], []
             else:
+                # argss = tuple([tuple(x.split(',')) for x in command_strip[1:]]) if ',' in command_strip[1] else tuple(command_strip[1:])
+                # return command_strip[0], argss
                 return command_strip[0], command_strip[1:]
         except ValueError:
             return
@@ -33,9 +35,9 @@ def cli(camera):
             print("Exiting CLI...")
             break
 
-        command, args = parse_input(user_input)
+        command, argss = parse_input(user_input)
         try:
-            camera.command_functions[command](args)
+            camera.command_functions[command](argss)
             continue
         except KeyError:
             print("Invalid command. Type 'help' for a list of commands.")

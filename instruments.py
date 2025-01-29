@@ -855,7 +855,7 @@ class Microscope(Instrument):
 
     def calculate_monochromator_wavelength(self, current_pos=None):
         if current_pos is None:
-            current_pos = [i for i in self.controller.get_monochromator_motor_positions()]
+            current_pos = [i for i in self.get_monochromator_motor_positions()]
 
         self.monochromator_steps = current_pos
         g1_pos, g2_pos = current_pos[0], current_pos[1]
@@ -946,7 +946,7 @@ class Microscope(Instrument):
     
     def calculate_laser_wavelength(self, current_pos=None):
         if current_pos is None:
-            current_pos = [i for i in self.controller.get_laser_motor_positions()]
+            current_pos = [i for i in self.get_laser_motor_positions()]
 
         self.laser_steps = current_pos
         l1_pos = current_pos[0]

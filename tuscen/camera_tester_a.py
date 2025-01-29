@@ -79,7 +79,11 @@ if __name__ == '__main__':
     camera = TucamCamera()
     camera.initialise()
     
-    cli(camera)
+    try:
+        cli(camera)
+    except Exception as e:
+        print("An error occurred:", e)
+        print("Exiting CLI...")
     
     camera.uninit_api()
     print("Camera API uninitialized. Goodbye!")

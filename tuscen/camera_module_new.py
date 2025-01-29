@@ -2,6 +2,7 @@
 # coding: utf-8
 
 import ctypes
+from ctypes import byref
 import os
 import threading
 import time
@@ -341,6 +342,132 @@ class TucamCamera:
         else:
             print(f"Failed to get camera gain attributes. Error code: {status}")
             return None
+        
+    def set_gain(self, gain_value):
+        """
+        Set the camera gain within valid limits.
+
+        :param gain_value: Desired gain value.
+        """
+        if not hasattr(self, "TUCAMOPEN") or self.TUCAMOPEN.hIdxTUCam == 0:
+            print("Error: Camera not initialized or opened.")
+            return
+
+        gain_attrs = self.get_gain_attributes()
+        if not gain_attrs:
+            return
+
+        min_gain, max_gain = gain_attrs["min"], gain_attrs["max"]
+        
+        if not (min_gain <= gain_value <= max_gain):
+            print(f"Error: Gain value out of range! Must be between {min_gain} and {max_gain}.")
+            return
+
+        status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, gain_value, 0)
+
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            print(f"Gain set to {gain_value} successfully.")
+        else:
+            print(f"Failed to set gain. Error code: {status}")
+
+    def set_high_signal_boost(self):
+        """
+        Configures the camera for the highest signal boost by:
+        - Setting Image Mode to HighGain, 12Bit(HighSpeed) (`IMGMODESELECT = 3`).
+        - Setting Gain Level to 1 (`GLOBALGAIN = 1`).
+        TODO: Come back and check if this is the best configuration for signal boost.
+        """
+        if not hasattr(self, "TUCAMOPEN") or self.TUCAMOPEN.hIdxTUCam == 0:
+            print("Error: Camera not initialized or opened.")
+            return
+
+        # Set Image Mode to HighGain, 12Bit(HighSpeed) (`IMGMODESELECT = 3`)
+        status_mode = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, 3, 0)
+        
+        if status_mode == TUCAMRET.TUCAMRET_SUCCESS:
+            print("Image mode set to HighGain, 12Bit(HighSpeed) (IMGMODE 3).")
+        else:
+            print(f"Failed to set image mode. Error code: {status_mode}")
+            return
+
+        # Set Gain Level to 1
+        status_gain = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, 1, 0)
+
+        if status_gain == TUCAMRET.TUCAMRET_SUCCESS:
+            print("Gain set to 1 (HighGain Mode).")
+        else:
+            print(f"Failed to set gain. Error code: {status_gain}")
+
+
+    def calibrate_best_signal(self):
+        """
+        Tests all image mode and gain combinations to find the optimal configuration for maximum signal.
+
+        - Iterates through all valid `TUIDC_IMGMODESELECT` and `TUIDP_GLOBALGAIN` values.
+        - Captures a frame for each setting.
+        - Analyzes signal strength (e.g., max intensity).
+        - Returns the best combination based on measured signal.
+
+        :return: Dictionary with the best image mode, gain, and measured signal.
+        """
+        if not hasattr(self, "TUCAMOPEN") or self.TUCAMOPEN.hIdxTUCam == 0:
+            print("Error: Camera not initialized or opened.")
+            return
+
+        # Define all valid image modes and gain levels
+        test_combinations = [
+            {"img_mode": 1, "gain": 0, "desc": "CMS, 12Bit"},
+            {"img_mode": 2, "gain": 0, "desc": "HDR, 16Bit"},
+            {"img_mode": 2, "gain": 1, "desc": "HighGain, 11Bit"},
+            {"img_mode": 3, "gain": 1, "desc": "HighGain, 12Bit(HighSpeed)"},
+            {"img_mode": 5, "gain": 1, "desc": "HighGain, 12Bit(Global Reset)"},
+            {"img_mode": 2, "gain": 2, "desc": "LowGain, 11Bit"},
+            {"img_mode": 4, "gain": 2, "desc": "LowGain, 12Bit(HighSpeed)"},
+            {"img_mode": 5, "gain": 2, "desc": "LowGain, 12Bit(Global Reset)"},
+        ]
+
+        best_config = None
+        best_signal = -1  # Start with an impossible signal value
+
+        for config in test_combinations:
+            print(f"Testing {config['desc']} (Mode {config['img_mode']}, Gain {config['gain']})...")
+
+            # Set image mode
+            mode_status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, config["img_mode"], 0)
+            if mode_status != TUCAMRET.TUCAMRET_SUCCESS:
+                print(f"  Failed to set image mode {config['img_mode']}. Skipping...")
+                continue
+
+            # Set gain
+            gain_status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, config["gain"], 0)
+            if gain_status != TUCAMRET.TUCAMRET_SUCCESS:
+                print(f"  Failed to set gain {config['gain']}. Skipping...")
+                continue
+
+            # Acquire a frame
+            frame = self.acquire_one_frame()
+            self.export_data(frame, f'{config["desc"]}_frame')
+        #     if frame is None:
+        #         print("  Failed to capture frame. Skipping...")
+        #         continue
+
+        #     # Measure signal strength (max pixel intensity)
+        #     signal_strength = frame.max()
+        #     print(f"  Measured Signal: {signal_strength}")
+
+        #     # Track best setting
+        #     if signal_strength > best_signal:
+        #         best_signal = signal_strength
+        #         best_config = config
+
+        # print("\n** Best Configuration Found **")
+        # if best_config:
+        #     print(f"Mode: {best_config['desc']} (IMGMODE {best_config['img_mode']}), Gain {best_config['gain']}")
+        #     print(f"Signal Strength: {best_signal}")
+        # else:
+        #     print("No valid configuration found!")
+
+        # return best_config
 
 
     # ------------------

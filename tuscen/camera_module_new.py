@@ -66,6 +66,19 @@ class TucamCamera:
         self.stop_flag = threading.Event()
         self.is_running = False
 
+        self.command_functions = {
+            "acquire": self.acquire_one_frame,
+            "run": self.start_continuous_acquisition,
+            "stop": self.stop_continuous_acquisition,
+            "refresh": self.refresh,
+            "roi": self.set_roi,
+            "exposure": self.set_exposure,
+            "gain": self.set_gain,
+            "gain_info": self.get_gain_attributes,
+            "calibrate": self.calibrate_best_signal,
+            "high_signal": self.set_high_signal_boost
+        }
+
         print('Print finished TucsenCamera init')
 
     def refresh(self):

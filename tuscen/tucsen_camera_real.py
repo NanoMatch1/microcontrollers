@@ -60,7 +60,8 @@ class TucamCamera:
         # acquisition parameters
         self.acqtime = 100 # milliseconds
         self.roi = (0, 0, 2048, 2048)
-        
+        self.roi_new = (0, 280, 512, 70)
+
         # self.roi = (0, 0, 1000, 1000)
 
         self.camera_parameters = {}
@@ -153,8 +154,9 @@ class TucamCamera:
         print("TUCam API initialized.")
 
         self.open_camera()
+        self.set_hardware_binning(3)
         self.set_acqtime(self.acqtime)
-        self.set_roi(self.roi)
+        self.set_roi(self.roi_new)
 
 
 
@@ -363,7 +365,7 @@ class TucamCamera:
         TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, byref(exposure_time), 0)
 
         # Ensure timeout is at least twice the exposure time (for safety margin)
-        timeout = max(2 * exposure_time.value, 1000)  # Minimum 1000ms
+        timeout = max(2 * exposure_time.value, 10000)  # Minimum 1000ms
 
         m_frame = TUCAM_FRAME()
         m_frame.pBuffer = 0
@@ -378,7 +380,20 @@ class TucamCamera:
             try:
                 _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), int(timeout))
                 print(f"Frame {i}: width={m_frame.usWidth}, height={m_frame.usHeight}")
-            except Exception:
+            except Exception as e:
+                # if "is not a valid TUCAMRET" in str(e):
+                #     print("Cam error: refreshing...")
+                #     self.refresh()
+                #     print("attempting to reacquire frame...")
+                #     try:
+                #         _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), int(timeout))
+                #         print("Frame acquired.")
+                #         continue
+                #     except Exception as f:
+                #         print(f"Failed to acquire frame {i}: {f}")
+
+                print(e)
+                print(traceback.format_exc())
                 print(f"Frame timeout exceeded ({timeout}ms). Increase timeout if necessary.")
                 continue
 
@@ -527,7 +542,7 @@ class TucamCamera:
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
 
-        data = self._process_frame(data)
+        # data = self._process_frame(data)
 
         index = len([file for file in os.listdir(save_dir) if f'{filename}' in file])
         if overwrite is True:
@@ -712,9 +727,9 @@ class TucamCamera:
         """
         Tests all image mode and gain combinations to find the optimal configuration for maximum signal.
 
-        - Iterates through all valid `TUIDC_IMGMODESELECT` and `TUIDP_GLOBALGAIN` values.
+        - Iterates through all valid `TUIDC_IMGMODESELECT` (image modes) and `TUIDP_GLOBALGAIN` (gain levels).
         - Captures a frame for each setting.
-        - Analyzes signal strength (e.g., max intensity).
+        - Analyzes signal strength (e.g., max pixel intensity).
         - Returns the best combination based on measured signal.
 
         :return: Dictionary with the best image mode, gain, and measured signal.
@@ -741,21 +756,25 @@ class TucamCamera:
         for config in test_combinations:
             print(f"Testing {config['desc']} (Mode {config['img_mode']}, Gain {config['gain']})...")
 
-            # Set image mode
-            mode_status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, config["img_mode"], 0)
+            # Set Image Mode using `TUCAM_Capa_SetValue`
+            mode_status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_IMGMODESELECT.value, config["img_mode"])
             if mode_status != TUCAMRET.TUCAMRET_SUCCESS:
                 print(f"  Failed to set image mode {config['img_mode']}. Skipping...")
                 continue
 
-            # Set gain
+            # Set Gain Level using `TUCAM_Prop_SetValue`
             gain_status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, config["gain"], 0)
             if gain_status != TUCAMRET.TUCAMRET_SUCCESS:
                 print(f"  Failed to set gain {config['gain']}. Skipping...")
                 continue
 
             # Acquire a frame
-            frame = self.acquire_one_frame()
-            self.export_data(frame, f'{config["desc"]}_frame')
+            frame = self.acquire_one_frame(export=True)
+            if frame is None:
+                print("  Failed to capture frame. Skipping...")
+                continue
+
+            self.export_data(frame, 'cfg{}_gain{}'.format(config['img_mode'], config['gain']), overwrite = True)
         #     if frame is None:
         #         print("  Failed to capture frame. Skipping...")
         #         continue
@@ -776,7 +795,7 @@ class TucamCamera:
         # else:
         #     print("No valid configuration found!")
 
-        # return best_config
+        return
 
     def log_camera_temperature(self, log_interval=5, total_log_time=300, fan_speed=3):
         from datetime import datetime

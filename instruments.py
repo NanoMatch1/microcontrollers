@@ -1420,16 +1420,22 @@ class Spectrometer(Instrument):
 
 
 
-class Triax(Spectrometer):
+class Triax(Instrument):
     def __init__(self, interface, simulate=False):
-        super().__init__(interface, simulate)
+        super().__init__()
         self.interface = interface
+        self.simulate = simulate
 
 
         self.command_functions = {
             'get_spectrometer_position': self.get_spectrometer_position,
             'rg': self.get_spectrometer_position,
-            'go_to_position': self.go_to_position
+            'go_to_position': self.go_to_position,
+            'ren': self.read_enterance_slit,
+            'rex': self.read_exit_slit,
+            'men': self.move_enterance_slit,
+            'mex': self.move_exit_slit,
+            'mg': self.move_grating_relative,
         }
 
         self.spectrometer_position = 380000
@@ -1476,8 +1482,35 @@ class Triax(Spectrometer):
         return self.spectrometer_position
 
     
-
-
+    @ui_callable
+    def read_enterance_slit(self):
+        '''Read the current position of the entrance slit.'''
+        response = self.send_command('read_enter')
+        return response
+    
+    @ui_callable
+    def read_exit_slit(self):
+        '''Read the current position of the exit slit.'''
+        response = self.send_command('read_exit')
+        return response
+    
+    @ui_callable
+    def move_enterance_slit(self, position):
+        '''Move the entrance slit to the specified position.'''
+        response = self.send_command('men {}'.format(position))
+        return response
+    
+    @ui_callable
+    def move_exit_slit(self, position):
+        '''Move the exit slit to the specified position.'''
+        response = self.send_command('mex {}'.format(position))
+        return response
+    
+    @ui_callable
+    def move_grating_relative(self, position):
+        '''Move the grating the specified number of steps.'''
+        response = self.send_command('mg {}'.format(position))
+        return response
     
     # @simulate(expected_value='S0') # TODO: Change to actual response
     def go_to_wavelength(self, wavelength):

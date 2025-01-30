@@ -228,6 +228,7 @@ class Plotter:
             try:
                 if filename.endswith('.npy'):
                     data = self.load_data(filepath)
+                    data = data.astype(float)
                 elif filename.endswith('.tif'):
                     data = self.load_tif_as_numpy(filepath)
                 else:
@@ -267,7 +268,8 @@ class Plotter:
         import matplotlib.pyplot as plt
 
         dataY = np.sum(data, axis=0)
-        dataY = np.add.reduceat(dataY, np.arange(0, dataY.size, binSize)) 
+        if binSize > 1:
+            dataY = np.add.reduceat(dataY, np.arange(0, dataY.size, binSize)) 
         # breakpoint()
         # dataY = np.sum(data, axis=0)
         dataX = np.arange(dataY.size)
@@ -283,6 +285,33 @@ class Plotter:
     def plot_all_spectra(self, binSize=1):
         for key, value in self.dataDict.items():
             self.plot_spectrum(value, binSize=binSize)
+
+    def take_second(self):
+        newDict = {}
+        for key, value in self.dataDict.items():
+            data = value[:, :, 1]
+            newDict[key] = data
+        self.dataDict = newDict
+        return newDict
+    
+    def frames_to_spectrum(self):
+        newDict = {}
+        for key, value in self.dataDict.items():
+            data = np.sum(value, axis=0)
+            breakpoint()
+            newDict[key] = data
+        self.dataDict = newDict
+        return newDict
+    
+    def save_all_data(self):
+        for key, value in self.dataDict.items():
+            filepath = os.path.join(self.dataDir, 'export', key)
+            if not os.path.exists(os.path.dirname(filepath)):
+                os.makedirs(os.path.dirname(filepath))
+            np.save(filepath, value)
+            print('Data saved to {}'.format(filepath))
+    
+    
     
     # def plot_spectra(self):
     #     for key, value in self.dataDict.items():
@@ -302,8 +331,10 @@ def load_data(filepath):
 
 def plot_image_SDK(data: tuple):
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(len(data), 1)
-    for idx, spectrum in enumerate(data):
+    fig, ax = plt.subplots(len(data[0, 0, :]), 1)
+    for idx, _ in enumerate(data[0, 0, :]):
+        # breakpoint()
+        spectrum = data[:, :, idx]
         ax[idx].imshow(spectrum)
     plt.show()
 

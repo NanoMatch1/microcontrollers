@@ -4,6 +4,7 @@ import os
 import time
 import threading
 import tkinter as tk
+import traceback
 from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
@@ -128,16 +129,21 @@ class LiveDataPlotter:
                             time.sleep(1)
                             continue
 
-                        if data.shape[1] > 2:
-                            data1 = data[:, :, 0]
-                            data2 = data[:, :, 1] # looks like this channel is empty, very low values
+                        if len(data.shape) > 1:
+                            if data.shape[1] > 2:
+                                data = data[:, :, 0]
+                            # data2 = data[:, :, 1] # looks like this channel is empty, very low values
                             # breakpoint()
-                            self.update_image(data1)
+                                self.update_image(data)
+                            else:
+                                self.update_plot(data[:, 0])
                         else:
                         # Update the plot with the loaded data
                             self.update_plot(data)
                 except PermissionError:
                     print(f"Permission denied to access file {self.file_path}.")
+                except Exception as e:
+                    print(f"Error processing file:\n{traceback.format_exc()}")
             time.sleep(0.1)  # Wait before checking again
 
     def start(self):

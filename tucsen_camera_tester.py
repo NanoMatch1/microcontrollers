@@ -2,7 +2,7 @@
 # coding: utf-8
 
 import time
-from microcontrollers.tuscen.tucsen_camera_real import TucamCamera
+from tuscen.tucsen_camera_real import TucamCamera
 import traceback
 
 def cli(camera):

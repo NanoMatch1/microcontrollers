@@ -91,11 +91,12 @@ class TucamCamera:
             "fan": self.set_fan_speed,
             'logtemp': self.log_camera_temperature,
             'logfan': self.test_fan_speeds,
+            'setbin': self.set_hardware_binning,
             # "safe": self.safe_acquisition,
 
         }
 
-        print('Print finished TucsenCamera init')
+        print('Finished TucsenCamera init')
 
     def debug(self):
         print("Debugging...")
@@ -186,6 +187,35 @@ class TucamCamera:
         Uninitialize the TUCam API. Call this once you are done with all operations.
         """
         TUCAM_Api_Uninit()
+
+    def set_hardware_binning(self, binning_level=0):
+        """
+        Configures the camera's hardware binning using TUIDC_RESOLUTION.
+
+        :param binning_level: Binning setting (0 = no binning, 1 = low binning, 2 = medium binning, 3 = max binning).
+        """
+        try:
+            binning_level = int(binning_level)
+        except ValueError:
+            print("Binning level must be integer from 0-3 inclusive.")
+            return
+
+        if not hasattr(self, "TUCAMOPEN") or self.TUCAMOPEN.hIdxTUCam == 0:
+            print("Error: Camera not initialized or opened.")
+            return
+
+        if binning_level not in [0, 1, 2, 3]:
+            print("Error: Invalid binning level. Must be 0 (no binning) to 3 (max binning).")
+            return
+
+        # Set hardware binning via resolution setting
+        status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_RESOLUTION.value, binning_level)
+
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            print(f"Hardware binning set to level {binning_level}.")
+        else:
+            print(f"Failed to set binning. Error code: {status}")
+
 
     def safe_acquisition(self, target_temp=-5):
         """

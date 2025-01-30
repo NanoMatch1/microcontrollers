@@ -6,7 +6,7 @@ import traceback
 from controller import ArduinoUNO
 from instruments import Instrument, Microscope, Triax, StageControl, Monochromator, Laser, simulate
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
-from tuscen.camera_module_new import TucamCamera
+from tuscen.tucsen_camera_real import TucamCamera
 
 def cli(instrument):
     while True:

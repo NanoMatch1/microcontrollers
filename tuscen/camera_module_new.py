@@ -90,6 +90,8 @@ class TucamCamera:
             "temp": self.check_camera_temperature,
             "longexp": self.set_long_exposure_mode,
             "fan": self.set_fan_speed,
+            'logtemp': self.log_camera_temperature,
+            'logfan': self.test_fan_speeds,
             # "safe": self.safe_acquisition,
 
         }
@@ -702,6 +704,71 @@ class TucamCamera:
 
         # return best_config
 
+    def log_camera_temperature(self, log_interval=5, total_log_time=300, fan_speed=3):
+        from datetime import datetime
+        import csv
+
+        """
+        Logs the camera's temperature at regular intervals and saves the data to a CSV file.
+
+        :param log_interval: Time (seconds) between each temperature measurement.
+        :param total_log_time: Total duration (seconds) to log temperature.
+        :param fan_speed: Fan speed setting (0: Off, 1: Low, 2: Medium, 3: High).
+        """
+        # Ensure log directory exists
+        log_dir = os.path.join(self.script_dir, 'log')
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+
+        # Create a log file with a timestamp
+        log_file = os.path.join(log_dir, f"temp_log_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv")
+
+        # Set fan speed
+        self.set_fan_speed(fan_speed)
+        print(f"Fan speed set to {fan_speed}. Starting temperature logging...")
+
+        # Open CSV file for writing
+        with open(log_file, mode='w', newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow(["Timestamp", "Temperature (°C)"])
+
+            start_time = time.time()
+            while (time.time() - start_time) < total_log_time:
+                temp = ctypes.c_double()
+                TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_TEMPERATURE.value, byref(temp), 0)
+                current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+                print(f"[{current_time}] Temperature: {temp.value:.2f}°C")
+                writer.writerow([current_time, temp.value])
+
+                time.sleep(log_interval)
+
+        print(f"Temperature logging complete. Data saved to: {log_file}")
+
+    def test_fan_speeds(self, log_interval=5, total_log_time=120):
+        """
+        Tests all fan speed settings (0 to 3) and logs temperature data for each.
+
+        :param log_interval: Time (seconds) between each temperature measurement.
+        :param total_log_time: Total duration (seconds) to log temperature per fan speed.
+        """
+        print("Starting fan speed test...")
+
+        try:
+            log_interval = float(log_interval)
+            total_log_time = float(total_log_time)
+        except ValueError:
+            print("Invalid log interval or total log time. Must be a number.")
+            return
+
+        for fan_speed in range(4):  # Fan speeds 0 (off) to 3 (high)
+            print(f"\nTesting Fan Speed {fan_speed}...")
+            self.start_continuous_acquisition()
+            self.log_camera_temperature(log_interval=log_interval, total_log_time=total_log_time, fan_speed=fan_speed)
+            self.stop_continuous_acquisition()
+            time.sleep(60) # Wait for camera to cool down
+
+        print("Fan speed test complete. Check logs for results.")
 
     # ------------------
     # Internal Helpers

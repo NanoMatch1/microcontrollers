@@ -4,6 +4,7 @@ import os
 import time
 import threading
 import tkinter as tk
+import traceback
 from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
@@ -138,6 +139,8 @@ class LiveDataPlotter:
                             self.update_plot(data)
                 except PermissionError:
                     print(f"Permission denied to access file {self.file_path}.")
+                except Exception as e:
+                    print(f"Error processing file:\n{traceback.format_exc()}")
             time.sleep(0.1)  # Wait before checking again
 
     def start(self):

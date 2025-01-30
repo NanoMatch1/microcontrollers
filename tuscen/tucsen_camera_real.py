@@ -60,11 +60,13 @@ class TucamCamera:
         # acquisition parameters
         self.acqtime = 100 # milliseconds
         self.roi = (0, 0, 2048, 2048)
-        self.roi = (0, 0, 1000, 1000)
+        
+        # self.roi = (0, 0, 1000, 1000)
 
         self.camera_parameters = {}
         self.camera_capabilities = {}
 
+        self.acquire_mode = 'image'  # 'image' or 'spectrum'
 
         # Thread-safety and acquisition flags
         self.camera_lock = threading.Lock()
@@ -249,7 +251,7 @@ class TucamCamera:
             print(f"Failed to set fan speed. Error code: {status}")
 
 
-    def acquire_one_frame(self, export=True):
+    def acquire_one_frame(self, export=False):
         """
         Acquire a single frame from the camera and return it as a numpy array.
         This function:
@@ -272,6 +274,35 @@ class TucamCamera:
             return data_dict[0]
         else:
             return None
+        
+    def frame_to_spectrum(self, frame, bin_x=1):
+        """
+        Converts a 2D image frame into a 1D spectrum.
+        
+        - Bins pixels along the x-axis (`bin_x` adjacent pixels are averaged).
+        - Sums all remaining pixels in the y-axis.
+
+        :param frame: 2D numpy array representing the image.
+        :param bin_x: Number of pixels to bin along the x-dimension.
+        :return: 1D numpy array representing the spectrum.
+        """
+        if frame.ndim != 2:
+            raise ValueError("Input frame must be a 2D numpy array.")
+
+        height, width = frame.shape
+
+        # Ensure bin_x is within valid range
+        if bin_x < 1 or bin_x > width:
+            raise ValueError(f"Invalid bin_x value: {bin_x}. Must be between 1 and {width}.")
+
+        # Step 1: Bin along X (average adjacent pixels)
+        new_width = width // bin_x  # Number of new columns after binning
+        frame_binned_x = frame[:, :new_width * bin_x].reshape(height, new_width, bin_x).sum(axis=2)
+
+        # Step 2: Sum along Y to create a 1D spectrum
+        spectrum = frame_binned_x.sum(axis=0)
+
+        return spectrum
 
     def start_continuous_acquisition(self, roi=(0, 0, 2048, 2048), exposure=200):
         """
@@ -477,6 +508,16 @@ class TucamCamera:
 
         self.roi = roi_tuple
 
+    def _process_frame(self, frame):
+        '''Processes the frame data based on the camera mode.'''
+        if self.acquire_mode == 'spectrum':
+            frame = frame[:, :, 0]
+            data = self.frame_to_spectrum(frame)
+        else:
+            data = frame[:, :, 0]
+        return data
+
+
     def export_data(self, data, filename='default', save_dir=None, overwrite=False):
         """
         Example data export, saves to <script_dir>/data by default.
@@ -485,6 +526,8 @@ class TucamCamera:
             save_dir = os.path.join(self.script_dir, 'data')
         if not os.path.exists(save_dir):
             os.makedirs(save_dir)
+
+        data = self._process_frame(data)
 
         index = len([file for file in os.listdir(save_dir) if f'{filename}' in file])
         if overwrite is True:

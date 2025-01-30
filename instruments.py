@@ -372,7 +372,7 @@ class Microscope(Instrument):
             'refresh': self.refresh_camera,
             'close': self.close_camera,
             'camspec': self.set_acq_spectrum_mode,
-            'camimage': self.set_acq_image_mode
+            'camimage': self.set_acq_image_mode,
 
 
 
@@ -646,11 +646,15 @@ class Microscope(Instrument):
 
     @ui_callable
     def set_acq_spectrum_mode(self):
-        self.acquire_mode = 'spectrum'
+        '''Sets the acquisition mode to spectrum.'''
+        self.camera.acquire_mode = 'spectrum'
+        print('Acquisition mode set to spectrum')
     
     @ui_callable
     def set_acq_image_mode(self):
-        self.acquire_mode = 'image'
+        '''Sets the acquisition mode to CCD image.'''
+        self.camera.acquire_mode = 'image'
+        print('Acquisition mode set to image')
 
     # //camera commands
 
@@ -678,36 +682,34 @@ class Microscope(Instrument):
         '''Acquires a single frame from the camera.'''
         return self.camera.safe_acquisition()
     
-    def frame_to_spectrum(frame, bin_x=1):
-        """
-        Converts a 2D image frame into a 1D spectrum.
+    # def frame_to_spectrum(frame, bin_x=1):
+    #     """
+    #     Converts a 2D image frame into a 1D spectrum.
         
-        - Bins pixels along the x-axis (`bin_x` adjacent pixels are averaged).
-        - Sums all remaining pixels in the y-axis.
+    #     - Bins pixels along the x-axis (`bin_x` adjacent pixels are averaged).
+    #     - Sums all remaining pixels in the y-axis.
 
-        :param frame: 2D numpy array representing the image.
-        :param bin_x: Number of pixels to bin along the x-dimension.
-        :return: 1D numpy array representing the spectrum.
-        """
-        if frame.ndim != 2:
-            raise ValueError("Input frame must be a 2D numpy array.")
+    #     :param frame: 2D numpy array representing the image.
+    #     :param bin_x: Number of pixels to bin along the x-dimension.
+    #     :return: 1D numpy array representing the spectrum.
+    #     """
+    #     if frame.ndim != 2:
+    #         raise ValueError("Input frame must be a 2D numpy array.")
 
-        height, width = frame.shape
+    #     height, width = frame.shape
 
-        # Ensure bin_x is within valid range
-        if bin_x < 1 or bin_x > width:
-            raise ValueError(f"Invalid bin_x value: {bin_x}. Must be between 1 and {width}.")
+    #     # Ensure bin_x is within valid range
+    #     if bin_x < 1 or bin_x > width:
+    #         raise ValueError(f"Invalid bin_x value: {bin_x}. Must be between 1 and {width}.")
 
-        # Step 1: Bin along X (average adjacent pixels)
-        new_width = width // bin_x  # Number of new columns after binning
-        frame_binned_x = frame[:, :new_width * bin_x].reshape(height, new_width, bin_x).sum(axis=2)
+    #     # Step 1: Bin along X (average adjacent pixels)
+    #     new_width = width // bin_x  # Number of new columns after binning
+    #     frame_binned_x = frame[:, :new_width * bin_x].reshape(height, new_width, bin_x).sum(axis=2)
 
-        # Step 2: Sum along Y to create a 1D spectrum
-        spectrum = frame_binned_x.sum(axis=0)
+    #     # Step 2: Sum along Y to create a 1D spectrum
+    #     spectrum = frame_binned_x.sum(axis=0)
 
-        return spectrum
-
-        
+    #     return spectrum
     
     @ui_callable
     def start_continuous_acquisition(self):

@@ -63,7 +63,7 @@ void processCommand(String command) {
   } else if (command.startsWith("m") && command.endsWith("m")) {
     String content = command.substring(1, command.length() - 1);
     String com = content.substring(0, 3);
-    String comvalstring = content.substring(3);
+    String comvalstring = content.substring(4); //Assumes space in message
 
     if (com == "acq") {
       float acqTime = comvalstring.toFloat();

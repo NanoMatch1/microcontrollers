@@ -21,6 +21,13 @@ def cli(instrument):
         if command == 'debug':
             print("Debugging")
             breakpoint()
+        
+        if command == 'reinit':
+            # instrument.camera.close_camera()
+            # instrument.microcontroller.
+            # instrument.__init__(simulate=instrument.simulate, com_port=instrument.com_port, baud=instrument.baud, debug_skip=instrument.debug_skip)
+            # TODO: write close methods for all instruments, and reinitialise them here
+            continue
             
         result = instrument._command_handler(command)
         print(result)
@@ -29,6 +36,10 @@ class Interface:
 
     def __init__(self, simulate=False, com_port='COM10', baud=9600, debug_skip=[]):
         self.simulate = simulate
+        self.com_port = com_port
+        self.baud = baud
+        self.debug_skip = debug_skip
+
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
         self.transientDir = os.path.join(self.scriptDir, 'transient')
@@ -130,7 +141,6 @@ class Interface:
         '''Handles the command and arguments passed to the Interface'''
 
         funct, arguments = self._command_parser(command)
-
 
         if funct in self.command_map:
             _, method = self.command_map[funct]

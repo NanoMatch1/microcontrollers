@@ -46,14 +46,16 @@ class TucamCamera:
     acquisition, and teardown for a Tucsen camera.
     """
 
-    def __init__(self, interface=None, report=False):
+    def __init__(self, interface=None, simulate=False, report=False):
         """
         Initialize the camera driver (but do not open a specific camera yet).
         """
         self.interface = interface
         self.report = report
+        self.simulate = simulate
         self.script_dir = os.path.dirname(os.path.abspath(__file__))
         self.transient_dir = self.interface.transientDir if self.interface else os.path.join(self.script_dir, 'transient')
+        self.save_dir = self.interface.saveDir if self.interface else os.path.join(self.script_dir, 'data')
 
         # acquisition parameters
         self.acqtime = 100 # milliseconds
@@ -347,6 +349,7 @@ class TucamCamera:
         else:
             print(f"Failed to retrieve temperature. Error code: {status}")
 
+        return temp.value
 
     def set_long_exposure_mode(self):
         """

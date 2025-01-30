@@ -32,12 +32,12 @@ class Interface:
         self.scriptDir = os.path.dirname(os.path.realpath(__file__))
         self.dataDir = os.path.join(self.scriptDir, 'data')
         self.transientDir = os.path.join(self.scriptDir, 'transient')
-        self.saveDir = os.path.join(self.dataDir, 'saved_data')
+        self.saveDir = os.path.join(self.dataDir, 'data')
 
         self.controller = ArduinoUNO(self, com_port=com_port, baud=baud, simulate=simulate)
 
-        self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
         self.camera = TucamCamera(self, simulate=simulate)
+        self.microscope = Microscope(self, simulate=simulate) # Microscope is a mediator
         self.spectrometer = Triax(self, simulate=simulate)
         self.stage = StageControl(self, simulate=simulate)
         self.monochromator = Monochromator(self, simulate=simulate)

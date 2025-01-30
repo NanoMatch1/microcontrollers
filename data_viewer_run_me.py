@@ -109,6 +109,12 @@ class LiveDataPlotter:
         # Redraw the plot on the Tkinter canvas
         self.canvas.draw()
 
+    def update_image(self, data):
+        # Display the image data
+        self.ax.clear()
+        self.ax.imshow(data, cmap='gray', aspect='auto')
+        self.canvas.draw()
+
     def monitor_file(self):
         while True:
             if self.updating:
@@ -122,8 +128,14 @@ class LiveDataPlotter:
                             time.sleep(1)
                             continue
 
+                        if data.shape[1] > 2:
+                            data1 = data[:, :, 0]
+                            data2 = data[:, :, 1] # looks like this channel is empty, very low values
+                            # breakpoint()
+                            self.update_image(data1)
+                        else:
                         # Update the plot with the loaded data
-                        self.update_plot(data)
+                            self.update_plot(data)
                 except PermissionError:
                     print(f"Permission denied to access file {self.file_path}.")
             time.sleep(0.1)  # Wait before checking again

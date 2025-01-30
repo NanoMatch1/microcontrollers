@@ -361,6 +361,18 @@ class Microscope(Instrument):
             'mshut': self.close_mono_shutter,
             'mopen': self.open_mono_shutter,
             # 'isrun': self.motion_control.wait_for_motors,
+            # camera commands
+            'acq': self.acquire_one_frame,
+            'run': self.start_continuous_acquisition,
+            'stop': self.stop_continuous_acquisition,
+            'roi': self.set_roi,
+            'caminfo': self.camera_info,
+            'temp': self.get_camera_temperature,
+            'refresh': self.refresh_camera,
+            'close': self.close_camera,
+
+
+
 
         }
 
@@ -389,6 +401,9 @@ class Microscope(Instrument):
         self.calibrations = self._generate_calibrations()
         self.calibrations.ammend_calibrations()
         self.calibrations.fix_subtractive_calibrations() # TODO: Remove this line once the calibration files are fixed
+
+        # camera
+        self.camera = self.interface.camera
 
         self.get_laser_motor_positions()
         self.get_monochromator_motor_positions()
@@ -627,6 +642,47 @@ class Microscope(Instrument):
     @ui_callable
     def set_acquisition_time(self, value):
         self.acquisition_parameters.acq_time = value
+        self.camera.set_acqtime(value)
+
+    @ui_callable
+    def refresh_camera(self):
+        '''Refreshes the camera connection.'''
+        self.camera.refresh()
+
+    @ui_callable
+    def close_camera(self):
+        '''Closes the camera connection.'''
+        self.camera.close_camera()
+
+    @ui_callable
+    def acquire_one_frame(self):
+        '''Acquires a single frame from the camera.'''
+        return self.camera.safe_acquisition()
+    
+    @ui_callable
+    def start_continuous_acquisition(self):
+        '''Starts continuous acquisition on the camera.'''
+        self.camera.start_continuous_acquisition()
+
+    @ui_callable
+    def stop_continuous_acquisition(self):
+        '''Stops continuous acquisition on the camera.'''
+        self.camera.stop_continuous_acquisition()
+
+    @ui_callable
+    def set_roi(self, roi:str):
+        '''Sets the region of interest on the camera.'''
+        self.camera.set_roi(roi)
+    
+    @ui_callable
+    def camera_info(self):
+        '''Prints the camera information.'''
+        self.camera.camera_info()
+
+    @ui_callable
+    def get_camera_temperature(self):
+        '''Returns the camera temperature.'''
+        return self.camera.check_camera_temperature()
 
     @ui_callable
     def get_laser_motor_positions(self):

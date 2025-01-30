@@ -37,14 +37,17 @@ def cli(camera):
 
         command, argss = parse_input(user_input)
         try:
-            camera.command_functions[command](argss)
+            camera.command_functions[command](*(argss or []))
             continue
         except KeyError:
-            print("Invalid command. Type 'help' for a list of commands.")
+            print("Invalid command:{}\n Type 'help' for a list of commands.".format(user_input))
+        except Exception as e:
+            print(f"An error occurred: {e}")
+            continue
         
 
 if __name__ == '__main__':
-    camera = TucamCamera()
+    camera = TucamCamera(report=True)
     camera.initialise()
     
     try:

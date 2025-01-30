@@ -129,7 +129,10 @@ class LiveDataPlotter:
                             continue
 
                         if data.shape[1] > 2:
-                            self.update_image(data)
+                            data1 = data[:, :, 0]
+                            data2 = data[:, :, 1] # looks like this channel is empty, very low values
+                            # breakpoint()
+                            self.update_image(data1)
                         else:
                         # Update the plot with the loaded data
                             self.update_plot(data)

@@ -3,6 +3,7 @@
 
 import time
 from camera_module_new import TucamCamera
+import traceback
 
 def cli(camera):
     print("Camera CLI started. Enter 'help' for available commands.")
@@ -42,7 +43,7 @@ def cli(camera):
         except KeyError:
             print("Invalid command:{}\n Type 'help' for a list of commands.".format(user_input))
         except Exception as e:
-            print(f"An error occurred: {e}")
+            print(f"An error occurred: {traceback.format_exc()}")
             continue
         
 

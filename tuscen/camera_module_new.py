@@ -36,8 +36,9 @@ from TUCam import (
     TUCAMRET,
     TUCAM_Prop_GetAttr,
     TUCAM_PROP_ATTR,
-    
-
+    TUCAM_CAPA_ATTR,
+    TUCAM_Capa_GetAttr,
+    TUCAM_Prop_GetValue,
 )
 
 # from TUCam import get_camera_gain_attributes    # If you have a local function to retrieve gain info
@@ -62,6 +63,9 @@ class TucamCamera:
         self.roi = (0, 0, 2048, 2048)
         self.roi = (0, 0, 1000, 1000)
 
+        self.camera_parameters = {}
+        self.camera_capabilities = {}
+
 
         # Thread-safety and acquisition flags
         self.camera_lock = threading.Lock()
@@ -69,7 +73,7 @@ class TucamCamera:
         self.is_running = False
 
         self.command_functions = {
-            "acquire": self.acquire_one_frame,
+            "acquire": self.safe_acquisition,
             "run": self.start_continuous_acquisition,
             "stop": self.stop_continuous_acquisition,
             "refresh": self.refresh,
@@ -80,10 +84,21 @@ class TucamCamera:
             "calibrate": self.calibrate_best_signal,
             "high_signal": self.set_high_signal_boost,
             "params": self.print_camera_params,
-            "info": self.get_camera_parameters,
+            "info": self.camera_info,
+            "getinfo": self.get_camera_parameters,
+            "debug": self.debug,
+            "temp": self.check_camera_temperature,
+            "longexp": self.set_long_exposure_mode,
+            "fan": self.set_fan_speed,
+            # "safe": self.safe_acquisition,
+
         }
 
         print('Print finished TucsenCamera init')
+
+    def debug(self):
+        print("Debugging...")
+        breakpoint()
 
     def refresh(self):
         """
@@ -102,7 +117,10 @@ class TucamCamera:
 
         self.open_camera()
 
+        self.set_acqtime(self.acqtime)
+        self.set_roi(self.roi)
         print("Camera refresh complete.")
+
 
     # def open_camera(self, index=0):
     #     """
@@ -130,6 +148,8 @@ class TucamCamera:
         print("TUCam API initialized.")
 
         self.open_camera()
+        self.set_acqtime(self.acqtime)
+        self.set_roi(self.roi)
 
 
 
@@ -164,6 +184,38 @@ class TucamCamera:
         Uninitialize the TUCam API. Call this once you are done with all operations.
         """
         TUCAM_Api_Uninit()
+
+    def safe_acquisition(self, target_temp=-5):
+        """
+        Acquires a frame, then waits for the temperature to drop before proceeding.
+        """
+        while True:
+            temp = ctypes.c_double()
+            TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_TEMPERATURE.value, byref(temp), 0)
+
+            if temp.value < target_temp:
+                print(f"Temperature stable ({temp.value}°C). Acquiring frame...")
+                return self.acquire_one_frame()
+            else:
+                print(f"Camera too hot ({temp.value}°C). Waiting...")
+                time.sleep(5)  # Wait before checking temperature again
+
+    def set_fan_speed(self, speed=3):
+        """
+        Adjusts the fan speed to enhance cooling.
+        Speed Levels:
+        0 - Off
+        1 - Low
+        2 - Medium
+        3 - High (Recommended for cooling)
+        """
+        status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_FAN_GEAR.value, speed)
+
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            print(f"Fan speed set to {speed} (High Recommended for Cooling).")
+        else:
+            print(f"Failed to set fan speed. Error code: {status}")
+
 
     def acquire_one_frame(self, export=True):
         """
@@ -217,6 +269,7 @@ class TucamCamera:
                     del data_dict
                 except Exception as e:
                     print(f"Acquisition error: {e}")
+                    print(traceback.format_exc())
                     break
 
             # self.close_camera()
@@ -235,12 +288,19 @@ class TucamCamera:
         self.stop_flag.set()
         self.is_running = False
 
-    def wait_for_image_data(self, nframes=10):
+    def wait_for_image_data(self, nframes=1):
         """
-        Core logic to wait for camera frames and convert them to numpy arrays.
-        Returns a dictionary {frame_index: frame_data}.
+        Waits for camera frames and converts them to numpy arrays.
+        Adjusts timeout dynamically based on exposure time.
         """
         data_dict = {}
+
+        # Retrieve current exposure time
+        exposure_time = ctypes.c_double()
+        TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, byref(exposure_time), 0)
+
+        # Ensure timeout is at least twice the exposure time (for safety margin)
+        timeout = max(2 * exposure_time.value, 1000)  # Minimum 1000ms
 
         m_frame = TUCAM_FRAME()
         m_frame.pBuffer = 0
@@ -249,46 +309,72 @@ class TucamCamera:
 
         # Allocate internal buffer
         TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame))
-        # Start capturing in sequence mode
         TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, TUCAM_CAPTURE_MODES.TUCCM_SEQUENCE.value)
 
         for i in range(nframes):
             try:
-                # Wait for the next frame
-                _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), 1000)
-
-                    # print(
-                    #     "Frame index: {}, width: {}, height: {}, channels: {}, elembytes: {}, size: {}".format(
-                    #         i, m_frame.usWidth, m_frame.usHeight,
-                    #         m_frame.ucChannels, m_frame.ucElemBytes, m_frame.uiImgSize
-                    #     )
-                    # )
-            except Exception as e:
-                print("Failed to grab frame: {}".format(i))
-                if self.report:
-                    report_message = "Frame Failure: {}".format(traceback.format_exc())
-                    print(report_message)
+                _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), int(timeout))
+                print(f"Frame {i}: width={m_frame.usWidth}, height={m_frame.usHeight}")
+            except Exception:
+                print(f"Frame timeout exceeded ({timeout}ms). Increase timeout if necessary.")
                 continue
-
-            if self.report:
-                report_message = "Frame Success: {}".format(i)
-                print(report_message)
 
             # Convert to numpy
             try:
                 data = self._convert_to_numpy(m_frame)
                 data_dict[i] = data
             except Exception as e:
-                print(e)
-                print("Convert to numpy failed for frame ", i)
-                continue
+                print(f"Convert to numpy failed for frame {i}: {e}")
 
-        # Stop capturing and release buffer
         TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
         TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
         TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
 
         return data_dict
+    
+    def check_camera_temperature(self, report=True):
+        """
+        Checks and prints the current camera temperature.
+        """
+        temp = ctypes.c_double()
+        status = TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_TEMPERATURE.value, byref(temp), 0)
+
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            if report:
+                print(f"Camera Temperature: {round(temp.value, 2)}°C")
+            if temp.value > 80:
+                print("WARNING: Camera is overheating! Exposure time may be reduced automatically.")
+        else:
+            print(f"Failed to retrieve temperature. Error code: {status}")
+
+
+    def set_long_exposure_mode(self):
+        """
+        Set the camera to a mode that best supports long exposures.
+        """
+        print("Setting camera to long exposure mode...")
+
+        # 1. Set image mode to CMS (best for long exposure stability)
+        status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, 1, 0)
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            print("Set Image Mode to CMS (12-bit).")
+        else:
+            print("Failed to set Image Mode.")
+
+        # 2. Disable automatic exposure control (if enabled)
+        status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ATEXPOSURE.value, 0)
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            print("Disabled automatic exposure control.")
+        else:
+            print("Failed to disable automatic exposure control.")
+
+        # 3. Ensure a stable gain setting (HighGain recommended)
+        status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, 1, 0)
+        if status == TUCAMRET.TUCAMRET_SUCCESS:
+            print("Set Gain to HighGain.")
+        else:
+            print("Failed to set Gain.")
+
 
     def set_acqtime(self, value):
         """
@@ -377,9 +463,30 @@ class TucamCamera:
         np.save(filepath, data)
         print('Data saved to %s' % filepath)
 
+    def camera_info(self):
+        """Prints the camera info obtained by get_camera_parameters."""
+        if len(self.camera_parameters) == 0 or len(self.camera_capabilities) == 0:
+            self.get_camera_parameters()
+
+        print("Camera Parameters:")
+        for key, parameters in self.camera_parameters.items():
+            # print(f"  {key}: {value}")
+            print(f"{key}:")
+            for param_key, param_value in parameters.items():
+                print(f"  {param_key}: {param_value}")
+
+        print("\nCamera Capabilities:")
+        for key, capabilities in self.camera_capabilities.items():
+            # print(f"  {key}: {value}")
+            print(f"{key}:")
+            for cap_key, cap_value in capabilities.items():
+                print(f"  {cap_key}: {cap_value}")
+        
+
     def get_camera_parameters(self):
         """
         Retrieves and prints all available properties and capabilities of the camera.
+        Handles unknown return values gracefully.
         """
         if not hasattr(self, "TUCAMOPEN") or self.TUCAMOPEN.hIdxTUCam == 0:
             print("Error: Camera not initialized or opened.")
@@ -387,34 +494,62 @@ class TucamCamera:
 
         print("\n=== Camera Properties ===")
         for prop in TUCAM_IDPROP:
-            prop_attr = TUCAM_PROP_ATTR()
-            prop_attr.idProp = prop.value
-            status = TUCAM_Prop_GetAttr(self.TUCAMOPEN.hIdxTUCam, byref(prop_attr))
-            
-            if status == TUCAMRET.TUCAMRET_SUCCESS:
-                print(f"{prop.name}:")
-                print(f"  Min: {prop_attr.dbValMin}")
-                print(f"  Max: {prop_attr.dbValMax}")
-                print(f"  Default: {prop_attr.dbValDft}")
-                print(f"  Step: {prop_attr.dbValStep}")
-            else:
-                print(f"{prop.name}: Not Available")
+            try:
+                prop_attr = TUCAM_PROP_ATTR()
+                prop_attr.idProp = prop.value
+                status = TUCAM_Prop_GetAttr(self.TUCAMOPEN.hIdxTUCam, byref(prop_attr))
+
+                if status == TUCAMRET.TUCAMRET_SUCCESS:
+                    print(f"{prop.name}:")
+                    print(f"  Min: {prop_attr.dbValMin}")
+                    print(f"  Max: {prop_attr.dbValMax}")
+                    print(f"  Default: {prop_attr.dbValDft}")
+                    print(f"  Step: {prop_attr.dbValStep}")
+
+                    # Save the parameters for later use
+                    self.camera_parameters[prop.name] = {
+                        "min": prop_attr.dbValMin,
+                        "max": prop_attr.dbValMax,
+                        "default": prop_attr.dbValDft,
+                        "step": prop_attr.dbValStep
+                    }
+
+                else:
+                    print(f"{prop.name}: Not Available (Error Code: {status})")
+
+            except Exception as e:
+                print(f"{prop.name}: Error - {str(e)}")
 
         print("\n=== Camera Capabilities ===")
         for capa in TUCAM_IDCAPA:
-            capa_attr = TUCAM_CAPA_ATTR()
-            capa_attr.idCapa = capa.value
-            status = TUCAM_Capa_GetAttr(self.TUCAMOPEN.hIdxTUCam, byref(capa_attr))
+            try:
+                capa_attr = TUCAM_CAPA_ATTR()
+                capa_attr.idCapa = capa.value
+                status = TUCAM_Capa_GetAttr(self.TUCAMOPEN.hIdxTUCam, byref(capa_attr))
 
-            if status == TUCAMRET.TUCAMRET_SUCCESS:
-                print(f"{capa.name}:")
-                print(f"  Min: {capa_attr.nValMin}")
-                print(f"  Max: {capa_attr.nValMax}")
-                print(f"  Default: {capa_attr.nValDft}")
-                print(f"  Step: {capa_attr.nValStep}")
-            else:
-                print(f"{capa.name}: Not Available")
+                if status == TUCAMRET.TUCAMRET_SUCCESS:
+                    print(f"{capa.name}:")
+                    print(f"  Min: {capa_attr.nValMin}")
+                    print(f"  Max: {capa_attr.nValMax}")
+                    print(f"  Default: {capa_attr.nValDft}")
+                    print(f"  Step: {capa_attr.nValStep}")
 
+                    # Save the capabilities for later use
+                    self.camera_capabilities[capa.name] = {
+                        "min": capa_attr.nValMin,
+                        "max": capa_attr.nValMax,
+                        "default": capa_attr.nValDft,
+                        "step": capa_attr.nValStep
+                    }
+
+                else:
+                    print(f"{capa.name}: Not Available (Error Code: {status})")
+
+            except Exception as e:
+                print(f"{capa.name}: Error - {str(e)}")
+
+        print(f"Camera Parameters: {len(self.camera_parameters)}")
+        print(f"Camera Capabilities: {len(self.camera_capabilities)}")
 
     def get_gain_attributes(self):
         """

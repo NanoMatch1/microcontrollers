@@ -1,6 +1,3 @@
-#!/usr/bin/env python
-# coding: utf-8
-
 import ctypes
 from ctypes import byref
 import os
@@ -11,7 +8,7 @@ import numpy as np
 import traceback
 
 from ctypes import pointer
-from TUCam import (
+from .TUCam import (
     TUCAM_INIT,
     TUCAM_OPEN,
     TUCAM_FRAME,
@@ -114,13 +111,14 @@ class TucamCamera:
         self.uninit_api()
 
         # Re-init the TUCam API
-        self.TUCAMINIT = TUCAM_INIT(0, self.script_dir.encode('utf-8'))
-        TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
+        self.initialise()
+        # self.TUCAMINIT = TUCAM_INIT(0, self.script_dir.encode('utf-8'))
+        # TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
 
-        self.open_camera()
+        # self.open_camera()
 
-        self.set_acqtime(self.acqtime)
-        self.set_roi(self.roi)
+        # self.set_acqtime(self.acqtime)
+        # self.set_roi(self.roi)
         print("Camera refresh complete.")
 
 

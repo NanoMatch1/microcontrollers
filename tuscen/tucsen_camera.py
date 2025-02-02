@@ -250,14 +250,14 @@ class Plotter:
     def plot_images(self):
         for key, value in self.dataDict.items():
             if value.ndim == 3:
-                plot_image_SDK(value)
+                plot_image_SDK(value, filename=key)
             elif value.ndim == 2:
                 plot_image_tucsen(value)
 
     def crop_data(self, crop_range):
         newDict = {}
         for key, value in self.dataDict.items():
-            data = value[crop_range[0]:crop_range[1], :]
+            data = value[crop_range[0]:crop_range[1], :, :]
 
             newDict[key] = data
         self.dataDict = newDict
@@ -279,12 +279,39 @@ class Plotter:
         # dataY = data
         # breakpoint()
         
-        plt.plot(dataX, dataY)
+        plt.plot(dataX, dataY, label='')
+        # plt.show()
+
+    def plot_all_spectra(self, binSize=1, offset=0):
+        import matplotlib.pyplot as plt
+        for idx, (key, value) in enumerate(self.dataDict.items()):
+            # self.plot_spectrum(value, binSize=binSize)
+            if len(value.shape) > 1:
+                dataX = value[:, 0]
+                dataY = value[:, 1] + (offset*idx)
+            
+            else:
+                dataX = np.arange(len(value))
+                dataY = value
+            # breakpoint()
+            plt.plot(dataX, dataY, label=key)
+            plt.legend()
         plt.show()
 
-    def plot_all_spectra(self, binSize=1):
-        for key, value in self.dataDict.items():
-            self.plot_spectrum(value, binSize=binSize)
+    def normalise_all_data(self, norm_range=None):
+        '''Normalise the data from 0 to 1 within the x axis range'''
+        newDict = {}
+        for key, spectrum in self.dataDict.items():
+            dataX = np.arange(len(spectrum))
+            if norm_range is None:
+                norm_range = (np.min(dataX), np.max(dataX))
+            norm_spectrum = (spectrum - np.min(spectrum[norm_range[0]:norm_range[1]])) / np.ptp(spectrum[norm_range[0]:norm_range[1]])
+            newDict[key] = norm_spectrum
+        self.dataDict = newDict
+        return newDict
+        
+
+            
 
     def take_second(self):
         newDict = {}
@@ -298,7 +325,6 @@ class Plotter:
         newDict = {}
         for key, value in self.dataDict.items():
             data = np.sum(value, axis=0)
-            breakpoint()
             newDict[key] = data
         self.dataDict = newDict
         return newDict
@@ -329,13 +355,14 @@ class Plotter:
 def load_data(filepath):
     return np.load(filepath)
 
-def plot_image_SDK(data: tuple):
+def plot_image_SDK(data: tuple, filename='default'):
     import matplotlib.pyplot as plt
     fig, ax = plt.subplots(len(data[0, 0, :]), 1)
     for idx, _ in enumerate(data[0, 0, :]):
         # breakpoint()
         spectrum = data[:, :, idx]
         ax[idx].imshow(spectrum)
+        ax[idx].set_title(filename)
     plt.show()
 
 def plot_image_tucsen(data: np.ndarray):

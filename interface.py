@@ -95,7 +95,7 @@ class Interface:
         self.spectrometer.initialise()
         self.controller.initialise() # TODO: Create a method to search and find controller COM port
         self.laser.initialise()
-        self.camera.initialise() 
+        # self.camera.initialise() 
         self.microscope.initialise() # this one must be last
         
         self._integrity_checker()
@@ -179,5 +179,5 @@ class Interface:
 
 
 if __name__ == '__main__':
-    instrument = Interface(simulate=False, com_port='COM10', debug_skip=['laser'])
+    instrument = Interface(simulate=False, com_port='COM10', debug_skip=['camera','laser'])
     cli(instrument)

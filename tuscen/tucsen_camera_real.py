@@ -154,6 +154,7 @@ class TucamCamera:
         print("TUCam API initialized.")
 
         self.open_camera()
+        self.set_image_and_gain()
         self.set_hardware_binning(3)
         self.set_acqtime(self.acqtime)
         self.set_roi(self.roi_new)
@@ -273,7 +274,7 @@ class TucamCamera:
         if export is True:
             self.export_data(data, 'test', overwrite=False)
         if data_dict:
-            return data_dict[0]
+            return data
         else:
             return None
         
@@ -329,6 +330,7 @@ class TucamCamera:
                     if not data_dict:
                         continue
                     data = data_dict[0]
+                    data = self._process_frame(data)
                     self.export_data(data, 'transient_data', save_dir=self.transient_dir, overwrite=True)
                     time.sleep(0.001)
                     del data_dict
@@ -523,13 +525,18 @@ class TucamCamera:
 
         self.roi = roi_tuple
 
-    def _process_frame(self, frame):
+    def _process_frame(self, frame, crop_bad_pixels=True):
         '''Processes the frame data based on the camera mode.'''
+            
         if self.acquire_mode == 'spectrum':
-            frame = frame[:, :, 0]
+            if crop_bad_pixels is True:
+                frame = frame[2:-2, :, 1]
+            else:
+                frame = frame[:, :, 1]
+            print("sending frame to spectrum")
             data = self.frame_to_spectrum(frame)
         else:
-            data = frame[:, :, 0]
+            data = frame[:, :, 1]
         return data
 
 
@@ -722,6 +729,14 @@ class TucamCamera:
         else:
             print(f"Failed to set gain. Error code: {status_gain}")
 
+    def set_image_and_gain(self, img_mode=1, gain_level=0):
+        # Set Image Mode using `TUCAM_Capa_SetValue`
+        mode_status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_IMGMODESELECT.value, img_mode)
+        if mode_status != TUCAMRET.TUCAMRET_SUCCESS:
+            print(f"  Failed to set image mode and gain. Skipping...")
+
+        # Set Gain Level using `TUCAM_Prop_SetValue`
+        gain_status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, gain_level, 0)
 
     def calibrate_best_signal(self):
         """

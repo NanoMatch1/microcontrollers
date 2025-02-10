@@ -291,6 +291,15 @@ class Instrument(ABC):
 
 class Microscope(Instrument):
 
+    implementation_info = [
+        'Microscope implementation: v 0.1', 
+        'Notes: Use "help" to see available commands. Note than unknown commands are attempted to be passed to the controller for interpretation. If the controller does not recognise the command, it will return an error.',
+        '"x", "y" and "z" single letter commands are resered for the stage control, and will call the motion control methods in microscope.'
+    
+    ]
+
+
+
     def __init__(self, interface, simulate=False):
         super().__init__()
         self.interface = interface
@@ -393,6 +402,7 @@ class Microscope(Instrument):
 
         self._integrity_checker()  # Validate on init
 
+
     def __str__(self):
         return "Microscope"
 
@@ -451,6 +461,8 @@ class Microscope(Instrument):
         for key, value in report.items():
             print('{}: {}'.format(key, value))
         print('-'*20)
+
+
 
     def start_camera_ui(self):
         self.camera.start_ui()
@@ -656,7 +668,7 @@ class Microscope(Instrument):
         self.camera.acquire_mode = 'image'
         print('Acquisition mode set to image')
 
-    # //camera commands
+    #? camera commands
 
     @ui_callable
     def set_acquisition_time(self, value):
@@ -1662,6 +1674,8 @@ class StageControl(Instrument):
     @ui_callable
     def home_stage(self):
         print("Homing the stage.")
+
+    
 
 
 class Monochromator(Instrument):

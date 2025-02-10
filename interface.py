@@ -7,6 +7,7 @@ from controller import ArduinoUNO
 from instruments import Instrument, Microscope, Triax, StageControl, Monochromator, Laser, simulate
 # from commands import CommandHandler, MicroscopeCommand, CameraCommand, SpectrometerCommand, StageCommand, MonochromatorCommand
 from tuscen.tucsen_camera_real import TucamCamera
+import re
 
 def cli(instrument):
     while True:
@@ -136,6 +137,23 @@ class Interface:
             for funct, method in instrument.command_functions.items()
         }
         return command_map
+    
+    def _format_motion_commands(self, command:str):
+        pattern = re.compile(r'(?P<x>x-?\d+(\.\d+)?|X-?\d+(\.\d+)?|)?(?P<y>y-?\d+(\.\d+)?|Y-?\d+(\.\d+)?|)?(?P<z>z-?\d+(\.\d+)?|Z-?\d+(\.\d+)?|)?')
+        match = pattern.fullmatch(command)
+        if not match:
+            return None
+
+        match_dict = {}
+        for key, value in match.groupdict().items():
+            if value == '':
+                match_dict[key] = '0'.format(key.lower())
+            else:
+                match_dict[key] = value[1:]
+        
+        motion_commands = 'xyz {} {} {}'.format(match_dict['x'], match_dict['y'], match_dict['z'])
+
+        return motion_commands
 
     def _command_handler(self, command:str):
         '''Handles the command and arguments passed to the Interface'''

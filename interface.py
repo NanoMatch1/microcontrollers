@@ -1,3 +1,4 @@
+# TRIAX: ~ 700 nm at 131343 steps
 import os
 import serial
 import time
@@ -96,7 +97,8 @@ class Interface:
         self.spectrometer.initialise()
         self.controller.initialise() # TODO: Create a method to search and find controller COM port
         self.laser.initialise()
-        # self.camera.initialise() 
+        if not 'camera' in debug_skip:
+            self.camera.initialise() 
         self.microscope.initialise() # this one must be last
         
         self._integrity_checker()

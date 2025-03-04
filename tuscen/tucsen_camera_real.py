@@ -60,7 +60,9 @@ class TucamCamera:
         # acquisition parameters
         self.acqtime = 100 # milliseconds
         self.roi = (0, 0, 2048, 2048)
-        self.roi_new = (0, 280, 512, 70)
+        self.full_roi = (0, 0, 2048, 2048)
+        # self.roi_new = (0, 0, 2048, 2048)
+        self.roi_new = (0, 1200, 2048, 148)
 
         # self.roi = (0, 0, 1000, 1000)
 
@@ -83,7 +85,7 @@ class TucamCamera:
             "acqtime": self.set_acqtime,
             "gain": self.set_gain,
             "gain_info": self.get_gain_attributes,
-            "calibrate": self.calibrate_best_signal,
+            "cam-cal": self.calibrate_best_signal,
             "high_signal": self.set_high_signal_boost,
             "params": self.print_camera_params,
             "info": self.camera_info,
@@ -95,6 +97,7 @@ class TucamCamera:
             'logtemp': self.log_camera_temperature,
             'logfan': self.test_fan_speeds,
             'setbin': self.set_hardware_binning,
+            'setmode': self.set_acquire_mode,
             # "safe": self.safe_acquisition,
 
         }
@@ -155,7 +158,7 @@ class TucamCamera:
 
         self.open_camera()
         self.set_image_and_gain()
-        self.set_hardware_binning(3)
+        self.set_hardware_binning()
         self.set_acqtime(self.acqtime)
         self.set_roi(self.roi_new)
 
@@ -193,11 +196,11 @@ class TucamCamera:
         """
         TUCAM_Api_Uninit()
 
-    def set_hardware_binning(self, binning_level=0):
+    def set_hardware_binning(self, binning_level=1):
         """
         Configures the camera's hardware binning using TUIDC_RESOLUTION.
 
-        :param binning_level: Binning setting (0 = no binning, 1 = low binning, 2 = medium binning, 3 = max binning).
+        :param binning_level: 0: "2048x2040(Normal)" 1: "2048x2040(Enhance)" 2: "1024x1020(2x2Bin)" 3: "512x510 (4x4Bin)
         """
         try:
             binning_level = int(binning_level)
@@ -278,7 +281,7 @@ class TucamCamera:
         else:
             return None
         
-    def frame_to_spectrum(self, frame, bin_x=1):
+    def frame_to_spectrum_old(self, frame, bin_x=1):
         """
         Converts a 2D image frame into a 1D spectrum.
         
@@ -306,6 +309,23 @@ class TucamCamera:
         spectrum = frame_binned_x.sum(axis=0)
 
         return spectrum
+    
+    def frame_to_spectrum(self, frame, crop_to_pixels=(2, -2)):
+        """
+        Converts a 2D image frame into a 1D spectrum.
+        
+        - Sums all pixels in the y-axis.
+
+        :param frame: 2D numpy array representing the image.
+        :return: 1D numpy array representing the spectrum.
+        """
+        if frame.ndim != 2:
+            print("Input frame must be a 2D numpy array.")
+            return
+        frame = frame[crop_to_pixels[0]:crop_to_pixels[1], :]
+        summed_array = np.average(frame, axis=0)
+
+        return summed_array
 
     def start_continuous_acquisition(self, roi=(0, 0, 2048, 2048), exposure=200):
         """
@@ -483,7 +503,11 @@ class TucamCamera:
         """
         Set camera ROI; expects a tuple: (HOffset, VOffset, Width, Height).
         """
-        if isinstance(roi_tuple, list):
+        if roi_tuple == 'full':
+            roi_tuple = self.full_roi
+
+
+        elif isinstance(roi_tuple, list):
             try:
                 roi_tuple = roi_tuple[0].split(',')
                 roi_tuple = tuple([int(x) for x in roi_tuple])
@@ -524,6 +548,17 @@ class TucamCamera:
             )
 
         self.roi = roi_tuple
+
+    def set_acquire_mode(self, mode='image'):
+        """
+        Set the camera acquisition mode to 'image' or 'spectrum'.
+        """
+        if mode not in ['image', 'spectrum']:
+            print("Invalid acquisition mode. Must be 'image' or 'spectrum'.")
+            return
+
+        self.acquire_mode = mode
+        print(f"Acquisition mode set to: {mode}")
 
     def _process_frame(self, frame, crop_bad_pixels=True):
         '''Processes the frame data based on the camera mode.'''

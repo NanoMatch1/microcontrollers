@@ -462,7 +462,9 @@ class Microscope(Instrument):
             print('{}: {}'.format(key, value))
         print('-'*20)
 
-
+    #? Stage control commands
+    def move_stage(self, command):
+        pass
 
     def start_camera_ui(self):
         self.camera.start_ui()
@@ -1448,6 +1450,7 @@ class Triax(Instrument):
             'men': self.move_enterance_slit,
             'mex': self.move_exit_slit,
             'mg': self.move_grating_relative,
+            'initialise': self.initialise_spectrometer,
         }
 
         self.spectrometer_position = 380000
@@ -1493,6 +1496,10 @@ class Triax(Instrument):
 
         return self.spectrometer_position
 
+    @ui_callable
+    def initialise_spectrometer(self):
+        '''Initialise the spectrometer.'''
+        self.send_command('initialise')
     
     @ui_callable
     def read_enterance_slit(self):

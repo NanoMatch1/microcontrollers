@@ -131,7 +131,6 @@ class LiveDataPlotter:
 
                         if len(data.shape) > 1:
                             if data.shape[1] > 2:
-                                data = data[:, :, 0]
                             # data2 = data[:, :, 1] # looks like this channel is empty, very low values
                             # breakpoint()
                                 self.update_image(data)

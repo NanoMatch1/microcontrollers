@@ -252,12 +252,17 @@ class Plotter:
             if value.ndim == 3:
                 plot_image_SDK(value, filename=key)
             elif value.ndim == 2:
-                plot_image_tucsen(value)
+                plot_image_tucsen(value, filename=key)
 
-    def crop_data(self, crop_range):
+    def crop_data(self, crop_range=None):
         newDict = {}
         for key, value in self.dataDict.items():
-            data = value[crop_range[0]:crop_range[1], :, :]
+            if crop_range is None:
+                crop_range = (2, len(value[:, 0]) - 2) # Crop the first and last 2 pixels
+            if key.endswith('.npy'):
+                data = value[crop_range[0]:crop_range[1], :, :]
+            elif key.endswith('.tif'):
+                data = value[crop_range[0]:crop_range[1], :]
 
             newDict[key] = data
         self.dataDict = newDict
@@ -316,7 +321,11 @@ class Plotter:
     def take_second(self):
         newDict = {}
         for key, value in self.dataDict.items():
-            data = value[:, :, 1]
+            if len(value.shape) < 3:
+                print('Data has only one frame')
+                data = value
+            else:
+                data = value[:, :, 1]
             newDict[key] = data
         self.dataDict = newDict
         return newDict
@@ -365,9 +374,10 @@ def plot_image_SDK(data: tuple, filename='default'):
         ax[idx].set_title(filename)
     plt.show()
 
-def plot_image_tucsen(data: np.ndarray):
+def plot_image_tucsen(data: np.ndarray, filename='default'):
     import matplotlib.pyplot as plt
     plt.imshow(data)
+    plt.title(filename)
     plt.show()
 
 def plot_spectrum(data):

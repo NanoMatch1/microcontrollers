@@ -1,7 +1,7 @@
 #include <Wire.h>
 #include <AccelStepper.h>
 
-// COM11 = Slave B
+// COM9 = Slave B
 
 // TODO: Add case separators for relative and asbolute positioning
 
@@ -46,8 +46,8 @@ void setup() {
   stepperY.setAcceleration(5000);
   stepperZ.setMaxSpeed(5000);
   stepperZ.setAcceleration(5000);
-  stepperA.setMaxSpeed(1000);
-  stepperA.setAcceleration(1000);
+  stepperA.setMaxSpeed(5000);
+  stepperA.setAcceleration(5000);
 }
 
 void loop() {

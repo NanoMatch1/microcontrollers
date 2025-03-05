@@ -12,7 +12,7 @@ const int countEnable = 13;  // Active-LOW latch reset
 const int counterClear = 12; // Counter IC clear pin
 const int lastDigit = 11;    // Last digit read pin
 const int gShutPin = 9;      // Grating shutter pin
-const int ldr0pin = A0;      // LDR input pin
+const int ldr0pin = A15;      // LDR input pin
 
 // Variables
 int ldr0value = 0;

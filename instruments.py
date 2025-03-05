@@ -1077,7 +1077,7 @@ class Microscope(Instrument):
         '''Formats and prints the current positions of the microscope.'''
 
         l1_wavelength, l2_wavelength, _, _ = [round(x, 2) for x in self.laser_wavelength]
-        g1_wavelength, g2_wavelength, _, _ = [round(x, 2) for x in self.monochromator_wavelength]
+        g1_wavelength, g2_wavelength, g3_wavelength, g4_wavelength = [round(x, 2) for x in self.monochromator_wavelength]
         spectrometer_wavelength = round(self.spectrometer_wavelength, 2)
 
         print('laser pos: {}'.format(self.laser_steps))

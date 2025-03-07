@@ -16,25 +16,30 @@ from PIL import Image
     # plotter.plot_all_spectra(binSize=1)
 from matplotlib import pyplot as plt
 
-def pre_process_images_nice(filepath, crop=(2, -2)):
+def pre_process_images_nice(filepath, crop=(2, -2), show=False):
 
     plotter = Plotter(dataDir=filepath)
     plotter.load_all_data()
     plotter.crop_data(crop_range=None)
-    plotter.plot_images()
+    if show:
+        plotter.plot_images()
     plotter.take_second()
     newDict = {}
+
+
     for file, data in plotter.dataDict.items():
 
         summed_array = np.average(data[crop[0]:crop[1]], axis=0)
         newDict[file] = summed_array
-        plt.plot(range(len(summed_array)), summed_array, label="Summed array")
-        plt.title(file)
-        plt.legend()
-        plt.show()
+        if show:
+            plt.plot(range(len(summed_array)), summed_array, label="Summed array")
+            plt.title(file)
+            plt.legend()
+            plt.show()
     
     plotter.dataDict = newDict
     # plotter.frames_to_spectrum()
+    plotter.subtract_background()
     plotter.save_all_data()
     
 def pre_process_images(filepath):
@@ -75,8 +80,9 @@ def plot_exported_data(filepath):
     plotter.load_all_data()
     # breakpoint()
     breakpoint()
-    # plotter.normalise_all_data(norm_range=(130, 400))
+    plotter.normalise_all_data(norm_range=(840, 1200))
     plotter.plot_all_spectra(binSize=1, offset=1)
+    plotter.plot_all_subplots()
 
     # plotter.plot_all_spectra(binSize=1)
 
@@ -87,7 +93,8 @@ if __name__ == '__main__':
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\gain_test'
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen'
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen\19-2'
+    filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen\07-03'
     # filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen'
     # main(filepath)
-    pre_process_images_nice(filepath, crop=(60,80))
+    pre_process_images_nice(filepath, crop=(90,110), show=False)
     plot_exported_data(filepath)

@@ -206,6 +206,7 @@ class Plotter:
     def __init__(self, dataDir=None):
         # import matplotlib.pyplot as plt
         self.scriptDir = os.path.dirname(os.path.abspath(__file__))
+        self.bg_dict = {}
         if dataDir is None:
             self.dataDir = os.path.join(self.scriptDir, 'data')
         else:
@@ -246,6 +247,34 @@ class Plotter:
         with Image.open(filepath) as img:
             np_array = np.array(img)
         return np_array
+    
+    def find_background(self):
+        for file, data in self.dataDict.items():
+            if "_BG" in file:
+                basename = file.replace("_BG", "")
+                self.bg_dict[basename] = data
+                print(f"Background found for {basename}")
+            
+        return self.bg_dict
+
+    def subtract_background(self):
+        self.find_background()
+        newDict = {}
+        for file, data in self.dataDict.items():
+            if "_BG" in file:
+                continue
+            basename = file.replace(".npy", "")
+            for bg_file, bg_data in self.bg_dict.items():
+                if basename in bg_file:
+                    data = data - bg_data
+                    newDict[file] = data
+                    print(f"Background subtracted for {basename}")
+                else:
+                    print(f"No background found for {basename}")
+
+        self.dataDict = newDict
+        return newDict
+
     
     def plot_images(self):
         for key, value in self.dataDict.items():
@@ -297,10 +326,25 @@ class Plotter:
             
             else:
                 dataX = np.arange(len(value))
-                dataY = value
+                dataY = value + (offset*idx)
             # breakpoint()
             plt.plot(dataX, dataY, label=key)
             plt.legend()
+        plt.show()
+
+    def plot_all_subplots(self, binSize=1, offset=0):
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(len(self.dataDict), 1)
+        for idx, (key, value) in enumerate(self.dataDict.items()):
+            if len(value.shape) > 1:
+                dataX = value[:, 0]
+                dataY = value[:, 1] + (offset*idx)
+            
+            else:
+                dataX = np.arange(len(value))
+                dataY = value
+            ax[idx].plot(dataX, dataY, label=key)
+            ax[idx].legend()
         plt.show()
 
     def normalise_all_data(self, norm_range=None):

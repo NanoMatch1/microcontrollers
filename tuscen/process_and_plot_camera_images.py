@@ -16,6 +16,16 @@ from PIL import Image
     # plotter.plot_all_spectra(binSize=1)
 from matplotlib import pyplot as plt
 
+def perform_gain_test(filepath):
+    plotter = Plotter(dataDir=filepath)
+    plotter.load_all_data()
+    plotter.plot_all_spectra(binSize=1)
+    breakpoint()
+
+
+
+    # plotter.plot_all_spectra(binSize=1)
+
 def pre_process_images_nice(filepath, crop=(2, -2), show=False):
 
     plotter = Plotter(dataDir=filepath)
@@ -86,15 +96,27 @@ def plot_exported_data(filepath):
 
     # plotter.plot_all_spectra(binSize=1)
 
+def new_image_process(filepath):
+    plotter = Plotter(dataDir=filepath)
+    plotter.load_all_data()
+    # plotter.crop_data(crop_range=None)
+    # plotter.take_second()
+    # plotter.frames_to_spectrum()
+    # plotter.save_all_data()
+    plotter.plot_images()
+    # plotter.plot_all_spectra(binSize=1)
 
 # cfg2, gain0 is the winner
 
 if __name__ == '__main__':
-    filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\gain_test'
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen'
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen\19-2'
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen\07-03'
     # filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen'
+    filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\savetests'
+    # filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\gain_test'
+    # perform_gain_test(filepath)
     # main(filepath)
-    pre_process_images_nice(filepath, crop=(90,110), show=False)
-    plot_exported_data(filepath)
+    # pre_process_images_nice(filepath, crop=(90,110), show=False)
+    new_image_process(filepath)
+    # plot_exported_data(filepath)

@@ -103,6 +103,14 @@ class Interface:
         
         self._integrity_checker()
 
+    def connect_to_triax(self):
+        self.spectrometer.simulate = False
+        self.spectrometer.initialise()
+
+    def connect_to_camera(self):
+        self.camera.simulate = False
+        self.camera.initialise()
+
     def generate_help(self):
         help_dict = {}
         for command, (inst, method) in self.command_map.items():
@@ -199,5 +207,5 @@ class Interface:
 
 
 if __name__ == '__main__':
-    instrument = Interface(simulate=False, com_port='COM10', debug_skip=['camera','laser'])
+    instrument = Interface(simulate=False, com_port='COM10', debug_skip=['camera','laser', 'TRIAX'])
     cli(instrument)

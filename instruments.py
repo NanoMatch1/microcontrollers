@@ -351,6 +351,8 @@ class Microscope(Instrument):
             'st': self.go_to_spectrometer_wavelength,
             'reference': self.reference_calibration,
             'shift': self.go_to_wavenumber,
+            'triax': self.connect_to_triax,
+            'camera': self.connect_to_camera,
             # 'calshift': self.simple_calibration_shift, #TODO: Decide if I need this
             'report': self.report_status,
             'writemotora': self.set_absolute_positions_A,
@@ -362,6 +364,7 @@ class Microscope(Instrument):
             'bpos': self.get_monochromator_motor_positions,
             'slsteps': self.go_to_laser_steps,
             'smsteps': self.go_to_monochromator_steps,
+            'recmot': self.record_motors,
             # acquisition commands
             'scanmin': self.set_scan_min,
             'scanmax': self.set_scan_max,
@@ -382,6 +385,7 @@ class Microscope(Instrument):
             'close': self.close_camera,
             'camspec': self.set_acq_spectrum_mode,
             'camimage': self.set_acq_image_mode,
+            'setgain': self.set_camera_gain,
 
 
 
@@ -410,6 +414,48 @@ class Microscope(Instrument):
         if command not in self.command_functions:
             raise ValueError(f"Unknown command: '{command}'")
         return self.command_functions[command](*args, **kwargs)
+    
+    @ui_callable
+    def connect_to_triax(self):
+        '''Connects to the spectrometer after already running.'''
+        self.interface.connect_to_triax()
+        print('Connected to TRIAX spectrometer')
+
+    @ui_callable
+    def connect_to_camera(self):
+        '''Connects to the camera after already running.'''
+        self.interface.connect_to_camera()
+
+    
+    @ui_callable
+    def record_motors(self, extra=None):
+        '''Records the current motor positions to a file.'''
+
+        laser_motor_positions = self.get_laser_motor_positions
+        monochromator_motor_positions = self.get_monochromator_motor_positions
+        triax_position = self.motion_control.get_spectrometer_position
+        
+        if extra is None:
+            extra = self.calculate_laser_wavelength()
+
+        breakpoint()
+            
+        with open(os.path.join(self.scriptDir, 'motor_recordings.txt'), 'a') as f:
+            f.write('{}:{}:{}:{}\n'.format(laser_motor_positions, monochromator_motor_positions, triax_position, extra))
+        print("Exporting: {}:{}:{}:{}".format(laser_motor_positions, monochromator_motor_positions, triax_position, extra))
+        return f"{laser_motor_positions}:{monochromator_motor_positions}:{triax_position}:{extra}"
+
+    @ui_callable
+    def set_camera_gain(self, imagemode, gain):
+        '''Sets the camera gain to the specified value.'''
+        try:
+            imagemode = int(imagemode)
+            gain = int(gain)
+        except ValueError:
+            print("Values for image mode and gain must be integers")
+            return
+
+        self.camera.set_image_and_gain(imagemode, gain)
         
     def initialise(self):
         '''Initialises the microscope by querying all connections to instruments and setting up the necessary parameters.'''

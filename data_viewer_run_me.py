@@ -17,6 +17,9 @@ class LiveDataPlotter:
         self.updating = True
         self.roi = None  # Region of Interest for autoscaling
 
+
+
+
         self.data_mode = "Image"
         self.spectrum_roi = (50,1100)
 
@@ -32,6 +35,12 @@ class LiveDataPlotter:
         self.line, = self.ax.plot([], [], 'r-')  # Initialize an empty plot
         self.ax.vlines([50], 0, 70000)
         
+        self.cursor_label = tk.Label(self.root, text="X: --, Y: --, Intensity: --")
+        self.cursor_label.pack(side=tk.BOTTOM)
+        self.fig.canvas.mpl_connect("motion_notify_event", self.update_cursor)
+
+        self.fig.canvas.mpl_connect("scroll_event", self.zoom)
+        self.zoom_limits = None  # Store zoom range
         # Set up a Tkinter canvas for Matplotlib
         self._build_canvas()
 
@@ -41,17 +50,54 @@ class LiveDataPlotter:
         # Start a background thread to monitor the file and update the plot
         self.monitor_thread = threading.Thread(target=self.monitor_file, daemon=True)
         self.monitor_thread.start()
+
+    def zoom(self, event):
+        """ Zooms in/out using the mouse scroll wheel. """
+        if event.inaxes is None or self.data_mode != "Image":
+            return
+
+        scale_factor = 1.2 if event.step > 0 else 0.8  # Scroll up = zoom in, Scroll down = zoom out
+
+        # Get current limits
+        xlim = self.ax.get_xlim()
+        ylim = self.ax.get_ylim()
+
+        # Zoom by scaling limits
+        x_center, y_center = (xlim[0] + xlim[1]) / 2, (ylim[0] + ylim[1]) / 2
+        new_xlim = [x_center + (x - x_center) * scale_factor for x in xlim]
+        new_ylim = [y_center + (y - y_center) * scale_factor for y in ylim]
+
+        # Apply new limits
+        self.ax.set_xlim(new_xlim)
+        self.ax.set_ylim(new_ylim)
+
+        # Save zoom state
+        self.zoom_limits = (new_xlim, new_ylim)
+        self.canvas.draw()
+
+
+    def update_cursor(self, event):
+        """ Track mouse movement and update the cursor label. """
+        if event.inaxes is None or self.data_mode != "Image":
+            return
+
+        x, y = int(event.xdata), int(event.ydata)
+        
+        if 0 <= x < self.data.shape[1] and 0 <= y < self.data.shape[0]:
+            intensity = self.data[y, x]
+            self.cursor_label.config(text=f"X: {x}, Y: {y}, Intensity: {intensity}")
+
     
     def _build_canvas(self):
-        """ Destroy the old canvas, create a new figure, and add it back into the GUI. """
-        if hasattr(self, "canvas"):  # Check if canvas exists before destroying
-            self.canvas.get_tk_widget().destroy()  # Remove the old canvas from Tkinter
-        
-        # Create new figure and axis
+        """ Rebuild the Matplotlib canvas and reinitialize the ROI selector. """
+        if hasattr(self, "canvas"):  # Destroy old canvas if it exists
+            self.canvas.get_tk_widget().destroy()
+
         self.fig, self.ax = plt.subplots()
         self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
 
     def toggle_data_mode(self):
         """ Toggle between 1D spectrum and 2D image display """
@@ -109,6 +155,36 @@ class LiveDataPlotter:
         self.image_autoscale_button = tk.Button(button_frame, text="Image Autoscale: ON", command=self.toggle_image_autoscale)
         self.image_autoscale_button.pack(side=tk.LEFT, padx=5, pady=5)
 
+        tk.Label(button_frame, text="Y Start:").pack(side=tk.LEFT)
+        self.y_start_entry = tk.Entry(button_frame, width=5)
+        self.y_start_entry.pack(side=tk.LEFT)
+        tk.Label(button_frame, text="Y Finish:").pack(side=tk.LEFT)
+        self.y_finish_entry = tk.Entry(button_frame, width=5)
+        self.y_finish_entry.pack(side=tk.LEFT)
+
+        apply_roi_button = tk.Button(button_frame, text="Apply Y ROI", command=self.apply_y_roi)
+        apply_roi_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+    def apply_y_roi(self):
+        """ Manually set Y ROI from textboxes and update spectrum view. """
+        try:
+            y_start = int(self.y_start_entry.get())
+            y_finish = int(self.y_finish_entry.get())
+
+            if 0 <= y_start < self.data.shape[0] and 0 <= y_finish < self.data.shape[0]:
+                self.spectrum_roi = (min(y_start, y_finish), max(y_start, y_finish))
+                print(f"Updated Spectrum ROI: {self.spectrum_roi}")
+
+                # Update spectrum immediately
+                if self.data_mode == "Spectrum":
+                    spectrum = self.frame_to_spectrum()
+                    self.update_plot(spectrum)
+            else:
+                print("Invalid Y values")
+        except ValueError:
+            print("Invalid input for Y ROI")
+
+
     def toggle_image_autoscale(self):
         """ Enable or disable autoscaling for the image colormap """
         self.image_autoscale_enabled = not self.image_autoscale_enabled
@@ -165,35 +241,41 @@ class LiveDataPlotter:
         self.canvas.draw()  # Force Matplotlib to redraw
 
     def update_image(self, data):
-        """ Update the displayed image with optional autoscaling based on ROI. """
+        """ Update the displayed image while keeping zoom settings. """
         self.ax.clear()
 
-        vmin, vmax = self.image_limits  # Default to None for automatic scaling
+        # Set colormap limits based on ROI autoscaling
+        vmin, vmax = self.image_limits
 
         if self.image_autoscale_enabled and self.roi:
             min_x, max_x = self.roi
-            # print(min_x, max_x)
-
-            # Ensure min_x and max_x are within bounds
             min_x = max(0, min_x)
             max_x = min(data.shape[1], max_x)
-
             roi_data = data[:, min_x:max_x]
 
-            if roi_data.size > 0:  # Check that it's not empty
+            if roi_data.size > 0:
                 vmin, vmax = np.min(roi_data), np.max(roi_data)
                 self.image_limits = (vmin, vmax)
 
+        # Plot image
         self.ax.imshow(data, cmap='plasma', vmin=vmin, vmax=vmax)
+
+        # Restore zoom limits if they exist
+        if self.zoom_limits:
+            self.ax.set_xlim(self.zoom_limits[0])
+            self.ax.set_ylim(self.zoom_limits[1])
+
         self.canvas.draw()
 
 
-    def frame_to_spectrum(self, roi=None):
-        # Calculate the sum of each frame and store in the first column
-        if not roi:
-            roi = self.spectrum_roi
+    def frame_to_spectrum(self):
+        """ Calculate spectrum by averaging the selected ROI in the image. """
+        if self.spectrum_roi is None:
+            roi = (0, self.data.shape[0])  # Default: use full range
+        else:
+            roi = self.spectrum_roi  # Use selected region
 
-        spectrum_data = np.average(self.data[roi[0]:roi[1]], axis=0)
+        spectrum_data = np.mean(self.data[roi[0]:roi[1]], axis=0)
         return spectrum_data
 
 

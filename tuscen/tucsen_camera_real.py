@@ -70,13 +70,13 @@ class TucamData:
 
         self.m_fs.nSaveFmt = self.m_format.TUFMT_TIF.value
 
-    def save_image(self, image_name=None):
-        if image_name is None:
-            image_name = os.path.join(self.save_dir, self.filename)
+    def save_image(self, filepath=None):
+        if filepath is None:
+            filepath = os.path.join(self.save_dir, self.filename)
         self.m_fs.pFrame = pointer(self.m_frame)
-        self.m_fs.pstrSavePath = image_name.encode('utf-8')
+        self.m_fs.pstrSavePath = filepath.encode('utf-8')
         TUCAM_File_SaveImage(self.camera.TUCAMOPEN.hIdxTUCam, self.m_fs)
-        print('Save the image data success, the path is %#s'%image_name)
+        print('Save the image data success, the path is %#s'%filepath)
 
     def wait_for_frame(self, timeout=10000):
         # Allocate internal buffer
@@ -102,7 +102,7 @@ class TucamData:
 
     def convert_to_numpy(self):
         transient_file = os.path.join(self.save_dir, 'transient.tif')
-        self.save_image(filename=transient_file)
+        self.save_image(filepath=transient_file)
         data = self.load_tiff(transient_file)
         os.remove(transient_file) # Clean up the transient file
         return data

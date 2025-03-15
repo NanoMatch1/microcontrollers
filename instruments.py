@@ -431,14 +431,15 @@ class Microscope(Instrument):
     def record_motors(self, extra=None):
         '''Records the current motor positions to a file.'''
 
-        laser_motor_positions = self.get_laser_motor_positions
-        monochromator_motor_positions = self.get_monochromator_motor_positions
-        triax_position = self.motion_control.get_spectrometer_position
+        laser_motor_positions = self.get_laser_motor_positions()
+        monochromator_motor_positions = self.get_monochromator_motor_positions()
+        try:
+            triax_position = self.get_spectrometer_position()
+        except Exception as e:
+            triax_position = 0
         
         if extra is None:
             extra = self.calculate_laser_wavelength()
-
-        breakpoint()
             
         with open(os.path.join(self.scriptDir, 'motor_recordings.txt'), 'a') as f:
             f.write('{}:{}:{}:{}\n'.format(laser_motor_positions, monochromator_motor_positions, triax_position, extra))

@@ -224,6 +224,7 @@ class LiveDataPlotter:
         x_values = np.arange(len(data))
 
         self.ax.plot(x_values, data, 'r-')  # Replot with new data
+        self.ax.vlines([50], 0, 70000)
 
         # Autoscale handling
         if self.autoscale_enabled:

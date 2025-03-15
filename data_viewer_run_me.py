@@ -113,7 +113,7 @@ class LiveDataPlotter:
     def update_image(self, data):
         # Display the image data
         self.ax.clear()
-        self.ax.imshow(data, cmap='gray', aspect='auto')
+        self.ax.imshow(data, cmap='plasma')
         self.canvas.draw()
 
     def monitor_file(self):

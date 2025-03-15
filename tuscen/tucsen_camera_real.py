@@ -46,30 +46,12 @@ from .TUCam import (
     
 )
 
-# from TUCam import get_camera_gain_attributes    # If you have a local function to retrieve gain info
-
-# class TUCAM_FRAME(ctypes.Structure): fields = [ 
-#     ("pBuffer", ctypes.c_void_p), # Pointer to the complete buffer 
-#     (header + image data) ("usHeader", ctypes.c_ushort), # Size in bytes of the frame header 
-#     ("uiImgSize", ctypes.c_uint), # Size in bytes of the image data 
-#     ("usWidth", ctypes.c_ushort), # Image width in pixels 
-#     ("usHeight", ctypes.c_ushort), # Image height in pixels 
-#     ("ucDepth", ctypes.c_ubyte), # Bit depth per channel (e.g. 8 or 16) 
-#     ("ucChannels", ctypes.c_ubyte), # Number of color channels (e.g. 1 for mono, 3 for RGB) 
-#     ("ucElemBytes", ctypes.c_ubyte) # Number of bytes per pixel element (usually 1 for 8-bit) 
-#     ]
 
 class TucamData:
 
     def __init__(self, camera, filename=None, save_dir=None):
         self.camera = camera
         self.data = None
-
-
-        # if filename is None:
-        #     self.filename = 'default.tif'
-        # if save_dir is None:
-        #     self.save_dir = os.path.join(self.script_dir, 'data')
 
         self.m_fs = TUCAM_FILE_SAVE()
         self.m_frame = TUCAM_FRAME()
@@ -81,56 +63,6 @@ class TucamData:
         self.m_frame.uiRsdSize = 1
 
         self.m_fs.nSaveFmt = self.m_format.TUFMT_TIF.value
-
-    # def acquire(self):
-    #     m_fs = TUCAM_FILE_SAVE()
-    #     m_frame = TUCAM_FRAME()
-    #     m_format = TUIMG_FORMATS
-    #     m_frformat = TUFRM_FORMATS
-    #     m_capmode = TUCAM_CAPTURE_MODES
-
-    #     m_frame.pBuffer = 0
-    #     m_frame.ucFormatGet = m_frformat.TUFRM_FMT_USUAl.value
-    #     m_frame.uiRsdSize = 1
-
-    #     m_fs.nSaveFmt = m_format.TUFMT_TIF.value
-
-    #     TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame))
-    #     TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, m_capmode.TUCCM_SEQUENCE.value)
-    #     if not os.path.exists(os.path.join(self.script_dir, 'testing')):
-    #         os.makedirs(os.path.join(self.script_dir, 'testing'))
-
-
-    #     try:
-    #         result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), 10000)
-    #         ImgName = os.path.join(self.script_dir, 'testing', 'test_image')
-    #         m_fs.pFrame = pointer(m_frame)
-    #         m_fs.pstrSavePath = ImgName.encode('utf-8')
-    #         # ch:保存数据帧到硬盘 | en:Save image to disk
-    #         TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
-    #         print('Save the image data success, the path is %#s'%ImgName)
-    #     except Exception:
-    #         print('Grab the frame failure')
-
-    #     TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
-    #     TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
-    #     TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
-
-
-
-    # def load_tiff(self, filepath):
-    #     with Image.open(filepath) as img:
-    #         np_array = np.array(img)
-    #     return np_array
-
-    # def convert_to_numpy(self):
-    #     transient_file = os.path.join(self.save_dir, 'transient.tif')
-    #     self.save_image(filepath=transient_file)
-    #     data = self.load_tiff(transient_file)
-    #     os.remove(transient_file) # Clean up the transient file
-    #     return data
-    
-
 
 
 class TucamCamera:
@@ -270,84 +202,6 @@ class TucamCamera:
             print("Reshape failed:", e)
             return None
 
-
-    def acquire(self):
-        m_fs = TUCAM_FILE_SAVE()
-        m_frame = TUCAM_FRAME()
-        m_format = TUIMG_FORMATS
-        m_frformat = TUFRM_FORMATS
-        m_capmode = TUCAM_CAPTURE_MODES
-
-        m_frame.pBuffer = 0
-        m_frame.ucFormatGet = m_frformat.TUFRM_FMT_USUAl.value
-        m_frame.uiRsdSize = 1
-
-        m_fs.nSaveFmt = m_format.TUFMT_TIF.value
-
-        TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame))
-        TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, m_capmode.TUCCM_SEQUENCE.value)
-        if not os.path.exists(os.path.join(self.script_dir, 'testing')):
-            os.makedirs(os.path.join(self.script_dir, 'testing'))
-
-
-        try:
-            result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), 10000)
-            ImgName = os.path.join(self.script_dir, 'testing', 'test_image')
-            m_fs.pFrame = pointer(m_frame)
-            m_fs.pstrSavePath = ImgName.encode('utf-8')
-            # ch:保存数据帧到硬盘 | en:Save image to disk
-            TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
-            print('Save the image data success, the path is %#s'%ImgName)
-        except Exception:
-            print('Grab the frame failure')
-
-
-        debug = True
-
-        if debug:
-            # For debugging, print some frame details:
-            print("Header size:", m_frame.usHeader)
-            print("Image size:", m_frame.uiImgSize)
-            print("Dimensions:", m_frame.usWidth, "x", m_frame.usHeight)
-            print("Channels:", m_frame.ucChannels, "Depth:", m_frame.ucDepth, "Elem bytes:", m_frame.ucElemBytes)
-
-        # Calculate total buffer size (header + image data)
-        total_size = m_frame.usHeader + m_frame.uiImgSize
-
-        # Cast pBuffer to an array of unsigned bytes
-        raw_bytes = np.ctypeslib.as_array(
-            cast(m_frame.pBuffer, POINTER(ctypes.c_ubyte)),
-            shape=(total_size,)
-        )
-
-        # Extract the image data bytes by skipping the header
-        img_bytes = raw_bytes[m_frame.usHeader: m_frame.usHeader + m_frame.uiImgSize]
-
-        # For 16-bit data, each pixel element consists of 2 bytes.
-        # Convert the raw bytes to a 16-bit numpy array.
-        # Note: uiImgSize is in bytes, so the number of 16-bit elements is uiImgSize // 2.
-        img_data = np.frombuffer(img_bytes.tobytes(), dtype=np.uint16)
-
-        # Verify that the size matches the expected dimensions:
-        expected_elements = m_frame.usWidth * m_frame.usHeight * m_frame.ucChannels
-        if img_data.size != expected_elements:
-            print("Warning: Number of image elements does not match expected dimensions.")
-
-        # Reshape the 1D array into the 3D image shape (height, width, channels)
-        try:
-            img = np.reshape(img_data, (m_frame.usHeight, m_frame.usWidth, m_frame.ucChannels))
-        except Exception as e:
-            print("Reshape failed:", e)
-
-        print("Image acquired, shape:", img.shape)
-        breakpoint()
-
-            
-        TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
-        TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
-        TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
-
-
     def set_image_processing(self, value=0):
         # TUIDC_ENABLEIMGPRO
         status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ENABLEIMGPRO.value, value)
@@ -364,8 +218,6 @@ class TucamCamera:
         else:
             print(f"Failed to set denoise. Error code: {status}")
         
-
-
     def set_resolution(self, resolution=1):
         """
         Set the camera resolution.
@@ -403,30 +255,8 @@ class TucamCamera:
 
         # Re-init the TUCam API
         self.initialise()
-        # self.TUCAMINIT = TUCAM_INIT(0, self.script_dir.encode('utf-8'))
-        # TUCAM_Api_Init(pointer(self.TUCAMINIT), 5000)
-
-        # self.open_camera()
-
-        # self.set_acqtime(self.acqtime)
-        # self.set_roi(self.roi)
         print("Camera refresh complete.")
 
-
-    # def open_camera(self, index=0):
-    #     """
-    #     Open a specific camera index after the API is initialized.
-    #     """
-    #     if index >= self.TUCAMINIT.uiCamCount:
-    #         print(f"Camera index {index} not available!")
-    #         return
-
-    #     self.TUCAMOPEN = TUCAM_OPEN(index, 0)
-    #     ret_code = TUCAM_Dev_Open(pointer(self.TUCAMOPEN))
-    #     if self.TUCAMOPEN.hIdxTUCam == 0 or ret_code != 0:
-    #         print("Open the camera failure!")
-    #     else:
-    #         print("Open the camera success!")
     def initialise(self):
         print("Initialising TUCam API...")
         # Prepare TUCAM structures
@@ -440,8 +270,6 @@ class TucamCamera:
 
 
         self.open_camera()
-        # self.set_rgt()
-        # self.set_lft()
         self.set_image_and_gain()
         self.set_hardware_binning()
         self.set_acqtime(self.acqtime)
@@ -449,12 +277,6 @@ class TucamCamera:
         # self.set_resolution(1)
         # self.set_denoise(0)
         self.set_roi(self.roi_new)
-
-        
-
-
-
-
 
     def open_camera(self, Idx=0):
 
@@ -526,7 +348,8 @@ class TucamCamera:
 
             if temp.value < target_temp:
                 print(f"Temperature stable ({temp.value}°C). Acquiring frame...")
-                return self.acquire_one_frame()
+                data = self.acquire_one_frame()
+                return data
             else:
                 print(f"Camera too hot ({temp.value}°C). Waiting...")
                 time.sleep(5)  # Wait before checking temperature again
@@ -567,37 +390,7 @@ class TucamCamera:
         acquire a single frame
         """
         data = self.acquire_one_frame(save_dir=save_dir, export=export)
-        breakpoint()
         return data
-        
-    def frame_to_spectrum_old(self, frame, bin_x=1):
-        """
-        Converts a 2D image frame into a 1D spectrum.
-        
-        - Bins pixels along the x-axis (`bin_x` adjacent pixels are averaged).
-        - Sums all remaining pixels in the y-axis.
-
-        :param frame: 2D numpy array representing the image.
-        :param bin_x: Number of pixels to bin along the x-dimension.
-        :return: 1D numpy array representing the spectrum.
-        """
-        if frame.ndim != 2:
-            raise ValueError("Input frame must be a 2D numpy array.")
-
-        height, width = frame.shape
-
-        # Ensure bin_x is within valid range
-        if bin_x < 1 or bin_x > width:
-            raise ValueError(f"Invalid bin_x value: {bin_x}. Must be between 1 and {width}.")
-
-        # Step 1: Bin along X (average adjacent pixels)
-        new_width = width // bin_x  # Number of new columns after binning
-        frame_binned_x = frame[:, :new_width * bin_x].reshape(height, new_width, bin_x).sum(axis=2)
-
-        # Step 2: Sum along Y to create a 1D spectrum
-        spectrum = frame_binned_x.sum(axis=0)
-
-        return spectrum
     
     def frame_to_spectrum(self, frame, crop_to_pixels=(2, -2)):
         """
@@ -677,34 +470,6 @@ class TucamCamera:
 
         return temp.value
 
-    # def set_long_exposure_mode(self):
-    #     """
-    #     Set the camera to a mode that best supports long exposures.
-    #     """
-    #     print("Setting camera to long exposure mode...")
-
-    #     # 1. Set image mode to CMS (best for long exposure stability)
-    #     status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, 1, 0)
-    #     if status == TUCAMRET.TUCAMRET_SUCCESS:
-    #         print("Set Image Mode to CMS (12-bit).")
-    #     else:
-    #         print("Failed to set Image Mode.")
-
-    #     # 2. Disable automatic exposure control (if enabled)
-    #     status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ATEXPOSURE.value, 0)
-    #     if status == TUCAMRET.TUCAMRET_SUCCESS:
-    #         print("Disabled automatic exposure control.")
-    #     else:
-    #         print("Failed to disable automatic exposure control.")
-
-    #     # 3. Ensure a stable gain setting (HighGain recommended)
-    #     status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, 1, 0)
-    #     if status == TUCAMRET.TUCAMRET_SUCCESS:
-    #         print("Set Gain to HighGain.")
-    #     else:
-    #         print("Failed to set Gain.")
-
-
     def set_acqtime(self, value):
         """
         Set camera exposure time to 'value' (in microseconds or ms—depends on the camera).
@@ -779,6 +544,7 @@ class TucamCamera:
 
     def set_acquire_mode(self, mode='image'):
         """
+        LEGACY CODE.
         Set the camera acquisition mode to 'image' or 'spectrum'.
         """
         if mode not in ['image', 'spectrum']:
@@ -789,14 +555,14 @@ class TucamCamera:
         print(f"Acquisition mode set to: {mode}")
 
     def _process_frame(self, frame, crop_bad_pixels=True):
-        '''Processes the frame data based on the camera mode.'''
+        '''LEGACY CODE. 
+        Processes the frame data based on the camera mode.'''
         
 
         # breakpoint()
         breaknow = False
 
         while True:
-            breakpoint()
             plt.imshow(frame)
             plt.show()
             if breaknow:
@@ -808,7 +574,6 @@ class TucamCamera:
             else:
                 frame = frame[:, :, 1]
             print("sending frame to spectrum")
-            breakpoint()
             data = self.frame_to_spectrum(frame)
         else:
             data = frame[:, :, 1]
@@ -1094,31 +859,12 @@ class TucamCamera:
                 continue
 
             # Acquire a frame
-            frame = self.acquire_one_frame(export=True)
+            frame = self.acquire_one_frame(export=False)
             if frame is None:
                 print("  Failed to capture frame. Skipping...")
                 continue
 
             self.export_data(frame, 'cfg{}_gain{}'.format(config['img_mode'], config['gain']), overwrite = True)
-        #     if frame is None:
-        #         print("  Failed to capture frame. Skipping...")
-        #         continue
-
-        #     # Measure signal strength (max pixel intensity)
-        #     signal_strength = frame.max()
-        #     print(f"  Measured Signal: {signal_strength}")
-
-        #     # Track best setting
-        #     if signal_strength > best_signal:
-        #         best_signal = signal_strength
-        #         best_config = config
-
-        # print("\n** Best Configuration Found **")
-        # if best_config:
-        #     print(f"Mode: {best_config['desc']} (IMGMODE {best_config['img_mode']}), Gain {best_config['gain']}")
-        #     print(f"Signal Strength: {best_signal}")
-        # else:
-        #     print("No valid configuration found!")
 
         return
 

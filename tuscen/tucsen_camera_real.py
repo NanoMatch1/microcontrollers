@@ -6,6 +6,7 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 from PIL import Image
+from ctypes import pointer, cast, POINTER
 
 import traceback
 
@@ -47,6 +48,17 @@ from .TUCam import (
 
 # from TUCam import get_camera_gain_attributes    # If you have a local function to retrieve gain info
 
+# class TUCAM_FRAME(ctypes.Structure): fields = [ 
+#     ("pBuffer", ctypes.c_void_p), # Pointer to the complete buffer 
+#     (header + image data) ("usHeader", ctypes.c_ushort), # Size in bytes of the frame header 
+#     ("uiImgSize", ctypes.c_uint), # Size in bytes of the image data 
+#     ("usWidth", ctypes.c_ushort), # Image width in pixels 
+#     ("usHeight", ctypes.c_ushort), # Image height in pixels 
+#     ("ucDepth", ctypes.c_ubyte), # Bit depth per channel (e.g. 8 or 16) 
+#     ("ucChannels", ctypes.c_ubyte), # Number of color channels (e.g. 1 for mono, 3 for RGB) 
+#     ("ucElemBytes", ctypes.c_ubyte) # Number of bytes per pixel element (usually 1 for 8-bit) 
+#     ]
+
 class TucamData:
 
     def __init__(self, camera, filename=None, save_dir=None):
@@ -70,30 +82,41 @@ class TucamData:
 
         self.m_fs.nSaveFmt = self.m_format.TUFMT_TIF.value
 
-    def save_image(self, filepath=None):
-        if filepath is None:
-            filepath = os.path.join(self.save_dir, self.filename)
-        self.m_fs.pFrame = pointer(self.m_frame)
-        self.m_fs.pstrSavePath = filepath.encode('utf-8')
-        TUCAM_File_SaveImage(self.camera.TUCAMOPEN.hIdxTUCam, self.m_fs)
-        print('Save the image data success, the path is %#s'%filepath)
+    # def acquire(self):
+    #     m_fs = TUCAM_FILE_SAVE()
+    #     m_frame = TUCAM_FRAME()
+    #     m_format = TUIMG_FORMATS
+    #     m_frformat = TUFRM_FORMATS
+    #     m_capmode = TUCAM_CAPTURE_MODES
 
-    def wait_for_frame(self, timeout=10000):
-        # Allocate internal buffer
-        TUCAM_Buf_Alloc(self.camera.TUCAMOPEN.hIdxTUCam, pointer(self.m_frame))
-        TUCAM_Cap_Start(self.camera.TUCAMOPEN.hIdxTUCam, TUCAM_CAPTURE_MODES.TUCCM_SEQUENCE.value)
+    #     m_frame.pBuffer = 0
+    #     m_frame.ucFormatGet = m_frformat.TUFRM_FMT_USUAl.value
+    #     m_frame.uiRsdSize = 1
 
-        try:
-            _ = TUCAM_Buf_WaitForFrame(self.camera.TUCAMOPEN.hIdxTUCam, pointer(self.m_frame), int(timeout))
-            # print(f"Frame: width={self.mframe.usWidth}, height={self.mframe.usHeight}")
-        except Exception as e:
-                print(e)
-                print(traceback.format_exc())
-                print(f"Frame timeout exceeded ({timeout}ms). Increase timeout if necessary.")
+    #     m_fs.nSaveFmt = m_format.TUFMT_TIF.value
 
-        TUCAM_Buf_AbortWait(self.camera.TUCAMOPEN.hIdxTUCam)
-        TUCAM_Cap_Stop(self.camera.TUCAMOPEN.hIdxTUCam)
-        TUCAM_Buf_Release(self.camera.TUCAMOPEN.hIdxTUCam)
+    #     TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame))
+    #     TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, m_capmode.TUCCM_SEQUENCE.value)
+    #     if not os.path.exists(os.path.join(self.script_dir, 'testing')):
+    #         os.makedirs(os.path.join(self.script_dir, 'testing'))
+
+
+    #     try:
+    #         result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), 10000)
+    #         ImgName = os.path.join(self.script_dir, 'testing', 'test_image')
+    #         m_fs.pFrame = pointer(m_frame)
+    #         m_fs.pstrSavePath = ImgName.encode('utf-8')
+    #         # ch:保存数据帧到硬盘 | en:Save image to disk
+    #         TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
+    #         print('Save the image data success, the path is %#s'%ImgName)
+    #     except Exception:
+    #         print('Grab the frame failure')
+
+    #     TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
+    #     TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
+    #     TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
+
+
 
     def load_tiff(self, filepath):
         with Image.open(filepath) as img:
@@ -147,6 +170,7 @@ class TucamCamera:
         self.is_running = False
 
         self.command_functions = {
+            "test": self.acquire,
             "acquire": self.safe_acquisition,
             "acqnow": self.acquire_one_frame,
             "run": self.start_continuous_acquisition,
@@ -178,6 +202,83 @@ class TucamCamera:
         }
 
         print('Finished TucsenCamera init')
+
+    def acquire(self):
+        m_fs = TUCAM_FILE_SAVE()
+        m_frame = TUCAM_FRAME()
+        m_format = TUIMG_FORMATS
+        m_frformat = TUFRM_FORMATS
+        m_capmode = TUCAM_CAPTURE_MODES
+
+        m_frame.pBuffer = 0
+        m_frame.ucFormatGet = m_frformat.TUFRM_FMT_USUAl.value
+        m_frame.uiRsdSize = 1
+
+        m_fs.nSaveFmt = m_format.TUFMT_TIF.value
+
+        TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame))
+        TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, m_capmode.TUCCM_SEQUENCE.value)
+        if not os.path.exists(os.path.join(self.script_dir, 'testing')):
+            os.makedirs(os.path.join(self.script_dir, 'testing'))
+
+
+        try:
+            result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), 10000)
+            ImgName = os.path.join(self.script_dir, 'testing', 'test_image')
+            m_fs.pFrame = pointer(m_frame)
+            m_fs.pstrSavePath = ImgName.encode('utf-8')
+            # ch:保存数据帧到硬盘 | en:Save image to disk
+            TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
+            print('Save the image data success, the path is %#s'%ImgName)
+        except Exception:
+            print('Grab the frame failure')
+
+
+        debug = True
+
+        if debug:
+            # For debugging, print some frame details:
+            print("Header size:", m_frame.usHeader)
+            print("Image size:", m_frame.uiImgSize)
+            print("Dimensions:", m_frame.usWidth, "x", m_frame.usHeight)
+            print("Channels:", m_frame.ucChannels, "Depth:", m_frame.ucDepth, "Elem bytes:", m_frame.ucElemBytes)
+
+        # Calculate total buffer size (header + image data)
+        total_size = m_frame.usHeader + m_frame.uiImgSize
+
+        # Cast pBuffer to an array of unsigned bytes
+        raw_bytes = np.ctypeslib.as_array(
+            cast(m_frame.pBuffer, POINTER(ctypes.c_ubyte)),
+            shape=(total_size,)
+        )
+
+        # Extract the image data bytes by skipping the header
+        img_bytes = raw_bytes[m_frame.usHeader: m_frame.usHeader + m_frame.uiImgSize]
+
+        # For 16-bit data, each pixel element consists of 2 bytes.
+        # Convert the raw bytes to a 16-bit numpy array.
+        # Note: uiImgSize is in bytes, so the number of 16-bit elements is uiImgSize // 2.
+        img_data = np.frombuffer(img_bytes.tobytes(), dtype=np.uint16)
+
+        # Verify that the size matches the expected dimensions:
+        expected_elements = m_frame.usWidth * m_frame.usHeight * m_frame.ucChannels
+        if img_data.size != expected_elements:
+            print("Warning: Number of image elements does not match expected dimensions.")
+
+        # Reshape the 1D array into the 3D image shape (height, width, channels)
+        try:
+            img = np.reshape(img_data, (m_frame.usHeight, m_frame.usWidth, m_frame.ucChannels))
+        except Exception as e:
+            print("Reshape failed:", e)
+
+        print("Image acquired, shape:", img.shape)
+        breakpoint()
+
+            
+        TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
+        TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
+        TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
+
 
     def set_image_processing(self, value=0):
         # TUIDC_ENABLEIMGPRO
@@ -386,6 +487,8 @@ class TucamCamera:
         # self.open_camera(0)
         # self.set_roi((0, 0, 2048, 2048))
         # self.set_acqtime(200)
+
+        cam_data = TucamCamera(self)
 
         cam_data = self.wait_for_image_data()
         data = cam_data.convert_to_numpy()

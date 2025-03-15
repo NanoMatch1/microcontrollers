@@ -102,7 +102,6 @@ class TucamCamera:
         self.is_running = False
 
         self.command_functions = {
-            "test": self.acquire,
             "acquire": self.safe_acquisition,
             "acqnow": self.acquire_one_frame,
             "transient": self.acquire_transient,
@@ -270,12 +269,12 @@ class TucamCamera:
 
 
         self.open_camera()
-        self.set_image_and_gain()
         self.set_hardware_binning()
         self.set_acqtime(self.acqtime)
-        # self.set_image_processing(0)
+        self.set_image_processing(0)
         # self.set_resolution(1)
         # self.set_denoise(0)
+        self.set_image_and_gain()
         self.set_roi(self.roi_new)
 
     def open_camera(self, Idx=0):
@@ -770,13 +769,16 @@ class TucamCamera:
     #         print(f"Failed to set gain. Error code: {status_gain}")
 
     def set_image_and_gain(self, img_mode=1, gain_level=0):
+        '''Sets the image mode and gain mode to tbe best signal to noise option. Following testing, this is img_mode=1 and gain_level=0 (corresponding to the setting options in the props and capas document from tucsen).'''
         # Set Image Mode using `TUCAM_Capa_SetValue`
         mode_status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_IMGMODESELECT.value, img_mode)
         if mode_status != TUCAMRET.TUCAMRET_SUCCESS:
-            print(f"  Failed to set image mode and gain. Skipping...")
+            print(f"  Failed to set image mode. Skipping...")
 
         # Set Gain Level using `TUCAM_Prop_SetValue`
         gain_status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, gain_level, 0)
+        if gain_status != TUCAMRET.TUCAMRET_SUCCESS:
+            print(f"  Failed to set gain level. Skipping...")
 
     
     def SaveImageData(self):

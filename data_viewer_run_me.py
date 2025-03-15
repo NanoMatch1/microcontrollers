@@ -7,6 +7,8 @@ import tkinter as tk
 import traceback
 from tkinter import ttk
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+from matplotlib.widgets import RectangleSelector
+
 
 class LiveDataPlotter:
     def __init__(self, file_path):
@@ -16,7 +18,9 @@ class LiveDataPlotter:
         self.roi = None  # Region of Interest for autoscaling
 
         self.data_mode = "Image"
-        self.spectrum_roi = (75,85)
+        self.spectrum_roi = (50,1100)
+
+        self.image_limits = (None, None)
 
 
         # Initialize Tkinter and Matplotlib
@@ -100,6 +104,19 @@ class LiveDataPlotter:
         self.data_mode_button = tk.Button(button_frame, text="{}".format(self.data_mode), command=self.toggle_data_mode)
         self.data_mode_button.pack(side=tk.LEFT, padx=5, pady=5)
 
+        # Image Autoscale Button
+        self.image_autoscale_enabled = True  # Default to enabled
+        self.image_autoscale_button = tk.Button(button_frame, text="Image Autoscale: ON", command=self.toggle_image_autoscale)
+        self.image_autoscale_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+    def toggle_image_autoscale(self):
+        """ Enable or disable autoscaling for the image colormap """
+        self.image_autoscale_enabled = not self.image_autoscale_enabled
+        self.image_autoscale_button.config(text="Image Autoscale: ON" if self.image_autoscale_enabled else "Image Autoscale: OFF")
+        
+        if self.data_mode == "Image":
+            self.update_image(self.data)  # Refresh image with the new setting
+
     def toggle_autoscale(self):
         self.autoscale_enabled = not self.autoscale_enabled
 
@@ -126,43 +143,50 @@ class LiveDataPlotter:
         self.ax.autoscale_view()
 
     def update_plot(self, data):
-        # Plot the full data
+        """ Updates the spectrum plot and ensures it redraws correctly. """
+        self.ax.clear()  # Ensure old plot is removed
         x_values = np.arange(len(data))
-        self.line.set_xdata(x_values)
-        self.line.set_ydata(data)
 
-        # If autoscaling is enabled, adjust the Y-axis based on the ROI or full data
+        self.ax.plot(x_values, data, 'r-')  # Replot with new data
+
+        # Autoscale handling
         if self.autoscale_enabled:
-            if self.roi:  # Scale Y-axis based on ROI
+            if self.roi:  # Use ROI for Y-scaling
                 min_x, max_x = self.roi
                 roi_data = data[min_x:max_x]
-                y_min, y_max = np.min(roi_data), np.max(roi_data)
-                self.ax.set_ylim(y_min, y_max)
-            else:
-                self.ax.relim()
-                self.ax.autoscale_view()
-        
-        # Redraw the plot on the Tkinter canvas
-        self.canvas.draw()
+                if roi_data.size > 0:
+                    self.plot_limits = np.min(roi_data), np.max(roi_data)
+                    self.ax.set_ylim(*self.plot_limits)
+        else:
+            self.ax.set_ylim(*self.plot_limits)
+
+
+
+        self.canvas.draw()  # Force Matplotlib to redraw
 
     def update_image(self, data):
-        """ Update the displayed image with autoscaling based on the selected ROI. """
-        self.ax.clear()  # Clear previous plot
+        """ Update the displayed image with optional autoscaling based on ROI. """
+        self.ax.clear()
 
-        # Define the region of interest for autoscaling
-        if self.roi:
+        vmin, vmax = self.image_limits  # Default to None for automatic scaling
+
+        if self.image_autoscale_enabled and self.roi:
             min_x, max_x = self.roi
-            roi_data = data[min_x:max_x, :]  # Extract only the region of interest
-        else:
-            roi_data = data  # Use full data if no ROI is set
+            # print(min_x, max_x)
 
-        # Determine the intensity limits based on ROI
-        vmin, vmax = np.min(roi_data), np.max(roi_data)
+            # Ensure min_x and max_x are within bounds
+            min_x = max(0, min_x)
+            max_x = min(data.shape[1], max_x)
 
-        # Plot the image with autoscaled colormap
+            roi_data = data[:, min_x:max_x]
+
+            if roi_data.size > 0:  # Check that it's not empty
+                vmin, vmax = np.min(roi_data), np.max(roi_data)
+                self.image_limits = (vmin, vmax)
+
         self.ax.imshow(data, cmap='plasma', vmin=vmin, vmax=vmax)
+        self.canvas.draw()
 
-        self.canvas.draw()  # Refresh the Tkinter canvas
 
     def frame_to_spectrum(self, roi=None):
         # Calculate the sum of each frame and store in the first column

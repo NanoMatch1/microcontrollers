@@ -19,7 +19,15 @@ from matplotlib import pyplot as plt
 def perform_gain_test(filepath):
     plotter = Plotter(dataDir=filepath)
     plotter.load_all_data()
-    plotter.plot_all_spectra(binSize=1)
+    # plotter.plot_all_spectra(binSize=1)
+    plotter.plot_images()
+    for idx, (file, data) in enumerate(plotter.dataDict.items()):
+        summed_array = np.sum(data[29:39, :], axis=0)
+
+        summed_array = (summed_array - np.min(summed_array)) / (np.max(summed_array[500:1500]) - np.min(summed_array))
+        plt.plot(range(len(summed_array)), summed_array+idx, label=file)
+    plt.legend()
+    plt.show()
     breakpoint()
 
 
@@ -114,8 +122,8 @@ if __name__ == '__main__':
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen\07-03'
     # filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\tucsen'
     filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\savetests'
-    # filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\gain_test'
-    # perform_gain_test(filepath)
+    filepath = r'C:\Users\Raman\matchbook\microcontrollers\tuscen\data\gain_test'
+    perform_gain_test(filepath)
     # main(filepath)
     # pre_process_images_nice(filepath, crop=(90,110), show=False)
     new_image_process(filepath)

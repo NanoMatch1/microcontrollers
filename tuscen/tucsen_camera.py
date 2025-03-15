@@ -410,12 +410,14 @@ def load_data(filepath):
 
 def plot_image_SDK(data: tuple, filename='default'):
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(len(data[0, 0, :]), 1)
-    for idx, _ in enumerate(data[0, 0, :]):
-        # breakpoint()
-        spectrum = data[:, :, idx]
-        ax[idx].imshow(spectrum)
-        ax[idx].set_title(filename)
+    fig, ax = plt.subplots()
+
+    if len(data.shape) == 3:
+        spectrum = data[:, :, 0]
+    else:
+        spectrum = data
+    ax.imshow(spectrum)
+    ax.set_title(filename)
     plt.show()
 
 def plot_image_tucsen(data: np.ndarray, filename='default'):

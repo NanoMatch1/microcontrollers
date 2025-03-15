@@ -15,6 +15,10 @@ class LiveDataPlotter:
         self.updating = True
         self.roi = None  # Region of Interest for autoscaling
 
+        self.data_mode = "Image"
+        self.spectrum_roi = (75,85)
+
+
         # Initialize Tkinter and Matplotlib
         self.root = tk.Tk()
         self.root.title("Live Data Plotter")
@@ -25,9 +29,7 @@ class LiveDataPlotter:
         self.ax.vlines([50], 0, 70000)
         
         # Set up a Tkinter canvas for Matplotlib
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
-        self.canvas.draw()
-        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+        self._build_canvas()
 
         # Create control buttons and entry fields
         self.create_controls()
@@ -35,6 +37,35 @@ class LiveDataPlotter:
         # Start a background thread to monitor the file and update the plot
         self.monitor_thread = threading.Thread(target=self.monitor_file, daemon=True)
         self.monitor_thread.start()
+    
+    def _build_canvas(self):
+        """ Destroy the old canvas, create a new figure, and add it back into the GUI. """
+        if hasattr(self, "canvas"):  # Check if canvas exists before destroying
+            self.canvas.get_tk_widget().destroy()  # Remove the old canvas from Tkinter
+        
+        # Create new figure and axis
+        self.fig, self.ax = plt.subplots()
+        self.canvas = FigureCanvasTkAgg(self.fig, master=self.root)
+        self.canvas.draw()
+        self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
+
+    def toggle_data_mode(self):
+        """ Toggle between 1D spectrum and 2D image display """
+        self.data_mode = "Spectrum" if self.data_mode == "Image" else "Image"
+
+        self._build_canvas()  # Rebuild the entire Matplotlib canvas
+
+        if self.data_mode == "Spectrum":
+            spectrum = self.frame_to_spectrum()
+            self.ax.plot(np.arange(len(spectrum)), spectrum, 'r-')  # Plot 1D spectrum
+        else:
+            self.ax.imshow(self.data, cmap='plasma')  # Plot 2D image
+        
+        self.ax.set_title(self.data_mode)
+        self.canvas.draw()
+
+        # Update button text
+        self.data_mode_button.config(text=self.data_mode)
 
     def create_controls(self):
         # Create a frame for buttons
@@ -64,6 +95,10 @@ class LiveDataPlotter:
         # Reset Autoscale button
         reset_button = tk.Button(button_frame, text="Reset Autoscale", command=self.reset_autoscale)
         reset_button.pack(side=tk.LEFT, padx=5, pady=5)
+        # data mode button
+
+        self.data_mode_button = tk.Button(button_frame, text="{}".format(self.data_mode), command=self.toggle_data_mode)
+        self.data_mode_button.pack(side=tk.LEFT, padx=5, pady=5)
 
     def toggle_autoscale(self):
         self.autoscale_enabled = not self.autoscale_enabled
@@ -111,10 +146,32 @@ class LiveDataPlotter:
         self.canvas.draw()
 
     def update_image(self, data):
-        # Display the image data
-        self.ax.clear()
-        self.ax.imshow(data, cmap='plasma')
-        self.canvas.draw()
+        """ Update the displayed image with autoscaling based on the selected ROI. """
+        self.ax.clear()  # Clear previous plot
+
+        # Define the region of interest for autoscaling
+        if self.roi:
+            min_x, max_x = self.roi
+            roi_data = data[min_x:max_x, :]  # Extract only the region of interest
+        else:
+            roi_data = data  # Use full data if no ROI is set
+
+        # Determine the intensity limits based on ROI
+        vmin, vmax = np.min(roi_data), np.max(roi_data)
+
+        # Plot the image with autoscaled colormap
+        self.ax.imshow(data, cmap='plasma', vmin=vmin, vmax=vmax)
+
+        self.canvas.draw()  # Refresh the Tkinter canvas
+
+    def frame_to_spectrum(self, roi=None):
+        # Calculate the sum of each frame and store in the first column
+        if not roi:
+            roi = self.spectrum_roi
+
+        spectrum_data = np.average(self.data[roi[0]:roi[1]], axis=0)
+        return spectrum_data
+
 
     def monitor_file(self):
         while True:
@@ -123,27 +180,25 @@ class LiveDataPlotter:
                     if os.path.exists(self.file_path):
                         # Load data from the file
                         try:
-                            data = np.load(self.file_path)
+                            self.data = np.load(self.file_path)
+                            if len(self.data.shape) == 3:
+                                self.data = self.data[:, :, 0]
                         except Exception as e:
                             print(f"Error loading data from file {self.file_path}: {e}")
                             time.sleep(1)
                             continue
 
-                        if len(data.shape) > 1:
-                            if data.shape[1] > 2:
-                            # data2 = data[:, :, 1] # looks like this channel is empty, very low values
-                            # breakpoint()
-                                self.update_image(data)
-                            else:
-                                self.update_plot(data[:, 0])
+                        if self.data_mode == "Image":
+                            self.update_image(self.data)
                         else:
-                        # Update the plot with the loaded data
-                            self.update_plot(data)
+                            spectrum = self.frame_to_spectrum()
+                            self.update_plot(spectrum)
                 except PermissionError:
                     print(f"Permission denied to access file {self.file_path}.")
                 except Exception as e:
                     print(f"Error processing file:\n{traceback.format_exc()}")
             time.sleep(0.1)  # Wait before checking again
+
 
     def start(self):
         # Start the Tkinter event loop

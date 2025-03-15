@@ -15,6 +15,8 @@ class LiveDataPlotter:
         self.updating = True
         self.roi = None  # Region of Interest for autoscaling
 
+        self.data_mode = "Image"
+
         # Initialize Tkinter and Matplotlib
         self.root = tk.Tk()
         self.root.title("Live Data Plotter")
@@ -65,6 +67,19 @@ class LiveDataPlotter:
         # Reset Autoscale button
         reset_button = tk.Button(button_frame, text="Reset Autoscale", command=self.reset_autoscale)
         reset_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+        # data mode button
+        data_mode_button = tk.Button(button_frame, text="{}".format(self.data_mode), command=self.toggle_data_mode)
+        data_mode_button.pack(side=tk.LEFT, padx=5, pady=5)
+
+    def toggle_data_mode(self):
+        if self.data_mode == "Image":
+            self.data_mode = "Spectrum"
+            spectrum = self.frame_to_spectrum()
+            self.update_plot(spectrum[:, 0])
+        else:
+            self.data_mode = "Image"
+            self.update_image(self.data)
 
     def toggle_autoscale(self):
         self.autoscale_enabled = not self.autoscale_enabled
@@ -128,6 +143,15 @@ class LiveDataPlotter:
 
         self.canvas.draw()
 
+    def frame_to_spectrum(self, roi=None):
+        # Calculate the sum of each frame and store in the first column
+        if not roi:
+            roi = self.spectrum_roi
+
+        spectrum_data = np.average(self.data[roi[0]:roi[1]], axis=0)
+        return spectrum_data
+
+
     def monitor_file(self):
         while True:
             if self.updating:
@@ -141,16 +165,12 @@ class LiveDataPlotter:
                             time.sleep(1)
                             continue
 
-                        if len(data.shape) > 1:
-                            if data.shape[1] > 2:
-                            # data2 = data[:, :, 1] # looks like this channel is empty, very low values
-                            # breakpoint()
-                                self.update_image(data)
-                            else:
-                                self.update_plot(data[:, 0])
+                        if self.data_mode == "Image":
+                            breakpoint()
+                            self.update_image(self.data)
                         else:
-                        # Update the plot with the loaded data
-                            self.update_plot(data)
+                            spectrum = self.frame_to_spectrum()
+                            self.update_plot(spectrum[:, 0])
                 except PermissionError:
                     print(f"Permission denied to access file {self.file_path}.")
                 except Exception as e:

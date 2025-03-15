@@ -165,7 +165,7 @@ class LiveDataPlotter:
 if __name__ == "__main__":
     # Replace with your actual file path
     scriptDir = os.path.dirname(__file__)
-    file_path = os.path.join(scriptDir, 'transient', 'test_0.npy')
+    file_path = os.path.join(scriptDir, 'transient', 'transient_data.npy')
 
     plotter = LiveDataPlotter(file_path)
     plotter.start()

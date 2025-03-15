@@ -188,7 +188,7 @@ class TucamCamera:
             "getinfo": self.get_camera_parameters,
             "debug": self.debug,
             "temp": self.check_camera_temperature,
-            "longexp": self.set_long_exposure_mode,
+            # "longexp": self.set_long_exposure_mode,
             "fan": self.set_fan_speed,
             'logtemp': self.log_camera_temperature,
             'logfan': self.test_fan_speeds,
@@ -227,6 +227,7 @@ class TucamCamera:
             # print('Save the image data success, the path is %#s'%ImgName)
         except Exception:
             print('Grab the frame failure')
+            return None
 
         if debug:
             # For debugging, print some frame details:
@@ -615,7 +616,7 @@ class TucamCamera:
 
         return summed_array
 
-    def start_continuous_acquisition(self, roi=(0, 0, 2048, 2048), exposure=200):
+    def start_continuous_acquisition(self):
         """
         Start a continuous acquisition thread until told to stop via stop_continuous_acquisition().
         Each frame is saved as .npy into self.transient_dir.
@@ -623,29 +624,26 @@ class TucamCamera:
         if self.is_running:
             print("Camera is already running continuous acquisition!")
             return
+        
+        self.allocate_buffer_and_start()
 
         # Set up for continuous acquisition
         def continuous_task():
             self.stop_flag.clear()
-            # self.open_camera(0)
-            # self.set_roi(roi)
-            # self.set_acqtime(exposure)
 
             while not self.stop_flag.is_set():
                 try:
                     with self.camera_lock:
-                        cam_data = self.wait_for_image_data()
-                    data = cam_data.convert_to_numpy()
-                    # data = self._process_frame(data)
+                        data = self.wait_for_image_data()
+                    if data is None:
+                        print("Failed to acquire frame.")
+                        break
                     self.export_data(data, 'transient_data', save_dir=self.transient_dir, overwrite=True)
                     time.sleep(0.001)
-                    del data_dict
                 except Exception as e:
                     print(f"Acquisition error: {e}")
                     print(traceback.format_exc())
                     break
-
-            # self.close_camera()
 
         acq_thread = threading.Thread(target=continuous_task, daemon=True)
         acq_thread.start()
@@ -660,74 +658,7 @@ class TucamCamera:
         print("Stopping continuous acquisition.")
         self.stop_flag.set()
         self.is_running = False
-
-    # def wait_for_image_data(self, report=True):
-    #     """
-    #     Waits for camera frames and converts them to numpy arrays.
-    #     Adjusts timeout dynamically based on exposure time.
-    #     """
-    #     # data_dict = {}
-
-    #     # Retrieve current exposure time
-    #     exposure_time = ctypes.c_double()
-    #     TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, byref(exposure_time), 0)
-
-    #     # Ensure timeout is at least twice the exposure time (for safety margin)
-    #     timeout = max(2 * exposure_time.value, 10000)  # Minimum 1000ms
-
-    #     cam_data = TucamData(self)
-    #     cam_data.wait_for_frame(timeout=timeout)
-
-    #     # m_fs = TUCAM_FILE_SAVE()
-    #     # m_frame = TUCAM_FRAME()
-    #     # m_format = TUIMG_FORMATS
-    #     # m_frformat = TUFRM_FORMATS
-    #     # m_capmode = TUCAM_CAPTURE_MODES
-    #     # m_frame.pBuffer = 0
-    #     # m_frame.ucFormatGet = TUFRM_FORMATS.TUFRM_FMT_USUAl.value
-    #     # m_frame.uiRsdSize = 1
-
-    #     # m_fs.nSaveFmt = m_format.TUFMT_TIF.value
-
-
-    #     if report:
-    #         print(f"Frame: width={cam_data.m_frame.usWidth}, height={cam_data.m_frame.usHeight}")
-
-    #             # if save is True:
-    #             #     image_name = os.path.join(self.script_dir, 'transient_image_{}.tif'.format(i))
-    #             #     m_fs.pFrame = pointer(m_frame)
-    #             #     m_fs.pstrSavePath = image_name.encode('utf-8')
-    #             #     TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
-    #             #     print('Save the image data success, the path is %#s'%image_name)
-    #         # except Exception as e:
-    #             # if "is not a valid TUCAMRET" in str(e):
-    #             #     print("Cam error: refreshing...")
-    #             #     self.refresh()
-    #             #     print("attempting to reacquire frame...")
-    #             #     try:
-    #             #         _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), int(timeout))
-    #             #         print("Frame acquired.")
-    #             #         continue
-    #             #     except Exception as f:
-    #             #         print(f"Failed to acquire frame {i}: {f}")
-
-    #             # print(e)
-    #             # print(traceback.format_exc())
-    #             # print(f"Frame timeout exceeded ({timeout}ms). Increase timeout if necessary.")
-    #             # continue
-
-    #         # # Convert to numpy
-    #         # try:
-    #         #     data = self._convert_to_numpy(m_frame)
-    #         #     data_dict[i] = data
-    #         # except Exception as e:
-    #         #     print(f"Convert to numpy failed for frame {i}: {e}")
-
-    #     # TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
-    #     # TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
-    #     # TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
-
-    #     return cam_data
+        self.deallocate_buffer_and_stop()
     
     def check_camera_temperature(self, report=True):
         """
@@ -746,32 +677,32 @@ class TucamCamera:
 
         return temp.value
 
-    def set_long_exposure_mode(self):
-        """
-        Set the camera to a mode that best supports long exposures.
-        """
-        print("Setting camera to long exposure mode...")
+    # def set_long_exposure_mode(self):
+    #     """
+    #     Set the camera to a mode that best supports long exposures.
+    #     """
+    #     print("Setting camera to long exposure mode...")
 
-        # 1. Set image mode to CMS (best for long exposure stability)
-        status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, 1, 0)
-        if status == TUCAMRET.TUCAMRET_SUCCESS:
-            print("Set Image Mode to CMS (12-bit).")
-        else:
-            print("Failed to set Image Mode.")
+    #     # 1. Set image mode to CMS (best for long exposure stability)
+    #     status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDC_IMGMODESELECT.value, 1, 0)
+    #     if status == TUCAMRET.TUCAMRET_SUCCESS:
+    #         print("Set Image Mode to CMS (12-bit).")
+    #     else:
+    #         print("Failed to set Image Mode.")
 
-        # 2. Disable automatic exposure control (if enabled)
-        status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ATEXPOSURE.value, 0)
-        if status == TUCAMRET.TUCAMRET_SUCCESS:
-            print("Disabled automatic exposure control.")
-        else:
-            print("Failed to disable automatic exposure control.")
+    #     # 2. Disable automatic exposure control (if enabled)
+    #     status = TUCAM_Capa_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDCAPA.TUIDC_ATEXPOSURE.value, 0)
+    #     if status == TUCAMRET.TUCAMRET_SUCCESS:
+    #         print("Disabled automatic exposure control.")
+    #     else:
+    #         print("Failed to disable automatic exposure control.")
 
-        # 3. Ensure a stable gain setting (HighGain recommended)
-        status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, 1, 0)
-        if status == TUCAMRET.TUCAMRET_SUCCESS:
-            print("Set Gain to HighGain.")
-        else:
-            print("Failed to set Gain.")
+    #     # 3. Ensure a stable gain setting (HighGain recommended)
+    #     status = TUCAM_Prop_SetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_GLOBALGAIN.value, 1, 0)
+    #     if status == TUCAMRET.TUCAMRET_SUCCESS:
+    #         print("Set Gain to HighGain.")
+    #     else:
+    #         print("Failed to set Gain.")
 
 
     def set_acqtime(self, value):

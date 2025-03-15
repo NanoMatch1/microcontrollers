@@ -64,12 +64,12 @@ class TucamData:
     def __init__(self, camera, filename=None, save_dir=None):
         self.camera = camera
         self.data = None
-        self.script_dir = os.path.dirname(os.path.abspath(__file__))
 
-        if filename is None:
-            self.filename = 'default.tif'
-        if save_dir is None:
-            self.save_dir = os.path.join(self.script_dir, 'data')
+
+        # if filename is None:
+        #     self.filename = 'default.tif'
+        # if save_dir is None:
+        #     self.save_dir = os.path.join(self.script_dir, 'data')
 
         self.m_fs = TUCAM_FILE_SAVE()
         self.m_frame = TUCAM_FRAME()
@@ -118,17 +118,17 @@ class TucamData:
 
 
 
-    def load_tiff(self, filepath):
-        with Image.open(filepath) as img:
-            np_array = np.array(img)
-        return np_array
+    # def load_tiff(self, filepath):
+    #     with Image.open(filepath) as img:
+    #         np_array = np.array(img)
+    #     return np_array
 
-    def convert_to_numpy(self):
-        transient_file = os.path.join(self.save_dir, 'transient.tif')
-        self.save_image(filepath=transient_file)
-        data = self.load_tiff(transient_file)
-        os.remove(transient_file) # Clean up the transient file
-        return data
+    # def convert_to_numpy(self):
+    #     transient_file = os.path.join(self.save_dir, 'transient.tif')
+    #     self.save_image(filepath=transient_file)
+    #     data = self.load_tiff(transient_file)
+    #     os.remove(transient_file) # Clean up the transient file
+    #     return data
     
 
 
@@ -201,7 +201,68 @@ class TucamCamera:
 
         }
 
+        self.tucam_data = TucamData(self)
+
         print('Finished TucsenCamera init')
+
+    def allocate_buffer(self):
+        TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(self.tucam_data.m_frame))
+
+    def wait_for_image_data(self, report=True, timeout=10000, debug=False):
+        TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, self.tucam_data.m_capmode.TUCCM_SEQUENCE.value)
+
+        try:
+            result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(self.tucam_data.m_frame), timeout)
+            # ImgName = os.path.join(self.script_dir, 'testing', 'test_image')
+            # m_fs.pFrame = pointer(m_frame)
+            # m_fs.pstrSavePath = ImgName.encode('utf-8')
+            # ch:保存数据帧到硬盘 | en:Save image to disk
+            # TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
+            # print('Save the image data success, the path is %#s'%ImgName)
+        except Exception:
+            print('Grab the frame failure')
+
+        if debug:
+            # For debugging, print some frame details:
+            print("Header size:", self.tucam_data.m_frame.usHeader)
+            print("Image size:", self.tucam_data.m_frame.uiImgSize)
+            print("Dimensions:", self.tucam_data.m_frame.usWidth, "x", self.tucam_data.m_frame.usHeight)
+            print("Channels:", self.tucam_data.m_frame.ucChannels, "Depth:", self.tucam_data.m_frame.ucDepth, "Elem bytes:", self.tucam_data.m_frame.ucElemBytes)
+
+        data = self._frame_to_numpy()
+        return data
+
+    def _frame_to_numpy(self):
+        # Calculate total buffer size (header + image data)
+        total_size = self.tucam_data.m_frame.usHeader + self.tucam_data.m_frame.uiImgSize
+
+        # Cast pBuffer to an array of unsigned bytes
+        raw_bytes = np.ctypeslib.as_array(
+            cast(self.tucam_data.m_frame.pBuffer, POINTER(ctypes.c_ubyte)),
+            shape=(total_size,)
+        )
+
+        # Extract the image data bytes by skipping the header
+        img_bytes = raw_bytes[self.tucam_data.m_frame.usHeader: self.tucam_data.m_frame.usHeader + self.tucam_data.m_frame.uiImgSize]
+
+        # For 16-bit data, each pixel element consists of 2 bytes.
+        # Convert the raw bytes to a 16-bit numpy array.
+        # Note: uiImgSize is in bytes, so the number of 16-bit elements is uiImgSize // 2.
+        img_data = np.frombuffer(img_bytes.tobytes(), dtype=np.uint16)
+
+        # Verify that the size matches the expected dimensions:
+        expected_elements = self.tucam_data.m_frame.usWidth * self.tucam_data.m_frame.usHeight * self.tucam_data.m_frame.ucChannels
+        if img_data.size != expected_elements:
+            print("Warning: Number of image elements does not match expected dimensions.")
+
+        # Reshape the 1D array into the 3D image shape (height, width, channels)
+        try:
+            img = np.reshape(img_data, (self.tucam_data.m_frame.usHeight, self.tucam_data.m_frame.usWidth, self.tucam_data.m_frame.ucChannels))
+            return img
+        except Exception as e:
+            print("Reshape failed:", e)
+            return None
+
 
     def acquire(self):
         m_fs = TUCAM_FILE_SAVE()
@@ -482,15 +543,11 @@ class TucamCamera:
 
     def acquire_one_frame(self, save_dir='data', export=False):
         """
-        acquire a single frame and return a numpy array object.
+        acquire a single frame
         """
-        # self.open_camera(0)
-        # self.set_roi((0, 0, 2048, 2048))
-        # self.set_acqtime(200)
+        self.allocate_buffer()
 
-        cam_data = TucamCamera(self)
-
-        cam_data = self.wait_for_image_data()
+        data = self.wait_for_image_data()
         data = cam_data.convert_to_numpy()
         # data = data_dict[0]
         # data = self._process_frame(data)
@@ -594,73 +651,73 @@ class TucamCamera:
         self.stop_flag.set()
         self.is_running = False
 
-    def wait_for_image_data(self, report=True):
-        """
-        Waits for camera frames and converts them to numpy arrays.
-        Adjusts timeout dynamically based on exposure time.
-        """
-        # data_dict = {}
+    # def wait_for_image_data(self, report=True):
+    #     """
+    #     Waits for camera frames and converts them to numpy arrays.
+    #     Adjusts timeout dynamically based on exposure time.
+    #     """
+    #     # data_dict = {}
 
-        # Retrieve current exposure time
-        exposure_time = ctypes.c_double()
-        TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, byref(exposure_time), 0)
+    #     # Retrieve current exposure time
+    #     exposure_time = ctypes.c_double()
+    #     TUCAM_Prop_GetValue(self.TUCAMOPEN.hIdxTUCam, TUCAM_IDPROP.TUIDP_EXPOSURETM.value, byref(exposure_time), 0)
 
-        # Ensure timeout is at least twice the exposure time (for safety margin)
-        timeout = max(2 * exposure_time.value, 10000)  # Minimum 1000ms
+    #     # Ensure timeout is at least twice the exposure time (for safety margin)
+    #     timeout = max(2 * exposure_time.value, 10000)  # Minimum 1000ms
 
-        cam_data = TucamData(self)
-        cam_data.wait_for_frame(timeout=timeout)
+    #     cam_data = TucamData(self)
+    #     cam_data.wait_for_frame(timeout=timeout)
 
-        # m_fs = TUCAM_FILE_SAVE()
-        # m_frame = TUCAM_FRAME()
-        # m_format = TUIMG_FORMATS
-        # m_frformat = TUFRM_FORMATS
-        # m_capmode = TUCAM_CAPTURE_MODES
-        # m_frame.pBuffer = 0
-        # m_frame.ucFormatGet = TUFRM_FORMATS.TUFRM_FMT_USUAl.value
-        # m_frame.uiRsdSize = 1
+    #     # m_fs = TUCAM_FILE_SAVE()
+    #     # m_frame = TUCAM_FRAME()
+    #     # m_format = TUIMG_FORMATS
+    #     # m_frformat = TUFRM_FORMATS
+    #     # m_capmode = TUCAM_CAPTURE_MODES
+    #     # m_frame.pBuffer = 0
+    #     # m_frame.ucFormatGet = TUFRM_FORMATS.TUFRM_FMT_USUAl.value
+    #     # m_frame.uiRsdSize = 1
 
-        # m_fs.nSaveFmt = m_format.TUFMT_TIF.value
+    #     # m_fs.nSaveFmt = m_format.TUFMT_TIF.value
 
 
-        if report:
-            print(f"Frame: width={cam_data.m_frame.usWidth}, height={cam_data.m_frame.usHeight}")
+    #     if report:
+    #         print(f"Frame: width={cam_data.m_frame.usWidth}, height={cam_data.m_frame.usHeight}")
 
-                # if save is True:
-                #     image_name = os.path.join(self.script_dir, 'transient_image_{}.tif'.format(i))
-                #     m_fs.pFrame = pointer(m_frame)
-                #     m_fs.pstrSavePath = image_name.encode('utf-8')
-                #     TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
-                #     print('Save the image data success, the path is %#s'%image_name)
-            # except Exception as e:
-                # if "is not a valid TUCAMRET" in str(e):
-                #     print("Cam error: refreshing...")
-                #     self.refresh()
-                #     print("attempting to reacquire frame...")
-                #     try:
-                #         _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), int(timeout))
-                #         print("Frame acquired.")
-                #         continue
-                #     except Exception as f:
-                #         print(f"Failed to acquire frame {i}: {f}")
+    #             # if save is True:
+    #             #     image_name = os.path.join(self.script_dir, 'transient_image_{}.tif'.format(i))
+    #             #     m_fs.pFrame = pointer(m_frame)
+    #             #     m_fs.pstrSavePath = image_name.encode('utf-8')
+    #             #     TUCAM_File_SaveImage(self.TUCAMOPEN.hIdxTUCam, m_fs)
+    #             #     print('Save the image data success, the path is %#s'%image_name)
+    #         # except Exception as e:
+    #             # if "is not a valid TUCAMRET" in str(e):
+    #             #     print("Cam error: refreshing...")
+    #             #     self.refresh()
+    #             #     print("attempting to reacquire frame...")
+    #             #     try:
+    #             #         _ = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(m_frame), int(timeout))
+    #             #         print("Frame acquired.")
+    #             #         continue
+    #             #     except Exception as f:
+    #             #         print(f"Failed to acquire frame {i}: {f}")
 
-                # print(e)
-                # print(traceback.format_exc())
-                # print(f"Frame timeout exceeded ({timeout}ms). Increase timeout if necessary.")
-                # continue
+    #             # print(e)
+    #             # print(traceback.format_exc())
+    #             # print(f"Frame timeout exceeded ({timeout}ms). Increase timeout if necessary.")
+    #             # continue
 
-            # # Convert to numpy
-            # try:
-            #     data = self._convert_to_numpy(m_frame)
-            #     data_dict[i] = data
-            # except Exception as e:
-            #     print(f"Convert to numpy failed for frame {i}: {e}")
+    #         # # Convert to numpy
+    #         # try:
+    #         #     data = self._convert_to_numpy(m_frame)
+    #         #     data_dict[i] = data
+    #         # except Exception as e:
+    #         #     print(f"Convert to numpy failed for frame {i}: {e}")
 
-        # TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
-        # TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
-        # TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
+    #     # TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
+    #     # TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
+    #     # TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
 
-        return cam_data
+    #     return cam_data
     
     def check_camera_temperature(self, report=True):
         """

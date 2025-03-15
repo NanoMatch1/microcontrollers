@@ -173,6 +173,7 @@ class TucamCamera:
             "test": self.acquire,
             "acquire": self.safe_acquisition,
             "acqnow": self.acquire_one_frame,
+            "transient": self.acquire_transient,
             "run": self.start_continuous_acquisition,
             "stop": self.stop_continuous_acquisition,
             "refresh": self.refresh,
@@ -205,11 +206,16 @@ class TucamCamera:
 
         print('Finished TucsenCamera init')
 
-    def allocate_buffer(self):
+    def allocate_buffer_and_start(self):
         TUCAM_Buf_Alloc(self.TUCAMOPEN.hIdxTUCam, pointer(self.tucam_data.m_frame))
+        TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, self.tucam_data.m_capmode.TUCCM_SEQUENCE.value)
+
+    def deallocate_buffer_and_stop(self):
+        TUCAM_Buf_AbortWait(self.TUCAMOPEN.hIdxTUCam)
+        TUCAM_Cap_Stop(self.TUCAMOPEN.hIdxTUCam)
+        TUCAM_Buf_Release(self.TUCAMOPEN.hIdxTUCam)
 
     def wait_for_image_data(self, report=True, timeout=10000, debug=False):
-        TUCAM_Cap_Start(self.TUCAMOPEN.hIdxTUCam, self.tucam_data.m_capmode.TUCCM_SEQUENCE.value)
 
         try:
             result = TUCAM_Buf_WaitForFrame(self.TUCAMOPEN.hIdxTUCam, pointer(self.tucam_data.m_frame), timeout)
@@ -541,22 +547,26 @@ class TucamCamera:
             print(f"Failed to set fan speed. Error code: {status}")
 
 
-    def acquire_one_frame(self, save_dir='data', export=False):
+    def acquire_one_frame(self, save_dir='data', export=True):
         """
         acquire a single frame
         """
-        self.allocate_buffer()
-
+        self.allocate_buffer_and_start()
         data = self.wait_for_image_data()
-        data = cam_data.convert_to_numpy()
-        # data = data_dict[0]
-        # data = self._process_frame(data)
 
-        # self.close_camera()
         if export is True:
             self.export_data(data, 'test', overwrite=False, save_dir=os.path.join(self.script_dir, save_dir))
             time.sleep(0.001)
 
+        self.deallocate_buffer_and_stop()
+        return data
+    
+    def acquire_transient(self, save_dir='transient', export=True):
+        """
+        acquire a single frame
+        """
+        data = self.acquire_one_frame(save_dir=save_dir, export=export)
+        breakpoint()
         return data
         
     def frame_to_spectrum_old(self, frame, bin_x=1):

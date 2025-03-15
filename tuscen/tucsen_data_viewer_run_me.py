@@ -29,9 +29,10 @@ class LiveDataPlotter:
         self.canvas.draw()
         self.canvas.get_tk_widget().pack(side=tk.TOP, fill=tk.BOTH, expand=1)
 
+
         # Create control buttons and entry fields
         self.create_controls()
-
+        
         # Start a background thread to monitor the file and update the plot
         self.monitor_thread = threading.Thread(target=self.monitor_file, daemon=True)
         self.monitor_thread.start()
@@ -113,7 +114,18 @@ class LiveDataPlotter:
     def update_image(self, data):
         # Display the image data
         self.ax.clear()
-        self.ax.imshow(data, cmap='gray', aspect='auto')
+        self.ax.imshow(data, cmap='plasma')
+
+        # if self.autoscale_enabled:
+        #     if self.roi:  # Scale Y-axis based on ROI
+        #         min_x, max_x = self.roi
+        #         roi_data = data[min_x:max_x, :]
+        #         y_min, y_max = np.min(roi_data), np.max(roi_data)
+        #         self.ax.set_ylim(y_min, y_max)
+        #     else:
+        #         self.ax.relim()
+        #         self.ax.autoscale_view()
+
         self.canvas.draw()
 
     def monitor_file(self):
@@ -153,7 +165,7 @@ class LiveDataPlotter:
 if __name__ == "__main__":
     # Replace with your actual file path
     scriptDir = os.path.dirname(__file__)
-    file_path = os.path.join(scriptDir, 'transient', 'transient_data.npy')
+    file_path = os.path.join(scriptDir, 'transient', 'test_0.npy')
 
     plotter = LiveDataPlotter(file_path)
     plotter.start()

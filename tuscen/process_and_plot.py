@@ -24,12 +24,18 @@ def main(filepath):
     plotter.crop_data((75,135))
 
     plotter.average_all_data()
+
     # breakpoint()
     plotter.image_to_spectrum_all()
+    plotter.plot_all_spectra(binSize=8)
     # breakpoint()
     plotter.organise_data()
+    dataBG = next(iter(plotter.bgDict.values()))
+    data_unsub = next(iter(plotter.dataDict.values()))
     plotter.subtract_BG()
-    plotter.plot_all_spectra(binSize=10)
+    plotter.dataDict['BG'] = dataBG
+    plotter.dataDict['data_unsub'] = data_unsub
+    plotter.plot_all_spectra(binSize=8)
     # plotter.plot_images()
     
 

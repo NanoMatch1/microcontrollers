@@ -316,9 +316,9 @@ class Plotter:
         plt.show()
 
     def image_to_spectrum_all(self):
-        for key, value in self.dataDict.items():
+        for filename, value in self.dataDict.items():
             dataY = np.sum(value, axis=0)
-            self.dataDict[key] = dataY
+            self.dataDict[filename] = dataY
             # breakpoint()
         
 
@@ -330,9 +330,11 @@ class Plotter:
     def subtract_BG(self):
         if len(self.bgDict) > 1:
             assert "Error multiple BG files"
+        dataBG = next(iter(self.bgDict.values()))
         for filename, data in self.dataDict.items():
-
-
+            subtractedData = np.subtract(data, dataBG)
+            self.dataDict[filename] = subtractedData
+        
 
     def plot_all_spectra(self, binSize=1):
         from matplotlib import pyplot as plt

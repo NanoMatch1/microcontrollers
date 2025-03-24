@@ -206,6 +206,7 @@ class Plotter:
     def __init__(self, dataDir=None):
         # import matplotlib.pyplot as plt
         self.scriptDir = os.path.dirname(os.path.abspath(__file__))
+        self.bg_dict = {}
         if dataDir is None:
             self.dataDir = os.path.join(self.scriptDir, 'data')
         else:
@@ -228,6 +229,7 @@ class Plotter:
             try:
                 if filename.endswith('.npy'):
                     data = self.load_data(filepath)
+                    data = data.astype(float)
                 elif filename.endswith('.tif'):
                     data = self.load_tif_as_numpy(filepath)
                 else:
@@ -281,17 +283,50 @@ class Plotter:
             np_array = np.array(img)
         return np_array
     
+    def find_background(self):
+        for file, data in self.dataDict.items():
+            if "_BG" in file:
+                basename = file.replace("_BG", "")
+                self.bg_dict[basename] = data
+                print(f"Background found for {basename}")
+            
+        return self.bg_dict
+
+    def subtract_background(self):
+        self.find_background()
+        newDict = {}
+        for file, data in self.dataDict.items():
+            if "_BG" in file:
+                continue
+            basename = file.replace(".npy", "")
+            for bg_file, bg_data in self.bg_dict.items():
+                if basename in bg_file:
+                    data = data - bg_data
+                    newDict[file] = data
+                    print(f"Background subtracted for {basename}")
+                else:
+                    print(f"No background found for {basename}")
+
+        self.dataDict = newDict
+        return newDict
+
+    
     def plot_images(self):
         for key, value in self.dataDict.items():
             if value.ndim == 3:
-                plot_image_SDK(value)
+                plot_image_SDK(value, filename=key)
             elif value.ndim == 2:
-                plot_image_tucsen(value)
+                plot_image_tucsen(value, filename=key)
 
-    def crop_data(self, crop_range):
+    def crop_data(self, crop_range=None):
         newDict = {}
         for key, value in self.dataDict.items():
-            data = value[crop_range[0]:crop_range[1], :]
+            if crop_range is None:
+                crop_range = (2, len(value[:, 0]) - 2) # Crop the first and last 2 pixels
+            if key.endswith('.npy'):
+                data = value[crop_range[0]:crop_range[1], :, :]
+            elif key.endswith('.tif'):
+                data = value[crop_range[0]:crop_range[1], :]
 
             newDict[key] = data
         self.dataDict = newDict
@@ -302,7 +337,8 @@ class Plotter:
         import matplotlib.pyplot as plt
 
         dataY = np.sum(data, axis=0)
-        dataY = np.add.reduceat(dataY, np.arange(0, dataY.size, binSize)) 
+        if binSize > 1:
+            dataY = np.add.reduceat(dataY, np.arange(0, dataY.size, binSize)) 
         # breakpoint()
         # dataY = np.sum(data, axis=0)
         dataX = np.arange(dataY.size)
@@ -312,7 +348,38 @@ class Plotter:
         # dataY = data
         # breakpoint()
         
-        plt.plot(dataX, dataY)
+        plt.plot(dataX, dataY, label='')
+        # plt.show()
+
+    def plot_all_spectra(self, binSize=1, offset=0):
+        import matplotlib.pyplot as plt
+        for idx, (key, value) in enumerate(self.dataDict.items()):
+            # self.plot_spectrum(value, binSize=binSize)
+            if len(value.shape) > 1:
+                dataX = value[:, 0]
+                dataY = value[:, 1] + (offset*idx)
+            
+            else:
+                dataX = np.arange(len(value))
+                dataY = value + (offset*idx)
+            # breakpoint()
+            plt.plot(dataX, dataY, label=key)
+            plt.legend()
+        plt.show()
+
+    def plot_all_subplots(self, binSize=1, offset=0):
+        import matplotlib.pyplot as plt
+        fig, ax = plt.subplots(len(self.dataDict), 1)
+        for idx, (key, value) in enumerate(self.dataDict.items()):
+            if len(value.shape) > 1:
+                dataX = value[:, 0]
+                dataY = value[:, 1] + (offset*idx)
+            
+            else:
+                dataX = np.arange(len(value))
+                dataY = value
+            ax[idx].plot(dataX, dataY, label=key)
+            ax[idx].legend()
         plt.show()
 
     def image_to_spectrum_all(self):
@@ -366,16 +433,22 @@ class Plotter:
 def load_data(filepath):
     return np.load(filepath)
 
-def plot_image_SDK(data: tuple):
+def plot_image_SDK(data: tuple, filename='default'):
     import matplotlib.pyplot as plt
-    fig, ax = plt.subplots(len(data), 1)
-    for idx, spectrum in enumerate(data):
-        ax[idx].imshow(spectrum)
+    fig, ax = plt.subplots()
+
+    if len(data.shape) == 3:
+        spectrum = data[:, :, 0]
+    else:
+        spectrum = data
+    ax.imshow(spectrum)
+    ax.set_title(filename)
     plt.show()
 
-def plot_image_tucsen(data: np.ndarray):
+def plot_image_tucsen(data: np.ndarray, filename='default'):
     import matplotlib.pyplot as plt
     plt.imshow(data)
+    plt.title(filename)
     plt.show()
 
 def plot_spectrum(data):
@@ -417,6 +490,6 @@ if __name__ == '__main__':
             dataB = value[:, :, 1]
             plot_image((dataA, dataB))
         
-    # refresh_camera()
-    # run_cam(set_ROI=(0, 1100, 2048, 400))
+    refresh_camera()
+    run_cam(set_ROI=(0, 1100, 2048, 400))
     # plot_data()

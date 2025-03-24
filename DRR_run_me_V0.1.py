@@ -13,42 +13,10 @@ import tkinter as tk
 from tkinter import ttk
 from tkinter import scrolledtext
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
-
 from types import SimpleNamespace
 from dataclasses import dataclass
+
 from pixis_camera import PIXISCam
-
-# 806.45
-# 806.4
-# new 700 = 92167
-
-'''# looking for some kind of response like "b" or "o". Use command "O2000" to enter into command mode.
-# Polyfit calibration 24/08/27: [-1.28255101e-02 -4.23233709e+01  4.22414334e+04]
-Initial grating is Blaze 500, 1200 g/mm
-centre for 532 nm is roughly 241543
-centre for sulfur at ~800 nm is 376886 (apd laser at "370686"/371736) (NEW 23/05 375131) (ccd+= 6000) 374414
-List of useful commands = {
-"Initiate command mode": "02000",
-# "Initialise Spectrometer: "A",
-"read motor position": "H0",
-"read slit position: "j0,0",
-"move slit relative: "k0,0,100"
-"poll motors after move command sent - necessary because control is given to PC immediately after command is given, but new motor command cannot be issued until motor motion is stopped. Implement a check for this here. Note if the motors are not busy, a timeout is received... could be a delay/timing issue: "E",
-"move exit mirror to front exit (out of path): "f0".
-"move exit mirror to side exit (in path): "e0",
-"entrance mirror to front enterance: "c0",
-"entrance mirror to side enterance: "d0"
-
-
-'''
-
-
-# def poly_sin_modulation_fit(x, a2, a1, a0, A, B, C, D):
-#     # Polynomial part
-#     poly = a2 * x**2 + a1 * x + a0
-#     # Sinusoidal modulation part
-#     modulation = A * np.sin(B * x + C) + D
-#     return poly + modulation
 
 class PolySinModulation:
     def __init__(self, a2, a1, a0, A, B, C, D):
@@ -100,176 +68,8 @@ class LinSinModulation:
         linear_part = f"{self.a1}*x + {self.a0}"
         sin_part = f"{self.A}*sin({self.B}*x + {self.C}) + {self.D}"
         return f"LinSinModulation: ({linear_part}) + ({sin_part})"
+   
 
-
-
-class GUI:
-
-    def __init__(self):
-        self.root = tk.Tk()
-        self.root.title("Arduino Command Interface")
-
-        # Setup the serial connection
-        self.microscope = Microscope()
-
-
-class DynamicPlotApp:
-    def __init__(self, master):
-        self.master = master
-        master.title("Dynamic Plotting with Tkinter")
-
-        # Create a matplotlib figure
-        self.fig, self.ax = plt.subplots()
-        self.lines, = self.ax.plot([], [], 'r-')  # Lines to plot
-        self.ax.set_xlim(0, 100)  # Set x-axis limit
-        self.ax.set_ylim(0, 10)  # Set y-axis limit
-
-        # Embed the plot in the Tkinter window
-        self.canvas = FigureCanvasTkAgg(self.fig, master=self.master)
-        self.canvas_widget = self.canvas.get_tk_widget()
-        self.canvas_widget.pack(fill=tk.BOTH, expand=True)
-
-        # Initialize plot data
-        self.x_data = []
-        self.y_data = []
-
-        # Add a button to update the plot
-        # self.update_button = ttk.Button(master, text="Update Plot", command=self.update_plot)
-        # self.update_button.pack()
-
-    def update_plot(self, data):
-        # Simulate new data coming in
-        # new_x = len(self.x_data) + 1
-        # new_y = np.random.rand()
-
-        # Update the data
-        self.x_data.append(data[0])
-        self.y_data.append(data[1])
-
-        # Update the plot
-        self.lines.set_data(self.x_data, self.y_data)
-        # self.ax.set_xlim(min(self.x_data), max(self.x_data))  # Optionally adjust limits dynamically
-        self.canvas.draw()
-
-
-    
-
-class DualMonochromator:
-
-    def __init__(self, microscope):
-        self.microscope = microscope
-        self.get_motor_positions()
-
-        self.current_mode = 'additive'
-        self.current_pos = (0, 0)
-
-    def get_motor_positions(self):
-        response = self.microscope.process_coms('Cgetinfo')
-        if response == 'NONE':
-            initial_pos = self.current_pos()
-            home_pos = self.home_motors()
-
-    
-    def home_motors(self):
-        response = self.microscope.process_coms('Chome')
-        self.current_pos = (0, 0)
-        return response
-    
-    def calibration_1(self, wavelength):
-        return # function from calibration file, creating a position in steps for motor 1
-    
-    def calibration_2(self, wavelength):
-        return # function from calibration file, creating a position in steps for motor 2
-    
-    def move_to(self, target_pos):
-        motor_1_pos = self.calibration_1(target_pos)
-        motor_2_pos = self.calibration_2(target_pos)
-
-        response = self.microscope.process_coms('Cmove {} {}'.format(motor_1_pos, motor_2_pos))
-        if response == 'OK':
-            self.current_pos = (motor_1_pos, motor_2_pos)
-        else:
-            print('Error moving monochromator motors')
-            print(response)
-        pass
-
-    def load_calibrations(self):
-        if self.current_mode == 'additive':
-            # load additive calibration file
-            # self.load_additive_calibration()
-            # Shoudl contain calibration for motor 1 and motor 2
-            pass
-        elif self.current_mode == 'subtractive':
-            # load subtractive calibration file
-            pass
-            # self.load_subtractive_calibration()
-            # Should contain calibration for motor 1 and motor 2
-    
-
-        
-
-
-    def add_mode(self):
-        pass
-
-'''Code plan.
-Make dual monochromator class. The mono should know what mode it is in based on a current or previous format. 
-The class is a wrapper for communication with an individual microcontroller. 
-1. It should, on initialisation, send a message to the microcontroller and request motor positions and current mode.
-    a. the current mode should be conveyed to the microcontroller and stored there
-2. if the microcontroller does not have the required information (such as during boot), the mono should home itself.
-    a. before homing, it should save the current position, so that it can return here, including backlash compensation.
-3. all motors should operate under a backlash compensation regime, and approach the target position from the same direction.
-4. the mono should have a method for moving to a target position, and a method for moving to a target wavelength. 
-    a. in Additive mode, Target wavelength will be the primary method for moving the mono.
-    b. in subtractive mode, the target wavelength will also be the primary method for moving, but in this case the target wavelength needs to be BLOCKED rather than transmitted.
-        i. therefore, a two calibration files need to be stored, one for each mode. In additive, the calibration tells the code what wavelength transmission correspons to what motor position. In subtractive, the calibration tells the code what motor position causes the desired wavelength to be blocked.
-        ii. there should be a correction factor which allows one to get closer to the laser line. The correction factor applied will be in units of wavenumbers, which are calibrated to steps by the calibration file.
-5. for safety, the mono class should only allow movement of the motors when the beam is blocked. This can be achieved by having a method which checks the beam status within the microscope class, and if the beam is not blocked, it will block the beam and then move the motors.
-
-there will be homing motors that the monochromator should.'''
-
-
-# class Calibrations:
-
-#     def __init__(self, calibrations):
-#         self.coefficients = calibrations
-#         # self.__dict__.update(np.poly1d(calibrations))
-#         self.__dict__.update({calib: np.poly1d(self.coefficients[calib]) for calib in self.coefficients})
-        
-'''Items still to do:
-Phase 1: High priority
-    1. Add shutter for safety. Use single power mosfet to feed 3-5V power to the shutter.
-        a. Edit the pinhole shutter method to drive this shutter.
-    2. Bring PICAM interface into the microscope. Use a separate class and feed it to the microscope class/microscope class to it.
-    2. Create methods for:
-        a. Acquiring a spectrum of a given range. This requires multiple scans and stitching them together. Note this can now be done internally using the PICAM interface
-            i. write triax control code. needs polling method for moving motors
-            i. This requires a data save method. use the ui to enter a filename, and save the data to a file.
-        b. a basic laser excitation scan. This will simply acquire a spectrum at a range of wavelengths with a given resolution.
-            i. make the scan method agnistic, so it can be used in the final version of the multidiemensional scans.
-        c. Create a method for exporting a map of the data structure. This should eventually accommodate multi-dimensional data including wavelength, position, and polarization.
-
- >>> Start scanning MoS2 powder
-
-Phase 2: In preparation of scanning MoS2 flakes
-    1. Add motor control for the sample stage.
-    2. Enclose system.
-    3. Add input polarization control.
-    4. Add output polarization control.
-    5. Create multidimensional scan method.
-    6. Motorise L3. Create calibration for L3.
-
->>> Scan MoS2 flakes or WSe2 flakes
-
-Phase 3: Polishing the system
-    1. Create homing protocols for all motors.
-    2. Add control of laser
-    3. Try changing spectrometer control to RS232/MEGA UART
-    4. Create all autocalibration methods.
-    5. Try switch to linux
-    6. Build single board computer for control
-'''
 
 @dataclass
 class MotorPositions:
@@ -280,11 +80,6 @@ class MotorPositions:
 
 class Microscope:
 
-    # calibration_backup = {"wl_to_triax_steps": [0.10804683994803718, 331.8588098129754, 43950.89354704326], "triax_steps_to_wl": [-5.094413299766325e-08, -0.01590813394008432, 802.7653861488677], "wl_to_l1": [-0.01252753345943214, -42.75470684410267, 42395.08424620002], "l1_to_wl": [-5.094413299758575e-08, -0.015908133940084567, 802.765386148867], "wl_to_l2": [0.004068479941637935, 20.30418040830074, -18891.41344719332], "l2_to_wl": [-2.1134374286916415e-07, 0.03727793396921931, 801.6492620060089], "wl_to_g1_subtractive": [-0.0009343860392719734, 10.7261833692083, 650945.1172672338, 4.655494031296545, 0.08293861801416774, -28.836971874316305, -658973.3758272409], "g1_to_wl_subtractive": [-3.997416525894944e-06, 0.11504349729740472, 40924.95099077628, -3.7657797835191977, 0.0029830668481275646, 6.0959394773331725, -40119.77931396578], "wl_to_g2": [0.023079240005018726, -45.473382574917395, 8566.991143604224], "g2_to_wl": [4.023690443149823e-05, 0.9297669680984147, 6082.062394487625], "wl_to_g1_additive": [0.005183899414806875, 1.448578450504759, 624081.2598467232, 18.066764876201965, 0.08365631420139119, -29.51008752837752, -628605.1425510542], "g1_to_wl_additive": [-9.626148251565028e-06, 0.10420683828922353, -4848.442236579409, -2.272040105929268, 0.0074373346698996335, 6.471415416643864, 5653.535879138745]}
-
-    # standard positions:
-    # Current laser wavelength: 802.7494779639835
-    # Current grating wavelength: 802.7823897229985
 
     ldr_scan_dict = {
         'l2': {
@@ -334,8 +129,7 @@ class Microscope:
         self.pinhole = None
         self.save_pinhole = None
         self.detector_safety = True
-        # self.current_motor_positions = {'A': {}, 'B': {}}
-        # self.to_addivite = -12990 -13108+39 
+
 
         self.acq_time = 1
         self.centre_wavelength = 376886
@@ -360,9 +154,8 @@ class Microscope:
             'sd': self.go_to_grating_wavelength,
             'st': self.go_to_triax_wavelength,
             'sall': self.go_to_wavelength_all,
-            # 'shift': self.go_to_grating_wavelength,
             'wai': self.get_all_current_positions,
-            'reference': self.reference_calibration, # TODO: Bug where multiple calls are needed to refresh. Looks like grating motors are one step behind.
+            'reference': self.reference_calibration,
             'shift': self.go_to_wavenumber,
             'calshift': self.simple_calibration_shift,
             'isrun': self.wait_for_motors,
@@ -388,13 +181,6 @@ class Microscope:
             'acquire': self.acquire_spectrum,
             'run': self.continuous_acquire,
             'stop': self.stop_continuous_acquire,
-
-            # 'testacq': self.test_acquire_series,
-
-            # 'changemode': self.change_monochromator_mode,
-            # 'setpos': self.set_absolute_positions
-            # additive reference at 220: [83, -13108...]
-
         }
 
         self.camera_dict = {
@@ -403,7 +189,6 @@ class Microscope:
             'roi': self.camera_set_roi,
         }
 
-        # commands for controlling TRIAX spectrometer
         self.spectrometer_dict = {
             'init': 'A',
             'comsmode': '02000',
@@ -429,16 +214,6 @@ class Microscope:
             #'entrance mirror to side enterance': 'd0'
         }
 
-        # commands for sample/stage motion and imaging beamsplitter
-        self.stage_dict = {
-            # 'relative': 'relative',
-            # 'absolute': 'absolute',
-            # 'X': 'X',
-            # 'Y': 'Y',
-            # 'Z': 'Z',
-            # 'imagemode': 'G0 E-500',
-            # 'ramanmode': 'G0 E500'
-        }
 
         self.dual_mono_dict = {
             'add_mode': 'additive',
@@ -448,14 +223,10 @@ class Microscope:
 
         # commands for controlling laser properties
         self.tuning_motor_dict = { # TODO: separate into Stage motion and laser tuning
-            'lambda': 'lambda',
             'atest': 'Atest',
             'btest': 'Btest',
-            'ctest': 'Ctest',
-            'creport': 'Creport',
             'astatus': 'Astatus',
             'bstatus': 'Bstatus',
-            'cstatus': 'Cstatus',
             'z': 'BZ',
             'y': 'BY',
             'x': 'BX',
@@ -478,15 +249,9 @@ class Microscope:
 
         }
 
-        # additive position: Y -12984, subtractive = 0
-
-        self.acquisition_dict = {
-            # 'acq': 'acq', 
-            # 'run': 'run',
+        self.apd_dict = {
             'gsh': 'gsh',
             'rldr0': 'ld0'
-
-
         }
 
         self.laser_dict = {
@@ -1864,7 +1629,7 @@ class Microscope:
             
             # sulfur REF: 210 sd (220 peak)
         
-        # REF: 900 pixels (~ 1 window) ~= 250 cm-1 ~= 13 nm
+    # REF: 900 pixels (~ 1 window) ~= 250 cm-1 ~= 13 nm
 
         if com[0] == 'aapt': # puts the current positions of the motors into a file. Uses laser l1 calibration for the wavelength axis, and uses the raman shift applied to the (l1) calculated laser energy to provide a reference for the grating calibrations.
             command = 'o{}o'.format(self.tuning_motor_dict['gpa'])
@@ -1910,11 +1675,11 @@ class Microscope:
             self.general_dict[com[0]]()
             response = 'Connected to {}'.format(com[0])
 
-        elif com[0] in self.acquisition_dict.keys():
+        elif com[0] in self.apd_dict.keys():
             if len(com) > 1:
-                command = 'm{}{}m'.format(self.acquisition_dict[com[0]], com[1])
+                command = 'm{}{}m'.format(self.apd_dict[com[0]], com[1])
             else:
-                command = 'm{}m'.format(self.acquisition_dict[com[0]])
+                command = 'm{}m'.format(self.apd_dict[com[0]])
             print('UI>UNO:{}'.format(command))
             self.send_command_to_UNO(command)
             time.sleep(0.1)
@@ -2080,9 +1845,9 @@ class Microscope:
                     return end_responses
                 if item != '':
                     end_responses.append(item)
-                    # print(item)
+
             time.sleep(0.01)
-            # else:
+
 
     def extract_data(self, response):
         try:
@@ -2341,119 +2106,6 @@ class Microscope:
                 continue
 
 
-    
-
-    
-
-
-    
-    # def send_command_to_apd(self, command):
-    #     self.apd_serial.write('{}\r'.format(command).encode())
-    #     time.sleep(0.01)
-    #     # response = self.apd_serial.read(self.apd_serial.inWaiting())
-    #     # print(response)
-    #     # 
-
-    # def set_acquisition_time(self, acq_time):
-    #     self.send_command_to_apd('t{}\r'.format(acq_time))
-    #     time.sleep(0.1)
-    #     response = self.apd_serial.read(self.apd_serial.inWaiting())
-    #     print(response)
-    #     code = response.decode().strip('\r\n')
-    #     if code.startswith('aa'):
-    #         acq_time = float(code[2:])
-    #         print('Master Receive - Acquisition time set to: {}'.format(acq_time))
-    #     # 
-    #     time.sleep(1)
-    #     print(self.apd_serial.read(self.apd_serial.inWaiting()))
-
-
-
-
-    # def serial_connect(self, serial_port, baud_rate=115200):
-    #     try:
-    #         # Establish a serial connection
-    #         ser = serial.Serial(serial_port, baud_rate, timeout=1) 
-    #         # print(ser)
-    #         # ser.write('Test\r'.encode())
-    #         time.sleep(self.pico_read_delay)
-    #         response = ser.read(ser.inWaiting())
-    #         print(response)
-    #         return ser
-
-        # except serial.SerialException as e:
-        #     print(f"Error: {e}")
-
-        # finally:
-        #     if 'ser' in locals() and ser.is_open:
-        #         ser.close()
-        
-    # def connect_to_marlin(self):
-    #     ''' Current working pico-MARLIN-coms 19/01/24'''
-    #     # Replace with your serial port and baud rate
-    #     serial_port = 'COM4'  # or 'COM3' for Windows
-    #     baud_rate = 115200  # Adjust as per your Pico's settings
-    #     self.pico_read_delay = 0.1  # This is important! Some Picos need a delay before sending data
-
-    #     comList = {
-
-    #     }
-    #     def get_mode():
-
-    #         while True:
-    #             currentMode = input('Enter the current mode: ramanmode or imagemode')
-    #             if currentMode == 'ramanmode' or currentMode == 'imagemode':
-    #                 return currentMode
-
-    #     self.currentMode = get_mode()
-
-
-    #     try:
-    #         # Establish a serial connection
-    #         ser = serial.Serial(serial_port, baud_rate, timeout=1) 
-    #         # print(ser)
-    #         ser.write('Test\r'.encode())
-    #         time.sleep(self.pico_read_delay)
-    #         response = ser.read(ser.inWaiting())
-    #         print(response)
-    #         return ser
-
-    #     except serial.SerialException as e:
-    #         print(f"Error: {e}")
-
-    #     finally:
-    #         if 'ser' in locals() and ser.is_open:
-    #             ser.close()
-
-    # def send_command_to_pico(self, command):
-
-    #     if command[0] == 'flush':
-    #         self.pico_marlin.flush()
-    #         return
-    #     if command[0] == self.currentMode:
-    #         print('Error: alread in {} mode'.format(self.currentMode))
-    #         return
-    #     # command = command
-    #     if command[0] in self.pico_dict.keys():
-    #         if len(command) > 1:
-    #             command = '{}{}'.format(self.pico_dict[command[0]], command[1]) # concatenate command if parameters are provided
-    #         # command = self.pico_dict[command]
-    #         else:
-    #             command = self.pico_dict[command[0]]
-    #     self.pico_marlin.write(f'{command}\r'.encode())
-    #     self.pico_marlin.flush()
-
-    #     # Read the response
-    #     time.sleep(self.pico_read_delay)
-    #     response = self.pico_marlin.read(self.pico_marlin.inWaiting())  # Read available bytes
-    #     if response:
-    #         print("Response from Pico:")
-    #         print(response.decode().strip())
-    #     else:
-    #         print("No response received. Check the connection and settings.")
-
-
-
     def send_command_to_spectrometer(self, command, report=True):
                     # self.instrument.write(com)
                     # time.sleep(0.0001)
@@ -2493,78 +2145,6 @@ class Microscope:
         return self.spectrometer, self.state
 
 
-    # def main(self):
-    #     while True:
-    #         try:
-    #             # loop continuously here for com input
-    #             # response = self.apd_serial.read(self.apd_serial.inWaiting())
-    #             # response = self.uno_serial.read(self.uno_serial.inWaiting())
-    #             # print(response)
-    #             com = input('Enter command:\n')
-    #             # if com == 'COM':
-    #             #     while True:
-    #             #         com = 'Enter string command:\n'
-    #             #         # self.instrument.write(com)
-    #             #         # time.sleep(0.0001)
-    #             # else:
-    #             # command = com.split(' ')
-    #             self.send_command_to_UNO(com)
-    #             self.read_command_from_uno()
-
-    #             continue
-
-
-    #             if com[0] in self.APD_comList:
-    #                 self.send_command_to_apd(com)
-    #                 time.sleep(0.1)
-    #             elif com == 'read':
-    #                 response = self.apd_serial.read(self.apd_serial.inWaiting())
-    #                 print(response)
-    #             else:
-    #                 print('Command not recognized: {}'.format(com))
-                
-    #             continue
-
-
-    #             # if command[0] == 'read':
-    #             #     response = self.apd_serial.read(self.apd_serial.inWaiting())
-    #             #     print('APD:', response)
-    #             #     response = self.apd_serial.read(self.pico_marlin.inWaiting())
-    #             #     print('pico_marlin:', response)
-
-    #             # if command[0] == 't':
-    #             #     self.set_acquisition_time(command[1])
-
-    #                 # self.send_command_to_apd(struct.pack('<f', 0.12))
-    #                 # self.send_command_to_apd(struct.pack('<f', 12))
-    #                 # self.send_command_to_apd(struct.pack( .'<f', 45.6))
-
-    #                 # self.send_command_to_apd(2.5)
-    #                 # # time.sleep(0.001)
-    #                 # self.send_command_to_apd('run')
-    #                 # time.sleep(0.001)
-
-
-    #             if command[0] in self.spectrometer_dict.keys():
-    #                 self.send_command_to_spectrometer(command)
-    #             elif command[0] in self.apd_dict.keys():
-    #                 self.send_command_to_apd(self.apd_dict[command[0]])
-    #             else:
-    #                 self.send_command_to_pico(self.pico_dict[command[0]])
-    #         except Exception as e:
-    #             print(e) 
-
-                    
-def continuous():
-    root = tk.Tk()
-    gui = ArduinoInterface(root)
-
-    root.mainloop()
-
-def discon():
-    microscope = Microscope()
-    microscope.main()
-
 def cli():
     microscope = Microscope(debug_skip=['laser', 'TRIAX'], unoCOM='COM10')
     # microscope.cli_commands()
@@ -2576,118 +2156,4 @@ def cli():
         print(e)
 
 if __name__ == '__main__':
-    # discon()
-    # continuous()
     cli()
-
-
-# class Spectrometer:
-
-    def __init__(self):
-        self.spectrometer, spectrometer_state = self.connect_to_triax()
-
-    def connect_to_triax(self):
-        # Open a connection to the instrument
-        rm = pyvisa.ResourceManager()
-        rm.list_resources()
-        spectrometer = rm.open_resource('GPIB0::1::INSTR')  # Replace with the actual VISA address of your instrument
-        # instrument = rm.open_resource('COM6')  # Replace with the actual VISA address of your instrument
-        # s = serial.Serial(port='GPIB0::1::INSTR', timeout=5000)
-
-
-    # def connect(instrument):
-        spectrometer.write('O2000')
-        time.sleep(0.0001)
-        state = spectrometer.read()
-        spectrometer.write('WHERE AM I')
-        time.sleep(0.0001)
-        state = spectrometer.read()
-        print(state)
-        # 
-        return spectrometer, state
-
-
-
-
-
-    def control_instrument(self, command):
-        while True:
-            try:
-                # loop continuously here for com input
-                com = input('Enter command - c to continue:\n')
-                if com == 'c':
-                    break
-                spectrometer.write(com)
-                if com == 'A':
-                    count = 100
-                    while count > 0:
-                        print('Initialising: Sleeping for {} seconds'.format(count))
-                        time.sleep(1)
-                        count -= 1
-                response = spectrometer.read()
-                print('RES:', response)
-            except Exception as e:
-                print(e) 
-
-        count = 0
-        for x in range(10):
-            spectrometer.write('F0,{}'.format(5000))
-            response = spectrometer.read()
-            print('moving to {}'.format(x*5000))
-            # while response == 'b':
-            # while True:
-            #     # response = spectrometer.write('E')
-            #     time.sleep(0.5)
-            #     count+=1
-            #     if count > 50:
-            #         break
-            time.sleep(0.5)
-            # count += 1
-                # print('waiting')
-                
-                # response = spectrometer.read()
-                # if count > 50:
-                #     print('timed out')
-                #     break
-
-            
-
-            
-            
-
-        while True:
-            try:
-                com = input('Enter command:\n')
-                spectrometer.write(com)
-                response = spectrometer.read()
-                print('RES:', response)
-            except Exception as e:
-                print(e) 
-                
-
-        # 
-        # Read the response from the spectrometer
-
-        try:
-            response = spectrometer.read()
-            print("Response:", response)
-        except pyvisa .VisaIOError as e:
-            if e.error_code == pyvisa.constants.VI_ERROR_TMO:
-                print("Timeout expired. spectrometer did not respond.")
-            else:
-                print("An error occurred:", e)
-
-
-        # Close the spectrometer connection
-        spectrometer.close()
-
-
-        #k0,0,100 = move slit 100 steps relative
-        #j0,0<CR> = read slit pos
-        #i0,0,0<CR> = set slit position (0)
-
-
-# Note: pico-mk3-coms_V1.0.py is the working version. This wrapper is having issues with the com port.
-# notes re: this version: marlin controller will only work if movement commands are sent. Anything else will break the read/write loop. need to move away from this marlin controller ASAP, or write a more robust coms wrapper.
-
-

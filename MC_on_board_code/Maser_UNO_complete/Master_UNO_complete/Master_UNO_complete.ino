@@ -11,7 +11,7 @@ const int SLAVE3_ADDRESS = 7;
 const int countEnable = 13;  // Active-LOW latch reset
 const int counterClear = 12; // Counter IC clear pin
 const int lastDigit = 11;    // Last digit read pin
-const int gShutPin = 9;      // Grating shutter pin
+  const int gShutPin = 9;      // Grating shutter pin
 const int ldr0pin = A15;      // LDR input pin
 
 // Variables

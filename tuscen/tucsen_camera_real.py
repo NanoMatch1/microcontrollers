@@ -598,7 +598,7 @@ class TucamCamera:
 
         filepath = os.path.join(save_dir, filename)
         np.save(filepath, data)
-        if save_dir != 'transient':
+        if save_dir != self.transient_dir:
             print('Data saved to %s' % filepath)
 
     def camera_info(self):
